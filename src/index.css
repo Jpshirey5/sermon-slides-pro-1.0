@@ -2,95 +2,115 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
-All colors MUST be HSL.
+@import "@fontsource/playfair-display/400.css";
+@import "@fontsource/playfair-display/500.css";
+@import "@fontsource/playfair-display/600.css";
+@import "@fontsource/playfair-display/700.css";
+@import "@fontsource/inter/400.css";
+@import "@fontsource/inter/500.css";
+@import "@fontsource/inter/600.css";
+
+/* Sermon Slides Pro Design System
+   A warm, spiritual, professional aesthetic for ministry leaders
 */
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    /* Warm cream background */
+    --background: 40 33% 98%;
+    --foreground: 20 25% 15%;
 
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    /* Cards with subtle warmth */
+    --card: 40 30% 99%;
+    --card-foreground: 20 25% 15%;
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    --popover: 40 30% 99%;
+    --popover-foreground: 20 25% 15%;
 
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
+    /* Deep burgundy/wine primary */
+    --primary: 348 55% 32%;
+    --primary-foreground: 40 33% 98%;
 
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
+    /* Warm stone secondary */
+    --secondary: 30 20% 94%;
+    --secondary-foreground: 20 25% 25%;
 
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    /* Muted warm tones */
+    --muted: 30 15% 92%;
+    --muted-foreground: 20 10% 45%;
 
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    /* Gold accent for spiritual elegance */
+    --accent: 38 70% 50%;
+    --accent-foreground: 20 25% 10%;
 
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
+    /* Warm destructive */
+    --destructive: 0 65% 50%;
+    --destructive-foreground: 40 33% 98%;
 
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
+    --border: 30 20% 88%;
+    --input: 30 20% 88%;
+    --ring: 348 55% 32%;
 
-    --radius: 0.5rem;
+    --radius: 0.75rem;
 
-    --sidebar-background: 0 0% 98%;
+    /* Custom gradients */
+    --gradient-hero: linear-gradient(135deg, hsl(348 55% 32%) 0%, hsl(348 45% 22%) 100%);
+    --gradient-gold: linear-gradient(135deg, hsl(38 70% 50%) 0%, hsl(28 75% 45%) 100%);
+    --gradient-warm: linear-gradient(180deg, hsl(40 33% 98%) 0%, hsl(30 25% 95%) 100%);
 
-    --sidebar-foreground: 240 5.3% 26.1%;
+    /* Shadows */
+    --shadow-soft: 0 4px 20px -4px hsl(20 25% 15% / 0.08);
+    --shadow-elevated: 0 8px 30px -8px hsl(20 25% 15% / 0.12);
+    --shadow-glow: 0 0 40px -10px hsl(38 70% 50% / 0.3);
 
-    --sidebar-primary: 240 5.9% 10%;
-
-    --sidebar-primary-foreground: 0 0% 98%;
-
-    --sidebar-accent: 240 4.8% 95.9%;
-
-    --sidebar-accent-foreground: 240 5.9% 10%;
-
-    --sidebar-border: 220 13% 91%;
-
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    /* Sidebar */
+    --sidebar-background: 40 30% 97%;
+    --sidebar-foreground: 20 25% 25%;
+    --sidebar-primary: 348 55% 32%;
+    --sidebar-primary-foreground: 40 33% 98%;
+    --sidebar-accent: 30 20% 94%;
+    --sidebar-accent-foreground: 20 25% 25%;
+    --sidebar-border: 30 20% 88%;
+    --sidebar-ring: 348 55% 32%;
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
+    --background: 20 20% 8%;
+    --foreground: 40 20% 95%;
 
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
+    --card: 20 18% 12%;
+    --card-foreground: 40 20% 95%;
 
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
+    --popover: 20 18% 12%;
+    --popover-foreground: 40 20% 95%;
 
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
+    --primary: 348 50% 55%;
+    --primary-foreground: 20 20% 8%;
 
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
+    --secondary: 20 15% 18%;
+    --secondary-foreground: 40 20% 90%;
 
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
+    --muted: 20 15% 18%;
+    --muted-foreground: 30 10% 60%;
 
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
+    --accent: 38 65% 55%;
+    --accent-foreground: 20 20% 8%;
 
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 0 60% 45%;
+    --destructive-foreground: 40 20% 95%;
 
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --border: 20 15% 20%;
+    --input: 20 15% 20%;
+    --ring: 348 50% 55%;
+
+    --sidebar-background: 20 18% 10%;
+    --sidebar-foreground: 40 20% 90%;
+    --sidebar-primary: 348 50% 55%;
+    --sidebar-primary-foreground: 20 20% 8%;
+    --sidebar-accent: 20 15% 15%;
+    --sidebar-accent-foreground: 40 20% 90%;
+    --sidebar-border: 20 15% 18%;
+    --sidebar-ring: 348 50% 55%;
   }
 }
 
@@ -100,6 +120,49 @@ All colors MUST be HSL.
   }
 
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-serif;
+  }
+}
+
+@layer utilities {
+  .font-serif {
+    font-family: "Playfair Display", Georgia, serif;
+  }
+
+  .font-sans {
+    font-family: "Inter", system-ui, sans-serif;
+  }
+
+  .gradient-hero {
+    background: var(--gradient-hero);
+  }
+
+  .gradient-gold {
+    background: var(--gradient-gold);
+  }
+
+  .gradient-warm {
+    background: var(--gradient-warm);
+  }
+
+  .shadow-soft {
+    box-shadow: var(--shadow-soft);
+  }
+
+  .shadow-elevated {
+    box-shadow: var(--shadow-elevated);
+  }
+
+  .shadow-glow {
+    box-shadow: var(--shadow-glow);
+  }
+
+  .text-gradient {
+    @apply bg-clip-text text-transparent;
+    background-image: var(--gradient-gold);
   }
 }
