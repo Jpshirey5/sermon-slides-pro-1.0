@@ -20,11 +20,17 @@ import {
   Wand2,
   ChevronDown,
   ChevronUp,
+  Search,
+  Loader2,
 } from "lucide-react";
+import { lookupScripture } from "@/lib/scripture-api";
+import { toast } from "sonner";
 
 interface Scripture {
   reference: string;
   translation: string;
+  text?: string;
+  isLoading?: boolean;
 }
 
 interface SermonPoint {
@@ -123,6 +129,78 @@ const CreateSermon = () => {
           : p
       )
     );
+  };
+
+  const handleScriptureLookup = async (pointId: string, index: number) => {
+    const point = points.find((p) => p.id === pointId);
+    if (!point) return;
+    
+    const scripture = point.scriptures[index];
+    if (!scripture.reference.trim()) {
+      toast.error("Please enter a scripture reference first");
+      return;
+    }
+
+    // Set loading state
+    setPoints(
+      points.map((p) =>
+        p.id === pointId
+          ? {
+              ...p,
+              scriptures: p.scriptures.map((s, i) =>
+                i === index ? { ...s, isLoading: true } : s
+              ),
+            }
+          : p
+      )
+    );
+
+    try {
+      const result = await lookupScripture(scripture.reference, scripture.translation);
+      if (result) {
+        setPoints(
+          points.map((p) =>
+            p.id === pointId
+              ? {
+                  ...p,
+                  scriptures: p.scriptures.map((s, i) =>
+                    i === index ? { ...s, text: result.text, isLoading: false } : s
+                  ),
+                }
+              : p
+          )
+        );
+        toast.success("Scripture found!");
+      } else {
+        toast.error("Could not find scripture. Check the reference format.");
+        setPoints(
+          points.map((p) =>
+            p.id === pointId
+              ? {
+                  ...p,
+                  scriptures: p.scriptures.map((s, i) =>
+                    i === index ? { ...s, isLoading: false } : s
+                  ),
+                }
+              : p
+          )
+        );
+      }
+    } catch (error) {
+      toast.error("Error looking up scripture");
+      setPoints(
+        points.map((p) =>
+          p.id === pointId
+            ? {
+                ...p,
+                scriptures: p.scriptures.map((s, i) =>
+                  i === index ? { ...s, isLoading: false } : s
+                ),
+              }
+            : p
+        )
+      );
+    }
   };
 
   const toggleExpanded = (id: string) => {
@@ -293,53 +371,76 @@ const CreateSermon = () => {
                           {point.scriptures.map((scripture, scriptureIndex) => (
                             <div
                               key={scriptureIndex}
-                              className="flex items-center gap-3"
+                              className="space-y-2"
                             >
-                              <Input
-                                type="text"
-                                placeholder="e.g., John 3:16"
-                                value={scripture.reference}
-                                onChange={(e) =>
-                                  updateScripture(
-                                    point.id,
-                                    scriptureIndex,
-                                    "reference",
-                                    e.target.value
-                                  )
-                                }
-                                className="flex-1"
-                              />
-                              <Select
-                                value={scripture.translation}
-                                onValueChange={(value) =>
-                                  updateScripture(
-                                    point.id,
-                                    scriptureIndex,
-                                    "translation",
-                                    value
-                                  )
-                                }
-                              >
-                                <SelectTrigger className="w-32">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {translations.map((t) => (
-                                    <SelectItem key={t.code} value={t.code}>
-                                      {t.code}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  removeScripture(point.id, scriptureIndex)
-                                }
-                                className="p-2 text-muted-foreground hover:text-destructive"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
+                              <div className="flex items-center gap-3">
+                                <Input
+                                  type="text"
+                                  placeholder="e.g., John 3:16"
+                                  value={scripture.reference}
+                                  onChange={(e) =>
+                                    updateScripture(
+                                      point.id,
+                                      scriptureIndex,
+                                      "reference",
+                                      e.target.value
+                                    )
+                                  }
+                                  className="flex-1"
+                                />
+                                <Select
+                                  value={scripture.translation}
+                                  onValueChange={(value) =>
+                                    updateScripture(
+                                      point.id,
+                                      scriptureIndex,
+                                      "translation",
+                                      value
+                                    )
+                                  }
+                                >
+                                  <SelectTrigger className="w-32">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {translations.map((t) => (
+                                      <SelectItem key={t.code} value={t.code}>
+                                        {t.code}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="icon"
+                                  onClick={() => handleScriptureLookup(point.id, scriptureIndex)}
+                                  disabled={scripture.isLoading || !scripture.reference.trim()}
+                                  title="Lookup Scripture"
+                                >
+                                  {scripture.isLoading ? (
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                  ) : (
+                                    <Search className="w-4 h-4" />
+                                  )}
+                                </Button>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    removeScripture(point.id, scriptureIndex)
+                                  }
+                                  className="p-2 text-muted-foreground hover:text-destructive"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                              {scripture.text && (
+                                <div className="p-3 rounded-lg bg-muted/50 border border-border">
+                                  <p className="text-sm text-muted-foreground italic">
+                                    "{scripture.text}"
+                                  </p>
+                                </div>
+                              )}
                             </div>
                           ))}
 

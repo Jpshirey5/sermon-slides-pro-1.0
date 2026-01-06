@@ -17,34 +17,26 @@ import {
   Play,
   GripVertical,
   Plus,
-  Image,
   Type,
   Palette,
   ChevronLeft,
   ChevronRight,
+  FileText,
+  Presentation,
 } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
+import { BackgroundPicker } from "@/components/BackgroundPicker";
+import { exportToPowerPoint, SlideData } from "@/lib/export-pptx";
+import { exportToProPresenter, exportToProPresenter6 } from "@/lib/export-propresenter";
+import { toast } from "sonner";
 
-interface Slide {
-  id: string;
-  type: "title" | "point" | "scripture" | "blank";
-  content: {
-    title?: string;
-    subtitle?: string;
-    scripture?: string;
-    reference?: string;
-  };
-  background: string;
-  fontFamily: string;
-  textColor: string;
-}
-
-const mockSlides: Slide[] = [
+const mockSlides: SlideData[] = [
   {
     id: "1",
     type: "title",
@@ -132,15 +124,57 @@ const colors = [
 
 const SlideEditor = () => {
   const { id } = useParams();
-  const [slides, setSlides] = useState<Slide[]>(mockSlides);
+  const [slides, setSlides] = useState<SlideData[]>(mockSlides);
   const [selectedSlide, setSelectedSlide] = useState(0);
   const [isPreviewMode, setIsPreviewMode] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
 
   const currentSlide = slides[selectedSlide];
+  const presentationTitle = id === "new" ? "New Presentation" : "The Power of Faith";
 
-  const handleExport = (format: "pptx" | "pro") => {
-    // TODO: Implement actual export
-    alert(`Exporting as ${format.toUpperCase()}...`);
+  const handleExport = async (format: "pptx" | "pro" | "pro6") => {
+    setIsExporting(true);
+    try {
+      if (format === "pptx") {
+        await exportToPowerPoint(slides, presentationTitle);
+        toast.success("PowerPoint file exported successfully!");
+      } else if (format === "pro") {
+        exportToProPresenter(slides, presentationTitle);
+        toast.success("ProPresenter 7 file exported successfully!");
+      } else if (format === "pro6") {
+        exportToProPresenter6(slides, presentationTitle);
+        toast.success("ProPresenter 6 file exported successfully!");
+      }
+    } catch (error) {
+      console.error("Export error:", error);
+      toast.error("Failed to export presentation. Please try again.");
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleBackgroundChange = (background: string, backgroundImage?: string) => {
+    setSlides(slides.map((slide, index) =>
+      index === selectedSlide
+        ? { ...slide, background, backgroundImage }
+        : slide
+    ));
+  };
+
+  const handleFontChange = (fontFamily: string) => {
+    setSlides(slides.map((slide, index) =>
+      index === selectedSlide
+        ? { ...slide, fontFamily }
+        : slide
+    ));
+  };
+
+  const handleColorChange = (textColor: string) => {
+    setSlides(slides.map((slide, index) =>
+      index === selectedSlide
+        ? { ...slide, textColor }
+        : slide
+    ));
   };
 
   const navigateSlide = (direction: "prev" | "next") => {
@@ -151,14 +185,32 @@ const SlideEditor = () => {
     }
   };
 
+  const getSlideBackground = (slide: SlideData) => {
+    if (slide.backgroundImage) {
+      return `url(${slide.backgroundImage})`;
+    }
+    return slide.background;
+  };
+
   if (isPreviewMode) {
     return (
       <div
-        className="fixed inset-0 z-50 flex items-center justify-center"
-        style={{ background: currentSlide.background }}
+        className="fixed inset-0 z-50 flex items-center justify-center bg-cover bg-center"
+        style={{ 
+          background: currentSlide.backgroundImage 
+            ? `url(${currentSlide.backgroundImage})` 
+            : currentSlide.background,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+        }}
         onClick={() => setIsPreviewMode(false)}
       >
-        <div className="absolute top-4 right-4 flex gap-2">
+        {/* Dark overlay for images */}
+        {currentSlide.backgroundImage && (
+          <div className="absolute inset-0 bg-black/40" />
+        )}
+        
+        <div className="absolute top-4 right-4 flex gap-2 z-10">
           <Button
             variant="outline"
             className="bg-white/10 border-white/20 text-white hover:bg-white/20"
@@ -171,7 +223,7 @@ const SlideEditor = () => {
           </Button>
         </div>
 
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-4">
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-4 z-10">
           <Button
             variant="outline"
             size="icon"
@@ -201,7 +253,7 @@ const SlideEditor = () => {
           </Button>
         </div>
 
-        <div className="text-center max-w-4xl px-8">
+        <div className="text-center max-w-4xl px-8 relative z-10">
           {currentSlide.type === "title" && (
             <>
               <h1
@@ -285,7 +337,7 @@ const SlideEditor = () => {
                 <BookOpen className="w-4 h-4 text-primary-foreground" />
               </div>
               <span className="font-serif text-lg font-semibold text-foreground">
-                {id === "new" ? "New Presentation" : "The Power of Faith"}
+                {presentationTitle}
               </span>
             </div>
 
@@ -304,17 +356,26 @@ const SlideEditor = () => {
               </Button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="hero">
+                  <Button variant="hero" disabled={isExporting}>
                     <Download className="w-4 h-4" />
-                    <span className="hidden sm:inline">Export</span>
+                    <span className="hidden sm:inline">
+                      {isExporting ? "Exporting..." : "Export"}
+                    </span>
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
                   <DropdownMenuItem onClick={() => handleExport("pptx")}>
+                    <FileText className="w-4 h-4 mr-2" />
                     PowerPoint (.pptx)
                   </DropdownMenuItem>
+                  <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={() => handleExport("pro")}>
-                    ProPresenter (.pro)
+                    <Presentation className="w-4 h-4 mr-2" />
+                    ProPresenter 7 (.pro)
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleExport("pro6")}>
+                    <Presentation className="w-4 h-4 mr-2" />
+                    ProPresenter 6 (.rtf)
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -355,8 +416,13 @@ const SlideEditor = () => {
                   </span>
                 </div>
                 <div
-                  className="aspect-video flex items-center justify-center p-3"
-                  style={{ background: slide.background }}
+                  className="aspect-video flex items-center justify-center p-3 bg-cover bg-center"
+                  style={{ 
+                    background: slide.backgroundImage 
+                      ? `url(${slide.backgroundImage})` 
+                      : slide.background,
+                    backgroundSize: 'cover',
+                  }}
                 >
                   <p
                     className="text-xs text-center line-clamp-2"
@@ -379,10 +445,21 @@ const SlideEditor = () => {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.3 }}
-              className="w-full max-w-4xl aspect-video rounded-2xl overflow-hidden shadow-elevated flex items-center justify-center"
-              style={{ background: currentSlide.background }}
+              className="w-full max-w-4xl aspect-video rounded-2xl overflow-hidden shadow-elevated flex items-center justify-center bg-cover bg-center relative"
+              style={{ 
+                background: currentSlide.backgroundImage 
+                  ? `url(${currentSlide.backgroundImage})` 
+                  : currentSlide.background,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+              }}
             >
-              <div className="text-center max-w-3xl px-8">
+              {/* Dark overlay for images */}
+              {currentSlide.backgroundImage && (
+                <div className="absolute inset-0 bg-black/30" />
+              )}
+              
+              <div className="text-center max-w-3xl px-8 relative z-10">
                 {currentSlide.type === "title" && (
                   <>
                     <h1
@@ -450,7 +527,10 @@ const SlideEditor = () => {
               {/* Font */}
               <div className="flex items-center gap-2">
                 <Type className="w-4 h-4 text-muted-foreground" />
-                <Select defaultValue={currentSlide.fontFamily}>
+                <Select 
+                  value={currentSlide.fontFamily}
+                  onValueChange={handleFontChange}
+                >
                   <SelectTrigger className="w-40">
                     <SelectValue />
                   </SelectTrigger>
@@ -471,7 +551,12 @@ const SlideEditor = () => {
                   {colors.slice(0, 6).map((color) => (
                     <button
                       key={color}
-                      className="w-6 h-6 rounded-full border-2 border-border hover:border-primary transition-colors"
+                      onClick={() => handleColorChange(color)}
+                      className={`w-6 h-6 rounded-full border-2 transition-colors ${
+                        currentSlide.textColor === color 
+                          ? 'border-primary ring-2 ring-primary/30' 
+                          : 'border-border hover:border-primary'
+                      }`}
                       style={{ background: color }}
                     />
                   ))}
@@ -479,10 +564,11 @@ const SlideEditor = () => {
               </div>
 
               {/* Background */}
-              <Button variant="outline" size="sm">
-                <Image className="w-4 h-4" />
-                Background
-              </Button>
+              <BackgroundPicker
+                currentBackground={currentSlide.background}
+                currentBackgroundImage={currentSlide.backgroundImage}
+                onBackgroundChange={handleBackgroundChange}
+              />
 
               {/* Navigation */}
               <div className="flex items-center gap-2">
