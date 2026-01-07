@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -21,56 +21,74 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-interface Sermon {
+export interface SermonPresentation {
   id: string;
   title: string;
   date: string;
   slides: number;
   lastModified: string;
+  data?: {
+    title: string;
+    date: string;
+    translation: string;
+    points: Array<{
+      id: string;
+      title: string;
+      scriptures: Array<{
+        reference: string;
+        text?: string;
+      }>;
+    }>;
+  };
 }
 
-const mockSermons: Sermon[] = [
-  {
-    id: "1",
-    title: "The Power of Faith",
-    date: "2024-01-28",
-    slides: 12,
-    lastModified: "2 days ago",
-  },
-  {
-    id: "2",
-    title: "Walking in Love",
-    date: "2024-01-21",
-    slides: 15,
-    lastModified: "1 week ago",
-  },
-  {
-    id: "3",
-    title: "Finding Hope in Trials",
-    date: "2024-01-14",
-    slides: 10,
-    lastModified: "2 weeks ago",
-  },
-  {
-    id: "4",
-    title: "The Good Shepherd",
-    date: "2024-01-07",
-    slides: 8,
-    lastModified: "3 weeks ago",
-  },
-];
+// Store presentations in localStorage for persistence
+const STORAGE_KEY = 'sermon-presentations';
+
+export function getPresentations(): SermonPresentation[] {
+  const stored = localStorage.getItem(STORAGE_KEY);
+  if (stored) {
+    return JSON.parse(stored);
+  }
+  return [];
+}
+
+export function savePresentation(presentation: SermonPresentation): void {
+  const presentations = getPresentations();
+  const existingIndex = presentations.findIndex(p => p.id === presentation.id);
+  if (existingIndex >= 0) {
+    presentations[existingIndex] = presentation;
+  } else {
+    presentations.unshift(presentation);
+  }
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(presentations));
+}
+
+export function deletePresentation(id: string): void {
+  const presentations = getPresentations().filter(p => p.id !== id);
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(presentations));
+}
+
+export function getPresentation(id: string): SermonPresentation | undefined {
+  return getPresentations().find(p => p.id === id);
+}
 
 const Dashboard = () => {
-  const [sermons, setSermons] = useState<Sermon[]>(mockSermons);
+  const [sermons, setSermons] = useState<SermonPresentation[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const navigate = useNavigate();
+
+  useEffect(() => {
+    setSermons(getPresentations());
+  }, []);
 
   const filteredSermons = sermons.filter((sermon) =>
     sermon.title.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const handleDelete = (id: string) => {
-    setSermons(sermons.filter((s) => s.id !== id));
+    deletePresentation(id);
+    setSermons(getPresentations());
   };
 
   return (
@@ -205,9 +223,11 @@ const Dashboard = () => {
                       </button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem>
-                        <Edit className="w-4 h-4 mr-2" />
-                        Edit
+                      <DropdownMenuItem asChild>
+                        <Link to={`/editor/${sermon.id}`}>
+                          <Edit className="w-4 h-4 mr-2" />
+                          Edit
+                        </Link>
                       </DropdownMenuItem>
                       <DropdownMenuItem>
                         <Download className="w-4 h-4 mr-2" />

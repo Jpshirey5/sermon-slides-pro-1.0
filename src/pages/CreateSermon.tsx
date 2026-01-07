@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useRef, useCallback } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -24,7 +24,7 @@ import {
   Book,
 } from "lucide-react";
 import { lookupScripture } from "@/lib/scripture-api";
-import { toast } from "sonner";
+import { savePresentation } from "@/pages/Dashboard";
 
 interface Scripture {
   reference: string;
@@ -39,9 +39,11 @@ interface SermonPoint {
 }
 
 const translations = [
+  { code: "KJV", name: "King James Version", language: "English" },
+  { code: "WEB", name: "World English Bible", language: "English" },
+  { code: "ASV", name: "American Standard Version", language: "English" },
   { code: "NIV", name: "New International Version", language: "English" },
   { code: "ESV", name: "English Standard Version", language: "English" },
-  { code: "KJV", name: "King James Version", language: "English" },
   { code: "NKJV", name: "New King James Version", language: "English" },
   { code: "NASB", name: "New American Standard Bible", language: "English" },
   { code: "NLT", name: "New Living Translation", language: "English" },
@@ -59,7 +61,7 @@ const CreateSermon = () => {
   const navigate = useNavigate();
   const [title, setTitle] = useState("");
   const [date, setDate] = useState("");
-  const [globalTranslation, setGlobalTranslation] = useState("NIV");
+  const [globalTranslation, setGlobalTranslation] = useState("KJV");
   const [points, setPoints] = useState<SermonPoint[]>([
     { id: "1", title: "", scriptures: [] },
   ]);
@@ -215,15 +217,19 @@ const CreateSermon = () => {
   };
 
   // Re-lookup all scriptures when global translation changes
-  useEffect(() => {
-    points.forEach((point) => {
-      point.scriptures.forEach((scripture, index) => {
-        if (scripture.reference.trim()) {
-          autoLookupScripture(point.id, index, scripture.reference);
-        }
+  const handleTranslationChange = (newTranslation: string) => {
+    setGlobalTranslation(newTranslation);
+    // Re-lookup all scriptures with new translation
+    setTimeout(() => {
+      points.forEach((point) => {
+        point.scriptures.forEach((scripture, index) => {
+          if (scripture.reference.trim()) {
+            autoLookupScripture(point.id, index, scripture.reference);
+          }
+        });
       });
-    });
-  }, [globalTranslation]);
+    }, 100);
+  };
 
   const toggleExpanded = (id: string) => {
     setExpandedPoints((prev) =>
@@ -233,8 +239,47 @@ const CreateSermon = () => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // Navigate to editor with the sermon data
-    navigate("/editor/new");
+    
+    // Generate unique ID for this presentation
+    const presentationId = String(Date.now());
+    
+    // Calculate slide count
+    let slideCount = 1; // Title slide
+    points.forEach(point => {
+      if (point.title) {
+        slideCount++; // Point slide
+        point.scriptures.forEach(s => {
+          if (s.reference && s.text) {
+            slideCount++; // Scripture slide
+          }
+        });
+      }
+    });
+    
+    // Save presentation data
+    savePresentation({
+      id: presentationId,
+      title: title,
+      date: date || new Date().toISOString().split('T')[0],
+      slides: slideCount,
+      lastModified: 'Just now',
+      data: {
+        title,
+        date,
+        translation: globalTranslation,
+        points: points.map(p => ({
+          id: p.id,
+          title: p.title,
+          scriptures: p.scriptures.map(s => ({
+            reference: s.reference,
+            text: s.text,
+          })),
+        })),
+      },
+    });
+    
+    // Navigate to editor with the new presentation ID
+    navigate(`/editor/${presentationId}`);
   };
 
   return (
@@ -331,7 +376,7 @@ const CreateSermon = () => {
                 </Label>
                 <Select
                   value={globalTranslation}
-                  onValueChange={setGlobalTranslation}
+                  onValueChange={handleTranslationChange}
                 >
                   <SelectTrigger className="w-full sm:w-80">
                     <SelectValue />
@@ -352,15 +397,9 @@ const CreateSermon = () => {
 
             {/* Sermon Points */}
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h2 className="font-serif text-xl font-semibold text-foreground">
-                  Sermon Points
-                </h2>
-                <Button type="button" variant="outline" onClick={addPoint}>
-                  <Plus className="w-4 h-4" />
-                  Add Point
-                </Button>
-              </div>
+              <h2 className="font-serif text-xl font-semibold text-foreground">
+                Sermon Points
+              </h2>
 
               {points.map((point, pointIndex) => (
                 <motion.div
@@ -480,6 +519,14 @@ const CreateSermon = () => {
                   </div>
                 </motion.div>
               ))}
+
+              {/* Add Point Button at Bottom */}
+              <div className="flex justify-center pt-2">
+                <Button type="button" variant="outline" onClick={addPoint} className="w-full max-w-md">
+                  <Plus className="w-4 h-4" />
+                  Add Another Sermon Point
+                </Button>
+              </div>
             </div>
 
             {/* Submit */}
