@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { Link, useParams } from "react-router-dom";
-import { motion } from "framer-motion";
+import { motion, Reorder } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -132,6 +132,16 @@ const SlideEditor = () => {
   const currentSlide = slides[selectedSlide];
   const presentationTitle = id === "new" ? "New Presentation" : "The Power of Faith";
 
+  const handleReorder = useCallback((newOrder: SlideData[]) => {
+    setSlides(newOrder);
+    // Update selected slide index if needed
+    const currentId = currentSlide.id;
+    const newIndex = newOrder.findIndex(s => s.id === currentId);
+    if (newIndex !== -1) {
+      setSelectedSlide(newIndex);
+    }
+  }, [currentSlide.id]);
+
   const handleExport = async (format: "pptx" | "pro" | "pro6") => {
     setIsExporting(true);
     try {
@@ -183,13 +193,6 @@ const SlideEditor = () => {
     } else if (direction === "next" && selectedSlide < slides.length - 1) {
       setSelectedSlide(selectedSlide + 1);
     }
-  };
-
-  const getSlideBackground = (slide: SlideData) => {
-    if (slide.backgroundImage) {
-      return `url(${slide.backgroundImage})`;
-    }
-    return slide.background;
   };
 
   if (isPreviewMode) {
@@ -386,7 +389,7 @@ const SlideEditor = () => {
 
       {/* Main Content */}
       <div className="flex-1 flex">
-        {/* Slide Thumbnails */}
+        {/* Slide Thumbnails with Drag-and-Drop */}
         <aside className="w-64 border-r border-border bg-card overflow-y-auto hidden md:block">
           <div className="p-4 space-y-3">
             <div className="flex items-center justify-between mb-4">
@@ -396,43 +399,53 @@ const SlideEditor = () => {
               </Button>
             </div>
 
-            {slides.map((slide, index) => (
-              <motion.div
-                key={slide.id}
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: index * 0.05 }}
-                className={`group relative cursor-pointer rounded-lg overflow-hidden border-2 transition-all ${
-                  selectedSlide === index
-                    ? "border-primary shadow-elevated"
-                    : "border-border hover:border-primary/50"
-                }`}
-                onClick={() => setSelectedSlide(index)}
-              >
-                <div className="flex items-center gap-2 p-2 bg-muted/50">
-                  <GripVertical className="w-4 h-4 text-muted-foreground" />
-                  <span className="text-xs text-muted-foreground">
-                    {index + 1}
-                  </span>
-                </div>
-                <div
-                  className="aspect-video flex items-center justify-center p-3 bg-cover bg-center"
-                  style={{ 
-                    background: slide.backgroundImage 
-                      ? `url(${slide.backgroundImage})` 
-                      : slide.background,
-                    backgroundSize: 'cover',
-                  }}
+            <Reorder.Group
+              axis="y"
+              values={slides}
+              onReorder={handleReorder}
+              className="space-y-3"
+            >
+              {slides.map((slide, index) => (
+                <Reorder.Item
+                  key={slide.id}
+                  value={slide}
+                  className={`group relative cursor-grab active:cursor-grabbing rounded-lg overflow-hidden border-2 transition-all ${
+                    selectedSlide === index
+                      ? "border-primary shadow-elevated"
+                      : "border-border hover:border-primary/50"
+                  }`}
+                  whileDrag={{ scale: 1.02, boxShadow: "0 8px 20px rgba(0,0,0,0.2)" }}
                 >
-                  <p
-                    className="text-xs text-center line-clamp-2"
-                    style={{ color: slide.textColor }}
+                  <div
+                    onClick={() => setSelectedSlide(index)}
+                    className="w-full"
                   >
-                    {slide.content.title || slide.content.scripture}
-                  </p>
-                </div>
-              </motion.div>
-            ))}
+                    <div className="flex items-center gap-2 p-2 bg-muted/50">
+                      <GripVertical className="w-4 h-4 text-muted-foreground" />
+                      <span className="text-xs text-muted-foreground">
+                        {index + 1}
+                      </span>
+                    </div>
+                    <div
+                      className="aspect-video flex items-center justify-center p-3 bg-cover bg-center"
+                      style={{ 
+                        background: slide.backgroundImage 
+                          ? `url(${slide.backgroundImage})` 
+                          : slide.background,
+                        backgroundSize: 'cover',
+                      }}
+                    >
+                      <p
+                        className="text-xs text-center line-clamp-2"
+                        style={{ color: slide.textColor }}
+                      >
+                        {slide.content.title || slide.content.scripture}
+                      </p>
+                    </div>
+                  </div>
+                </Reorder.Item>
+              ))}
+            </Reorder.Group>
           </div>
         </aside>
 
