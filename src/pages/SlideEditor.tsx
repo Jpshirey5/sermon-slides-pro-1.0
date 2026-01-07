@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Link, useParams } from "react-router-dom";
 import { motion, Reorder } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -13,7 +13,6 @@ import {
   BookOpen,
   ArrowLeft,
   Download,
-  Share2,
   Play,
   GripVertical,
   Plus,
@@ -35,66 +34,7 @@ import { BackgroundPicker } from "@/components/BackgroundPicker";
 import { exportToPowerPoint, SlideData } from "@/lib/export-pptx";
 import { exportToProPresenter, exportToProPresenter6 } from "@/lib/export-propresenter";
 import { toast } from "sonner";
-
-const mockSlides: SlideData[] = [
-  {
-    id: "1",
-    type: "title",
-    content: {
-      title: "The Power of Faith",
-      subtitle: "Sunday Service • January 28, 2024",
-    },
-    background: "linear-gradient(135deg, #5c1e2b 0%, #3d1219 100%)",
-    fontFamily: "Playfair Display",
-    textColor: "#ffffff",
-  },
-  {
-    id: "2",
-    type: "point",
-    content: {
-      title: "1. Faith Moves Mountains",
-      subtitle: "When we trust God completely, the impossible becomes possible",
-    },
-    background: "linear-gradient(135deg, #5c1e2b 0%, #3d1219 100%)",
-    fontFamily: "Playfair Display",
-    textColor: "#ffffff",
-  },
-  {
-    id: "3",
-    type: "scripture",
-    content: {
-      scripture:
-        '"For truly I tell you, if you have faith the size of a mustard seed, you will say to this mountain, \'Move from here to there,\' and it will move."',
-      reference: "Matthew 17:20 (NIV)",
-    },
-    background: "linear-gradient(135deg, #5c1e2b 0%, #3d1219 100%)",
-    fontFamily: "Playfair Display",
-    textColor: "#ffffff",
-  },
-  {
-    id: "4",
-    type: "point",
-    content: {
-      title: "2. Faith Overcomes Fear",
-      subtitle: "Perfect love casts out fear through unwavering faith",
-    },
-    background: "linear-gradient(135deg, #5c1e2b 0%, #3d1219 100%)",
-    fontFamily: "Playfair Display",
-    textColor: "#ffffff",
-  },
-  {
-    id: "5",
-    type: "scripture",
-    content: {
-      scripture:
-        '"There is no fear in love. But perfect love drives out fear, because fear has to do with punishment."',
-      reference: "1 John 4:18 (NIV)",
-    },
-    background: "linear-gradient(135deg, #5c1e2b 0%, #3d1219 100%)",
-    fontFamily: "Playfair Display",
-    textColor: "#ffffff",
-  },
-];
+import { getPresentation, savePresentation, SermonPresentation } from "@/pages/Dashboard";
 
 const fonts = [
   "Playfair Display",
@@ -122,15 +62,106 @@ const colors = [
   "#45b7d1",
 ];
 
+// Generate slides from sermon data
+function generateSlidesFromData(presentation: SermonPresentation): SlideData[] {
+  const slides: SlideData[] = [];
+  const defaultBackground = "linear-gradient(135deg, #5c1e2b 0%, #3d1219 100%)";
+  const defaultFont = "Playfair Display";
+  const defaultColor = "#ffffff";
+  
+  // Title slide
+  slides.push({
+    id: `title-${Date.now()}`,
+    type: 'title',
+    content: {
+      title: presentation.data?.title || presentation.title,
+      subtitle: presentation.data?.date 
+        ? `${new Date(presentation.data.date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}`
+        : new Date(presentation.date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
+    },
+    background: defaultBackground,
+    fontFamily: defaultFont,
+    textColor: defaultColor,
+  });
+  
+  // Generate slides for each point
+  if (presentation.data?.points) {
+    presentation.data.points.forEach((point, index) => {
+      if (point.title) {
+        // Point slide
+        slides.push({
+          id: `point-${point.id}`,
+          type: 'point',
+          content: {
+            title: `${index + 1}. ${point.title}`,
+            subtitle: '',
+          },
+          background: defaultBackground,
+          fontFamily: defaultFont,
+          textColor: defaultColor,
+        });
+        
+        // Scripture slides for this point
+        point.scriptures.forEach((scripture, sIndex) => {
+          if (scripture.reference && scripture.text) {
+            slides.push({
+              id: `scripture-${point.id}-${sIndex}`,
+              type: 'scripture',
+              content: {
+                scripture: `"${scripture.text}"`,
+                reference: `${scripture.reference} (${presentation.data?.translation || 'KJV'})`,
+              },
+              background: defaultBackground,
+              fontFamily: defaultFont,
+              textColor: defaultColor,
+            });
+          }
+        });
+      }
+    });
+  }
+  
+  return slides;
+}
+
+// Default mock slides for new presentations
+const defaultSlides: SlideData[] = [
+  {
+    id: "1",
+    type: "title",
+    content: {
+      title: "New Presentation",
+      subtitle: new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
+    },
+    background: "linear-gradient(135deg, #5c1e2b 0%, #3d1219 100%)",
+    fontFamily: "Playfair Display",
+    textColor: "#ffffff",
+  },
+];
+
 const SlideEditor = () => {
   const { id } = useParams();
-  const [slides, setSlides] = useState<SlideData[]>(mockSlides);
+  const [slides, setSlides] = useState<SlideData[]>(defaultSlides);
   const [selectedSlide, setSelectedSlide] = useState(0);
   const [isPreviewMode, setIsPreviewMode] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [presentationTitle, setPresentationTitle] = useState("New Presentation");
+
+  // Load presentation data
+  useEffect(() => {
+    if (id && id !== "new") {
+      const presentation = getPresentation(id);
+      if (presentation) {
+        setPresentationTitle(presentation.title);
+        const generatedSlides = generateSlidesFromData(presentation);
+        if (generatedSlides.length > 0) {
+          setSlides(generatedSlides);
+        }
+      }
+    }
+  }, [id]);
 
   const currentSlide = slides[selectedSlide];
-  const presentationTitle = id === "new" ? "New Presentation" : "The Power of Faith";
 
   const handleReorder = useCallback((newOrder: SlideData[]) => {
     setSlides(newOrder);
@@ -352,10 +383,6 @@ const SlideEditor = () => {
               >
                 <Play className="w-4 h-4" />
                 <span className="hidden sm:inline">Preview</span>
-              </Button>
-              <Button variant="outline">
-                <Share2 className="w-4 h-4" />
-                <span className="hidden sm:inline">Share</span>
               </Button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
