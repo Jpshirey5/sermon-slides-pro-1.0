@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -20,15 +20,14 @@ import {
   Wand2,
   ChevronDown,
   ChevronUp,
-  Search,
   Loader2,
+  Book,
 } from "lucide-react";
 import { lookupScripture } from "@/lib/scripture-api";
 import { toast } from "sonner";
 
 interface Scripture {
   reference: string;
-  translation: string;
   text?: string;
   isLoading?: boolean;
 }
@@ -60,10 +59,14 @@ const CreateSermon = () => {
   const navigate = useNavigate();
   const [title, setTitle] = useState("");
   const [date, setDate] = useState("");
+  const [globalTranslation, setGlobalTranslation] = useState("NIV");
   const [points, setPoints] = useState<SermonPoint[]>([
     { id: "1", title: "", scriptures: [] },
   ]);
   const [expandedPoints, setExpandedPoints] = useState<string[]>(["1"]);
+  
+  // Track pending lookups with debounce
+  const lookupTimeouts = useRef<Record<string, NodeJS.Timeout>>({});
 
   const addPoint = () => {
     const newId = String(Date.now());
@@ -90,7 +93,7 @@ const CreateSermon = () => {
               ...p,
               scriptures: [
                 ...p.scriptures,
-                { reference: "", translation: "NIV" },
+                { reference: "" },
               ],
             }
           : p
@@ -98,11 +101,82 @@ const CreateSermon = () => {
     );
   };
 
+  // Auto-lookup scripture when reference changes (debounced)
+  const autoLookupScripture = useCallback(async (pointId: string, index: number, reference: string) => {
+    if (!reference.trim()) return;
+
+    // Clear any existing timeout for this scripture
+    const key = `${pointId}-${index}`;
+    if (lookupTimeouts.current[key]) {
+      clearTimeout(lookupTimeouts.current[key]);
+    }
+
+    // Set loading state
+    setPoints(prev =>
+      prev.map((p) =>
+        p.id === pointId
+          ? {
+              ...p,
+              scriptures: p.scriptures.map((s, i) =>
+                i === index ? { ...s, isLoading: true } : s
+              ),
+            }
+          : p
+      )
+    );
+
+    // Debounce the lookup by 800ms
+    lookupTimeouts.current[key] = setTimeout(async () => {
+      try {
+        const result = await lookupScripture(reference, globalTranslation);
+        if (result) {
+          setPoints(prev =>
+            prev.map((p) =>
+              p.id === pointId
+                ? {
+                    ...p,
+                    scriptures: p.scriptures.map((s, i) =>
+                      i === index ? { ...s, text: result.text, isLoading: false } : s
+                    ),
+                  }
+                : p
+            )
+          );
+        } else {
+          setPoints(prev =>
+            prev.map((p) =>
+              p.id === pointId
+                ? {
+                    ...p,
+                    scriptures: p.scriptures.map((s, i) =>
+                      i === index ? { ...s, isLoading: false } : s
+                    ),
+                  }
+                : p
+            )
+          );
+        }
+      } catch (error) {
+        setPoints(prev =>
+          prev.map((p) =>
+            p.id === pointId
+              ? {
+                  ...p,
+                  scriptures: p.scriptures.map((s, i) =>
+                    i === index ? { ...s, isLoading: false } : s
+                  ),
+                }
+              : p
+          )
+        );
+      }
+    }, 800);
+  }, [globalTranslation]);
+
   const updateScripture = (
     pointId: string,
     index: number,
-    field: keyof Scripture,
-    value: string
+    reference: string
   ) => {
     setPoints(
       points.map((p) =>
@@ -110,15 +184,24 @@ const CreateSermon = () => {
           ? {
               ...p,
               scriptures: p.scriptures.map((s, i) =>
-                i === index ? { ...s, [field]: value } : s
+                i === index ? { ...s, reference, text: undefined } : s
               ),
             }
           : p
       )
     );
+
+    // Trigger auto-lookup
+    autoLookupScripture(pointId, index, reference);
   };
 
   const removeScripture = (pointId: string, index: number) => {
+    // Clear any pending timeout
+    const key = `${pointId}-${index}`;
+    if (lookupTimeouts.current[key]) {
+      clearTimeout(lookupTimeouts.current[key]);
+    }
+
     setPoints(
       points.map((p) =>
         p.id === pointId
@@ -131,77 +214,16 @@ const CreateSermon = () => {
     );
   };
 
-  const handleScriptureLookup = async (pointId: string, index: number) => {
-    const point = points.find((p) => p.id === pointId);
-    if (!point) return;
-    
-    const scripture = point.scriptures[index];
-    if (!scripture.reference.trim()) {
-      toast.error("Please enter a scripture reference first");
-      return;
-    }
-
-    // Set loading state
-    setPoints(
-      points.map((p) =>
-        p.id === pointId
-          ? {
-              ...p,
-              scriptures: p.scriptures.map((s, i) =>
-                i === index ? { ...s, isLoading: true } : s
-              ),
-            }
-          : p
-      )
-    );
-
-    try {
-      const result = await lookupScripture(scripture.reference, scripture.translation);
-      if (result) {
-        setPoints(
-          points.map((p) =>
-            p.id === pointId
-              ? {
-                  ...p,
-                  scriptures: p.scriptures.map((s, i) =>
-                    i === index ? { ...s, text: result.text, isLoading: false } : s
-                  ),
-                }
-              : p
-          )
-        );
-        toast.success("Scripture found!");
-      } else {
-        toast.error("Could not find scripture. Check the reference format.");
-        setPoints(
-          points.map((p) =>
-            p.id === pointId
-              ? {
-                  ...p,
-                  scriptures: p.scriptures.map((s, i) =>
-                    i === index ? { ...s, isLoading: false } : s
-                  ),
-                }
-              : p
-          )
-        );
-      }
-    } catch (error) {
-      toast.error("Error looking up scripture");
-      setPoints(
-        points.map((p) =>
-          p.id === pointId
-            ? {
-                ...p,
-                scriptures: p.scriptures.map((s, i) =>
-                  i === index ? { ...s, isLoading: false } : s
-                ),
-              }
-            : p
-        )
-      );
-    }
-  };
+  // Re-lookup all scriptures when global translation changes
+  useEffect(() => {
+    points.forEach((point) => {
+      point.scriptures.forEach((scripture, index) => {
+        if (scripture.reference.trim()) {
+          autoLookupScripture(point.id, index, scripture.reference);
+        }
+      });
+    });
+  }, [globalTranslation]);
 
   const toggleExpanded = (id: string) => {
     setExpandedPoints((prev) =>
@@ -300,6 +322,32 @@ const CreateSermon = () => {
                   />
                 </div>
               </div>
+
+              {/* Global Translation Selector */}
+              <div className="space-y-2">
+                <Label htmlFor="translation" className="flex items-center gap-2">
+                  <Book className="w-4 h-4" />
+                  Bible Translation (applies to all scriptures)
+                </Label>
+                <Select
+                  value={globalTranslation}
+                  onValueChange={setGlobalTranslation}
+                >
+                  <SelectTrigger className="w-full sm:w-80">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {translations.map((t) => (
+                      <SelectItem key={t.code} value={t.code}>
+                        <span className="font-medium">{t.code}</span>
+                        <span className="text-muted-foreground ml-2">
+                          {t.name}
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             {/* Sermon Points */}
@@ -365,7 +413,7 @@ const CreateSermon = () => {
                       {expandedPoints.includes(point.id) && (
                         <div className="pl-4 border-l-2 border-border space-y-4">
                           <p className="text-sm text-muted-foreground">
-                            Supporting Scriptures (optional)
+                            Supporting Scriptures (optional) — verses auto-populate using {globalTranslation}
                           </p>
 
                           {point.scriptures.map((scripture, scriptureIndex) => (
@@ -374,56 +422,26 @@ const CreateSermon = () => {
                               className="space-y-2"
                             >
                               <div className="flex items-center gap-3">
-                                <Input
-                                  type="text"
-                                  placeholder="e.g., John 3:16"
-                                  value={scripture.reference}
-                                  onChange={(e) =>
-                                    updateScripture(
-                                      point.id,
-                                      scriptureIndex,
-                                      "reference",
-                                      e.target.value
-                                    )
-                                  }
-                                  className="flex-1"
-                                />
-                                <Select
-                                  value={scripture.translation}
-                                  onValueChange={(value) =>
-                                    updateScripture(
-                                      point.id,
-                                      scriptureIndex,
-                                      "translation",
-                                      value
-                                    )
-                                  }
-                                >
-                                  <SelectTrigger className="w-32">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {translations.map((t) => (
-                                      <SelectItem key={t.code} value={t.code}>
-                                        {t.code}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  size="icon"
-                                  onClick={() => handleScriptureLookup(point.id, scriptureIndex)}
-                                  disabled={scripture.isLoading || !scripture.reference.trim()}
-                                  title="Lookup Scripture"
-                                >
-                                  {scripture.isLoading ? (
-                                    <Loader2 className="w-4 h-4 animate-spin" />
-                                  ) : (
-                                    <Search className="w-4 h-4" />
+                                <div className="relative flex-1">
+                                  <Input
+                                    type="text"
+                                    placeholder="e.g., John 3:16"
+                                    value={scripture.reference}
+                                    onChange={(e) =>
+                                      updateScripture(
+                                        point.id,
+                                        scriptureIndex,
+                                        e.target.value
+                                      )
+                                    }
+                                    className="pr-10"
+                                  />
+                                  {scripture.isLoading && (
+                                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                                      <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                                    </div>
                                   )}
-                                </Button>
+                                </div>
                                 <button
                                   type="button"
                                   onClick={() =>
@@ -438,6 +456,9 @@ const CreateSermon = () => {
                                 <div className="p-3 rounded-lg bg-muted/50 border border-border">
                                   <p className="text-sm text-muted-foreground italic">
                                     "{scripture.text}"
+                                  </p>
+                                  <p className="text-xs text-muted-foreground mt-1">
+                                    — {scripture.reference} ({globalTranslation})
                                   </p>
                                 </div>
                               )}

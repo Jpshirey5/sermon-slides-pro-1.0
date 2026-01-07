@@ -43,203 +43,158 @@ function parseGradientColor(bg: string): string {
   return '#5c1e2b';
 }
 
-// Create slide text element
+// Create text element for ProPresenter 7
 function createTextElement(
   text: string,
-  color: string,
+  textColor: { red: number; green: number; blue: number; alpha: number },
   fontSize: number,
+  yPosition: number,
+  height: number,
   bold: boolean = false,
   italic: boolean = false
 ): object {
-  const colorObj = hexToProPresenterColor(color);
   return {
     element: {
-      name: 'Text Element',
-      uuid: generateUUID(),
+      uuid: { string: generateUUID() },
+      bounds: { origin: { x: 50, y: yPosition }, size: { width: 1820, height } },
       textElement: {
-        textValue: text,
-        font: {
-          name: 'Arial',
-          size: fontSize,
+        attributes: {
+          paragraphStyle: {
+            alignment: 1, // center
+          },
+          font: {
+            name: 'Arial',
+            size: fontSize,
+          },
+          foregroundColor: textColor,
+          strokeColor: { red: 0, green: 0, blue: 0, alpha: 0 },
+          strokeWidth: 0,
           bold,
           italic,
         },
-        color: colorObj,
-        alignment: 'center',
-        verticalAlignment: 'middle',
-      },
-      position: {
-        x: 0.05,
-        y: 0.3,
-        width: 0.9,
-        height: 0.4,
+        RTFData: btoa(text), // Base64 encoded text
+        plainText: text,
       },
     },
   };
 }
 
-// Create ProPresenter slide
-function createSlide(slideData: SlideData): object {
+// Create ProPresenter 7 slide cue
+function createSlideCue(slideData: SlideData, index: number): object {
   const bgColor = parseGradientColor(slideData.background);
   const bgColorObj = hexToProPresenterColor(bgColor);
-  
+  const textColorObj = hexToProPresenterColor(slideData.textColor);
+
   const elements: object[] = [];
-  
+  let slideName = `Slide ${index + 1}`;
+
   switch (slideData.type) {
     case 'title':
+      slideName = slideData.content.title || 'Title Slide';
       if (slideData.content.title) {
-        elements.push(createTextElement(slideData.content.title, slideData.textColor, 72, true));
+        elements.push(createTextElement(slideData.content.title, textColorObj, 80, 350, 150, true, false));
       }
       if (slideData.content.subtitle) {
-        elements.push({
-          element: {
-            name: 'Subtitle',
-            uuid: generateUUID(),
-            textElement: {
-              textValue: slideData.content.subtitle,
-              font: {
-                name: 'Arial',
-                size: 36,
-                bold: false,
-                italic: false,
-              },
-              color: hexToProPresenterColor(slideData.textColor),
-              alignment: 'center',
-              verticalAlignment: 'middle',
-            },
-            position: {
-              x: 0.05,
-              y: 0.6,
-              width: 0.9,
-              height: 0.2,
-            },
-          },
-        });
+        elements.push(createTextElement(slideData.content.subtitle, textColorObj, 40, 520, 80, false, false));
       }
       break;
 
     case 'point':
+      slideName = slideData.content.title || 'Point Slide';
       if (slideData.content.title) {
-        elements.push(createTextElement(slideData.content.title, slideData.textColor, 60, true));
+        elements.push(createTextElement(slideData.content.title, textColorObj, 72, 350, 150, true, false));
       }
       if (slideData.content.subtitle) {
-        elements.push({
-          element: {
-            name: 'Description',
-            uuid: generateUUID(),
-            textElement: {
-              textValue: slideData.content.subtitle,
-              font: {
-                name: 'Arial',
-                size: 32,
-                bold: false,
-                italic: false,
-              },
-              color: hexToProPresenterColor(slideData.textColor),
-              alignment: 'center',
-              verticalAlignment: 'middle',
-            },
-            position: {
-              x: 0.05,
-              y: 0.6,
-              width: 0.9,
-              height: 0.25,
-            },
-          },
-        });
+        elements.push(createTextElement(slideData.content.subtitle, textColorObj, 36, 520, 100, false, false));
       }
       break;
 
     case 'scripture':
+      slideName = slideData.content.reference || 'Scripture Slide';
       if (slideData.content.scripture) {
-        elements.push({
-          element: {
-            name: 'Scripture Text',
-            uuid: generateUUID(),
-            textElement: {
-              textValue: slideData.content.scripture,
-              font: {
-                name: 'Arial',
-                size: 48,
-                bold: false,
-                italic: true,
-              },
-              color: hexToProPresenterColor(slideData.textColor),
-              alignment: 'center',
-              verticalAlignment: 'middle',
-            },
-            position: {
-              x: 0.05,
-              y: 0.2,
-              width: 0.9,
-              height: 0.5,
-            },
-          },
-        });
+        elements.push(createTextElement(slideData.content.scripture, textColorObj, 48, 200, 400, false, true));
       }
       if (slideData.content.reference) {
-        elements.push({
-          element: {
-            name: 'Reference',
-            uuid: generateUUID(),
-            textElement: {
-              textValue: `— ${slideData.content.reference}`,
-              font: {
-                name: 'Arial',
-                size: 28,
-                bold: false,
-                italic: false,
-              },
-              color: hexToProPresenterColor(slideData.textColor),
-              alignment: 'center',
-              verticalAlignment: 'middle',
-            },
-            position: {
-              x: 0.05,
-              y: 0.75,
-              width: 0.9,
-              height: 0.1,
-            },
-          },
-        });
+        elements.push(createTextElement(`— ${slideData.content.reference}`, textColorObj, 28, 650, 60, false, false));
       }
+      break;
+
+    case 'blank':
+      slideName = 'Blank Slide';
       break;
   }
 
   return {
-    slide: {
-      uuid: generateUUID(),
-      name: slideData.content.title || slideData.content.scripture || 'Slide',
-      background: {
-        color: bgColorObj,
+    uuid: { string: generateUUID() },
+    isEnabled: true,
+    timestamp: 0,
+    duration: 0,
+    actions: [
+      {
+        uuid: { string: generateUUID() },
+        type: { slide: true },
+        isEnabled: true,
+        slide: {
+          presentation: {
+            baseSlide: {
+              uuid: { string: generateUUID() },
+              name: slideName,
+              backgroundColor: bgColorObj,
+              elements,
+              size: { width: 1920, height: 1080 },
+            },
+          },
+        },
       },
-      elements,
+    ],
+  };
+}
+
+// Create complete ProPresenter 7 document structure
+function createProPresenter7Document(slides: SlideData[], title: string): object {
+  const documentUUID = generateUUID();
+  
+  return {
+    application: {
+      name: 'ProPresenter',
+      version: '7.13',
     },
+    settings: {
+      backgroundColor: { red: 0, green: 0, blue: 0, alpha: 1 },
+      width: 1920,
+      height: 1080,
+      selectedArrangementID: { string: generateUUID() },
+    },
+    cues: slides.map((slide, index) => createSlideCue(slide, index)),
+    uuid: { string: documentUUID },
+    name: title,
+    createdAt: new Date().toISOString(),
+    modifiedAt: new Date().toISOString(),
+    arrangements: [
+      {
+        uuid: { string: generateUUID() },
+        name: 'Default',
+        groupIdentifiers: slides.map(() => ({ string: generateUUID() })),
+      },
+    ],
+    cueGroups: [
+      {
+        uuid: { string: generateUUID() },
+        name: title,
+        color: { red: 0.36, green: 0.12, blue: 0.17, alpha: 1 },
+        cueIdentifiers: slides.map((_, index) => ({ string: generateUUID() })),
+      },
+    ],
   };
 }
 
 export function exportToProPresenter(slides: SlideData[], title: string): void {
-  const presentation = {
-    proPresenterDocument: {
-      version: '7.0',
-      uuid: generateUUID(),
-      name: title,
-      category: 'Sermon',
-      ccliDisplay: false,
-      width: 1920,
-      height: 1080,
-      slides: slides.map(createSlide),
-      metadata: {
-        createdWith: 'SermonSlides Pro',
-        createdAt: new Date().toISOString(),
-      },
-    },
-  };
+  const presentation = createProPresenter7Document(slides, title);
 
-  // Create JSON content (ProPresenter 7 uses JSON format)
+  // Create JSON content with ProPresenter 7 format
   const jsonContent = JSON.stringify(presentation, null, 2);
   
-  // Create blob and download
+  // ProPresenter 7 uses .pro files which are JSON-based
   const blob = new Blob([jsonContent], { type: 'application/json' });
   const fileName = `${title.replace(/[^a-zA-Z0-9]/g, '_')}.pro`;
   
@@ -250,7 +205,7 @@ export function exportToProPresenter(slides: SlideData[], title: string): void {
 export function exportToProPresenter6(slides: SlideData[], title: string): void {
   let rtfContent = '{\\rtf1\\ansi\\deff0\n';
   
-  slides.forEach((slide, index) => {
+  slides.forEach((slide) => {
     rtfContent += `\\page\n`;
     
     switch (slide.type) {
