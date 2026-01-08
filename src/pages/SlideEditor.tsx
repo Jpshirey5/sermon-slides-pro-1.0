@@ -36,65 +36,33 @@ import { exportToProPresenter, exportToProPresenter6 } from "@/lib/export-propre
 import { toast } from "sonner";
 import { getPresentation, savePresentation, SermonPresentation } from "@/pages/Dashboard";
 
-// 50+ fonts available via Google Fonts
+// Microsoft Word standard fonts - alphabetically ordered
 const fonts = [
-  // Serif fonts
-  "Playfair Display",
-  "Merriweather",
-  "Lora",
-  "PT Serif",
-  "Libre Baskerville",
-  "Crimson Text",
-  "EB Garamond",
-  "Cormorant Garamond",
-  "Spectral",
-  "Source Serif Pro",
-  "Bitter",
-  "Zilla Slab",
-  "Rokkitt",
-  "Arvo",
-  "Slabo 27px",
-  // Sans-serif fonts
-  "Inter",
-  "Open Sans",
-  "Roboto",
-  "Lato",
-  "Montserrat",
-  "Raleway",
-  "Poppins",
-  "Nunito",
-  "Work Sans",
-  "Source Sans Pro",
-  "Ubuntu",
-  "Rubik",
-  "Karla",
-  "Quicksand",
-  "Josefin Sans",
-  "Cabin",
-  "Mulish",
-  "DM Sans",
-  "Manrope",
-  "Plus Jakarta Sans",
-  // Display fonts
-  "Oswald",
-  "Bebas Neue",
-  "Archivo Black",
-  "Anton",
-  "Alfa Slab One",
-  "Abril Fatface",
-  "Righteous",
-  "Pacifico",
-  "Dancing Script",
-  "Great Vibes",
-  "Satisfy",
-  "Caveat",
-  "Permanent Marker",
-  "Fredoka One",
-  "Bangers",
-  // Slab fonts
-  "Roboto Slab",
-  "Crete Round",
-  "Patua One",
+  "Arial",
+  "Arial Black",
+  "Book Antiqua",
+  "Calibri",
+  "Cambria",
+  "Candara",
+  "Century Gothic",
+  "Comic Sans MS",
+  "Consolas",
+  "Constantia",
+  "Corbel",
+  "Courier New",
+  "Franklin Gothic Medium",
+  "Garamond",
+  "Georgia",
+  "Gill Sans MT",
+  "Impact",
+  "Lucida Console",
+  "Lucida Sans Unicode",
+  "Palatino Linotype",
+  "Segoe UI",
+  "Tahoma",
+  "Times New Roman",
+  "Trebuchet MS",
+  "Verdana",
 ];
 
 // Primary colors palette
@@ -125,8 +93,8 @@ const colors = [
 function generateSlidesFromData(presentation: SermonPresentation): SlideData[] {
   const slides: SlideData[] = [];
   const defaultBackground = "linear-gradient(135deg, #5c1e2b 0%, #3d1219 100%)";
-  const defaultFont = "Playfair Display";
-  const defaultColor = "#ffffff";
+  const defaultFont = "Georgia";
+  const defaultColor = "#FFFFFF";
   
   // Title slide
   slides.push({
@@ -193,8 +161,8 @@ const defaultSlides: SlideData[] = [
       subtitle: new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }),
     },
     background: "linear-gradient(135deg, #5c1e2b 0%, #3d1219 100%)",
-    fontFamily: "Playfair Display",
-    textColor: "#ffffff",
+    fontFamily: "Georgia",
+    textColor: "#FFFFFF",
   },
 ];
 
@@ -473,23 +441,25 @@ const SlideEditor = () => {
         </div>
       </header>
 
-      {/* Main Content */}
-      <div className="flex-1 flex">
-        {/* Slide Thumbnails with Drag-and-Drop */}
-        <aside className="w-64 border-r border-border bg-card overflow-y-auto hidden md:block">
-          <div className="p-4 space-y-3">
-            <div className="flex items-center justify-between mb-4">
+      {/* Main Content - Fixed height to prevent scrolling */}
+      <div className="flex-1 flex overflow-hidden" style={{ height: 'calc(100vh - 64px)' }}>
+        {/* Slide Thumbnails with Drag-and-Drop - Scrollable */}
+        <aside className="w-56 border-r border-border bg-card hidden md:flex md:flex-col">
+          <div className="p-3 border-b border-border">
+            <div className="flex items-center justify-between">
               <h3 className="font-semibold text-foreground text-sm">Slides</h3>
               <Button variant="ghost" size="sm">
                 <Plus className="w-4 h-4" />
               </Button>
             </div>
-
+          </div>
+          
+          <div className="flex-1 overflow-y-auto p-3">
             <Reorder.Group
               axis="y"
               values={slides}
               onReorder={handleReorder}
-              className="space-y-3"
+              className="space-y-2"
               layoutScroll
             >
               {slides.map((slide, index) => (
@@ -519,14 +489,14 @@ const SlideEditor = () => {
                     onClick={() => setSelectedSlide(index)}
                     className="w-full"
                   >
-                    <div className="flex items-center gap-2 p-2 bg-muted/50">
-                      <GripVertical className="w-4 h-4 text-muted-foreground" />
+                    <div className="flex items-center gap-2 p-1.5 bg-muted/50">
+                      <GripVertical className="w-3 h-3 text-muted-foreground" />
                       <span className="text-xs text-muted-foreground">
                         {index + 1}
                       </span>
                     </div>
                     <div
-                      className="aspect-video flex items-center justify-center p-3 bg-cover bg-center"
+                      className="aspect-video flex items-center justify-center p-2 bg-cover bg-center"
                       style={{ 
                         background: slide.backgroundImage 
                           ? `url(${slide.backgroundImage})` 
@@ -535,8 +505,11 @@ const SlideEditor = () => {
                       }}
                     >
                       <p
-                        className="text-xs text-center line-clamp-2"
-                        style={{ color: slide.textColor }}
+                        className="text-[10px] text-center line-clamp-2"
+                        style={{ 
+                          color: slide.textColor,
+                          fontFamily: slide.fontFamily,
+                        }}
                       >
                         {slide.content.title || slide.content.scripture}
                       </p>
@@ -548,16 +521,16 @@ const SlideEditor = () => {
           </div>
         </aside>
 
-        {/* Preview */}
-        <main className="flex-1 flex flex-col">
+        {/* Preview - Compact to fit without scroll */}
+        <main className="flex-1 flex flex-col overflow-hidden">
           {/* Slide Preview */}
-          <div className="flex-1 flex items-center justify-center p-8 bg-muted/30">
+          <div className="flex-1 flex items-center justify-center p-4 bg-muted/30 min-h-0">
             <motion.div
               key={selectedSlide}
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.3 }}
-              className="w-full max-w-4xl aspect-video rounded-2xl overflow-hidden shadow-elevated flex items-center justify-center bg-cover bg-center relative"
+              className="w-full max-w-3xl aspect-video rounded-xl overflow-hidden shadow-elevated flex items-center justify-center bg-cover bg-center relative"
               style={{ 
                 background: currentSlide.backgroundImage 
                   ? `url(${currentSlide.backgroundImage})` 
