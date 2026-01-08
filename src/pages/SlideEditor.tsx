@@ -22,6 +22,8 @@ import {
   ChevronRight,
   FileText,
   Presentation,
+  Trash2,
+  AlignVerticalSpaceAround,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -89,12 +91,23 @@ const colors = [
   "#660099", // Dark Purple
 ];
 
+// Line spacing options
+const lineSpacingOptions = [
+  { value: "1", label: "1.0 (Single)" },
+  { value: "1.15", label: "1.15" },
+  { value: "1.5", label: "1.5" },
+  { value: "2", label: "2.0 (Double)" },
+  { value: "2.5", label: "2.5" },
+  { value: "3", label: "3.0 (Triple)" },
+];
+
 // Generate slides from sermon data
 function generateSlidesFromData(presentation: SermonPresentation): SlideData[] {
   const slides: SlideData[] = [];
   const defaultBackground = "linear-gradient(135deg, #5c1e2b 0%, #3d1219 100%)";
   const defaultFont = "Georgia";
   const defaultColor = "#FFFFFF";
+  const defaultLineSpacing = 1.5;
   
   // Title slide
   slides.push({
@@ -109,6 +122,7 @@ function generateSlidesFromData(presentation: SermonPresentation): SlideData[] {
     background: defaultBackground,
     fontFamily: defaultFont,
     textColor: defaultColor,
+    lineSpacing: defaultLineSpacing,
   });
   
   // Generate slides for each point
@@ -126,6 +140,7 @@ function generateSlidesFromData(presentation: SermonPresentation): SlideData[] {
           background: defaultBackground,
           fontFamily: defaultFont,
           textColor: defaultColor,
+          lineSpacing: defaultLineSpacing,
         });
         
         // Scripture slides for this point
@@ -141,6 +156,7 @@ function generateSlidesFromData(presentation: SermonPresentation): SlideData[] {
               background: defaultBackground,
               fontFamily: defaultFont,
               textColor: defaultColor,
+              lineSpacing: defaultLineSpacing,
             });
           }
         });
@@ -163,6 +179,7 @@ const defaultSlides: SlideData[] = [
     background: "linear-gradient(135deg, #5c1e2b 0%, #3d1219 100%)",
     fontFamily: "Georgia",
     textColor: "#FFFFFF",
+    lineSpacing: 1.5,
   },
 ];
 
@@ -243,6 +260,48 @@ const SlideEditor = () => {
         ? { ...slide, content: { ...slide.content, [field]: value } }
         : slide
     ));
+  };
+
+  // Apply line spacing to ALL slides
+  const handleLineSpacingChange = (lineSpacing: string) => {
+    const spacing = parseFloat(lineSpacing);
+    setSlides(slides.map((slide) => ({ ...slide, lineSpacing: spacing })));
+  };
+
+  // Add new slide
+  const handleAddSlide = (type: 'title' | 'point' | 'scripture' | 'blank') => {
+    const newSlide: SlideData = {
+      id: `slide-${Date.now()}`,
+      type,
+      content: {
+        title: type === 'title' ? 'New Title' : type === 'point' ? 'New Point' : '',
+        subtitle: '',
+        scripture: type === 'scripture' ? 'Enter scripture text...' : '',
+        reference: type === 'scripture' ? 'Book 1:1' : '',
+      },
+      background: currentSlide.background,
+      backgroundImage: currentSlide.backgroundImage,
+      fontFamily: currentSlide.fontFamily,
+      textColor: currentSlide.textColor,
+      lineSpacing: currentSlide.lineSpacing || 1.5,
+    };
+    const newSlides = [...slides];
+    newSlides.splice(selectedSlide + 1, 0, newSlide);
+    setSlides(newSlides);
+    setSelectedSlide(selectedSlide + 1);
+    toast.success("Slide added");
+  };
+
+  // Delete current slide
+  const handleDeleteSlide = () => {
+    if (slides.length <= 1) {
+      toast.error("Cannot delete the only slide");
+      return;
+    }
+    const newSlides = slides.filter((_, index) => index !== selectedSlide);
+    setSlides(newSlides);
+    setSelectedSlide(Math.min(selectedSlide, newSlides.length - 1));
+    toast.success("Slide deleted");
   };
 
   const navigateSlide = (direction: "prev" | "next") => {
@@ -441,32 +500,51 @@ const SlideEditor = () => {
         </div>
       </header>
 
-      {/* Main Content - Fixed height to prevent scrolling */}
+      {/* Main Content - Fixed layout */}
       <div className="flex-1 flex overflow-hidden" style={{ height: 'calc(100vh - 64px)' }}>
-        {/* Slide Thumbnails with Drag-and-Drop - Scrollable */}
-        <aside className="w-56 border-r border-border bg-card hidden md:flex md:flex-col">
-          <div className="p-3 border-b border-border">
+        {/* Slide Thumbnails - Fixed height showing ~4 slides, scrollable */}
+        <aside className="w-48 border-r border-border bg-card hidden md:flex md:flex-col flex-shrink-0">
+          <div className="p-2 border-b border-border">
             <div className="flex items-center justify-between">
-              <h3 className="font-semibold text-foreground text-sm">Slides</h3>
-              <Button variant="ghost" size="sm">
-                <Plus className="w-4 h-4" />
-              </Button>
+              <h3 className="font-semibold text-foreground text-xs">Slides</h3>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
+                    <Plus className="w-3 h-3" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => handleAddSlide('title')}>
+                    Title Slide
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleAddSlide('point')}>
+                    Point Slide
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleAddSlide('scripture')}>
+                    Scripture Slide
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleAddSlide('blank')}>
+                    Blank Slide
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
           
-          <div className="flex-1 overflow-y-auto p-3">
+          {/* Scrollable slide list - shows about 4 slides at a time */}
+          <div className="flex-1 overflow-y-auto p-2">
             <Reorder.Group
               axis="y"
               values={slides}
               onReorder={handleReorder}
-              className="space-y-2"
+              className="space-y-1.5"
               layoutScroll
             >
               {slides.map((slide, index) => (
                 <Reorder.Item
                   key={slide.id}
                   value={slide}
-                  className={`group relative cursor-grab active:cursor-grabbing rounded-lg overflow-hidden border-2 ${
+                  className={`group relative cursor-grab active:cursor-grabbing rounded-md overflow-hidden border-2 ${
                     selectedSlide === index
                       ? "border-primary shadow-elevated"
                       : "border-border hover:border-primary/50"
@@ -489,14 +567,27 @@ const SlideEditor = () => {
                     onClick={() => setSelectedSlide(index)}
                     className="w-full"
                   >
-                    <div className="flex items-center gap-2 p-1.5 bg-muted/50">
-                      <GripVertical className="w-3 h-3 text-muted-foreground" />
-                      <span className="text-xs text-muted-foreground">
-                        {index + 1}
-                      </span>
+                    <div className="flex items-center justify-between px-1.5 py-1 bg-muted/50">
+                      <div className="flex items-center gap-1">
+                        <GripVertical className="w-2.5 h-2.5 text-muted-foreground" />
+                        <span className="text-[10px] text-muted-foreground">
+                          {index + 1}
+                        </span>
+                      </div>
+                      {selectedSlide === index && slides.length > 1 && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteSlide();
+                          }}
+                          className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 hover:bg-destructive/20 rounded"
+                        >
+                          <Trash2 className="w-2.5 h-2.5 text-destructive" />
+                        </button>
+                      )}
                     </div>
                     <div
-                      className="aspect-video flex items-center justify-center p-2 bg-cover bg-center"
+                      className="aspect-video flex items-center justify-center p-1.5 bg-cover bg-center"
                       style={{ 
                         background: slide.backgroundImage 
                           ? `url(${slide.backgroundImage})` 
@@ -505,7 +596,7 @@ const SlideEditor = () => {
                       }}
                     >
                       <p
-                        className="text-[10px] text-center line-clamp-2"
+                        className="text-[8px] text-center line-clamp-2"
                         style={{ 
                           color: slide.textColor,
                           fontFamily: slide.fontFamily,
@@ -521,16 +612,16 @@ const SlideEditor = () => {
           </div>
         </aside>
 
-        {/* Preview - Compact to fit without scroll */}
+        {/* Main Editor Area - Fixed, no scroll */}
         <main className="flex-1 flex flex-col overflow-hidden">
-          {/* Slide Preview */}
-          <div className="flex-1 flex items-center justify-center p-4 bg-muted/30 min-h-0">
+          {/* Slide Preview - Smaller to always show toolbar */}
+          <div className="flex-1 flex items-center justify-center p-3 bg-muted/30 min-h-0">
             <motion.div
               key={selectedSlide}
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.3 }}
-              className="w-full max-w-3xl aspect-video rounded-xl overflow-hidden shadow-elevated flex items-center justify-center bg-cover bg-center relative"
+              className="w-full max-w-2xl aspect-video rounded-lg overflow-hidden shadow-elevated flex items-center justify-center bg-cover bg-center relative"
               style={{ 
                 background: currentSlide.backgroundImage 
                   ? `url(${currentSlide.backgroundImage})` 
@@ -544,17 +635,21 @@ const SlideEditor = () => {
                 <div className="absolute inset-0 bg-black/30" />
               )}
               
-              <div className="text-center max-w-3xl px-8 relative z-10 w-full">
+              <div 
+                className="text-center max-w-2xl px-6 relative z-10 w-full flex flex-col items-center justify-center"
+                style={{ lineHeight: currentSlide.lineSpacing || 1.5 }}
+              >
                 {currentSlide.type === "title" && (
                   <>
                     <input
                       type="text"
                       value={currentSlide.content.title || ""}
                       onChange={(e) => handleContentChange('title', e.target.value)}
-                      className="text-3xl md:text-5xl font-bold mb-4 bg-transparent border-none outline-none text-center w-full focus:ring-2 focus:ring-white/30 rounded-lg px-2 py-1"
+                      className="text-2xl md:text-4xl font-bold bg-transparent border-none outline-none text-center w-full focus:ring-2 focus:ring-white/30 rounded-lg px-2 py-1"
                       style={{
                         fontFamily: currentSlide.fontFamily,
                         color: currentSlide.textColor,
+                        marginBottom: `${(currentSlide.lineSpacing || 1.5) * 0.5}rem`,
                       }}
                       placeholder="Enter title..."
                     />
@@ -562,7 +657,7 @@ const SlideEditor = () => {
                       type="text"
                       value={currentSlide.content.subtitle || ""}
                       onChange={(e) => handleContentChange('subtitle', e.target.value)}
-                      className="text-lg md:text-xl opacity-80 bg-transparent border-none outline-none text-center w-full focus:ring-2 focus:ring-white/30 rounded-lg px-2 py-1"
+                      className="text-base md:text-lg opacity-80 bg-transparent border-none outline-none text-center w-full focus:ring-2 focus:ring-white/30 rounded-lg px-2 py-1"
                       style={{ color: currentSlide.textColor }}
                       placeholder="Enter subtitle..."
                     />
@@ -574,10 +669,11 @@ const SlideEditor = () => {
                       type="text"
                       value={currentSlide.content.title || ""}
                       onChange={(e) => handleContentChange('title', e.target.value)}
-                      className="text-2xl md:text-4xl font-bold mb-4 bg-transparent border-none outline-none text-center w-full focus:ring-2 focus:ring-white/30 rounded-lg px-2 py-1"
+                      className="text-xl md:text-3xl font-bold bg-transparent border-none outline-none text-center w-full focus:ring-2 focus:ring-white/30 rounded-lg px-2 py-1"
                       style={{
                         fontFamily: currentSlide.fontFamily,
                         color: currentSlide.textColor,
+                        marginBottom: `${(currentSlide.lineSpacing || 1.5) * 0.5}rem`,
                       }}
                       placeholder="Enter point..."
                     />
@@ -585,7 +681,7 @@ const SlideEditor = () => {
                       type="text"
                       value={currentSlide.content.subtitle || ""}
                       onChange={(e) => handleContentChange('subtitle', e.target.value)}
-                      className="text-lg md:text-xl opacity-80 bg-transparent border-none outline-none text-center w-full focus:ring-2 focus:ring-white/30 rounded-lg px-2 py-1"
+                      className="text-base md:text-lg opacity-80 bg-transparent border-none outline-none text-center w-full focus:ring-2 focus:ring-white/30 rounded-lg px-2 py-1"
                       style={{ color: currentSlide.textColor }}
                       placeholder="Enter subtitle..."
                     />
@@ -596,10 +692,12 @@ const SlideEditor = () => {
                     <textarea
                       value={currentSlide.content.scripture || ""}
                       onChange={(e) => handleContentChange('scripture', e.target.value)}
-                      className="text-lg md:text-2xl italic mb-6 leading-relaxed bg-transparent border-none outline-none text-center w-full resize-none focus:ring-2 focus:ring-white/30 rounded-lg px-2 py-1 min-h-[120px]"
+                      className="text-base md:text-xl italic bg-transparent border-none outline-none text-center w-full resize-none focus:ring-2 focus:ring-white/30 rounded-lg px-2 py-1 min-h-[80px]"
                       style={{
                         fontFamily: currentSlide.fontFamily,
                         color: currentSlide.textColor,
+                        lineHeight: currentSlide.lineSpacing || 1.5,
+                        marginBottom: `${(currentSlide.lineSpacing || 1.5) * 0.5}rem`,
                       }}
                       placeholder="Enter scripture text..."
                     />
@@ -607,32 +705,35 @@ const SlideEditor = () => {
                       type="text"
                       value={currentSlide.content.reference || ""}
                       onChange={(e) => handleContentChange('reference', e.target.value)}
-                      className="text-sm md:text-base opacity-70 bg-transparent border-none outline-none text-center w-full focus:ring-2 focus:ring-white/30 rounded-lg px-2 py-1"
+                      className="text-xs md:text-sm opacity-70 bg-transparent border-none outline-none text-center w-full focus:ring-2 focus:ring-white/30 rounded-lg px-2 py-1"
                       style={{ color: currentSlide.textColor }}
                       placeholder="— Reference"
                     />
                   </>
                 )}
+                {currentSlide.type === "blank" && (
+                  <p className="text-muted-foreground text-sm">Blank Slide</p>
+                )}
               </div>
             </motion.div>
           </div>
 
-          {/* Toolbar */}
-          <div className="border-t border-border bg-card p-4">
-            <div className="flex items-center justify-center gap-6 flex-wrap">
+          {/* Toolbar - Always visible */}
+          <div className="border-t border-border bg-card p-3 flex-shrink-0">
+            <div className="flex items-center justify-center gap-4 flex-wrap">
               {/* Font */}
-              <div className="flex items-center gap-2">
-                <Type className="w-4 h-4 text-muted-foreground" />
+              <div className="flex items-center gap-1.5">
+                <Type className="w-3.5 h-3.5 text-muted-foreground" />
                 <Select 
                   value={currentSlide.fontFamily}
                   onValueChange={handleFontChange}
                 >
-                  <SelectTrigger className="w-40">
+                  <SelectTrigger className="w-32 h-8 text-xs">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     {fonts.map((font) => (
-                      <SelectItem key={font} value={font}>
+                      <SelectItem key={font} value={font} className="text-xs">
                         {font}
                       </SelectItem>
                     ))}
@@ -641,19 +742,19 @@ const SlideEditor = () => {
               </div>
 
               {/* Text Color */}
-              <div className="flex items-center gap-2">
-                <Palette className="w-4 h-4 text-muted-foreground" />
+              <div className="flex items-center gap-1.5">
+                <Palette className="w-3.5 h-3.5 text-muted-foreground" />
                 <Select 
                   value={currentSlide.textColor}
                   onValueChange={handleColorChange}
                 >
-                  <SelectTrigger className="w-32">
-                    <div className="flex items-center gap-2">
+                  <SelectTrigger className="w-24 h-8">
+                    <div className="flex items-center gap-1.5">
                       <div 
-                        className="w-4 h-4 rounded-full border border-border" 
+                        className="w-3.5 h-3.5 rounded-full border border-border" 
                         style={{ background: currentSlide.textColor }}
                       />
-                      <span className="text-xs truncate">
+                      <span className="text-[10px] truncate">
                         {currentSlide.textColor}
                       </span>
                     </div>
@@ -664,7 +765,7 @@ const SlideEditor = () => {
                         <button
                           key={color}
                           onClick={() => handleColorChange(color)}
-                          className={`w-8 h-8 rounded-md border-2 transition-all ${
+                          className={`w-7 h-7 rounded-md border-2 transition-all ${
                             currentSlide.textColor === color 
                               ? 'border-primary ring-2 ring-primary/30 scale-110' 
                               : 'border-border hover:border-primary hover:scale-105'
@@ -678,6 +779,26 @@ const SlideEditor = () => {
                 </Select>
               </div>
 
+              {/* Line Spacing */}
+              <div className="flex items-center gap-1.5">
+                <AlignVerticalSpaceAround className="w-3.5 h-3.5 text-muted-foreground" />
+                <Select 
+                  value={String(currentSlide.lineSpacing || 1.5)}
+                  onValueChange={handleLineSpacingChange}
+                >
+                  <SelectTrigger className="w-24 h-8 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {lineSpacingOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value} className="text-xs">
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
               {/* Background */}
               <BackgroundPicker
                 currentBackground={currentSlide.background}
@@ -686,27 +807,41 @@ const SlideEditor = () => {
               />
 
               {/* Navigation */}
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
                 <Button
                   variant="outline"
                   size="icon"
+                  className="h-8 w-8"
                   onClick={() => navigateSlide("prev")}
                   disabled={selectedSlide === 0}
                 >
-                  <ChevronLeft className="w-4 h-4" />
+                  <ChevronLeft className="w-3.5 h-3.5" />
                 </Button>
-                <span className="text-sm text-muted-foreground min-w-[60px] text-center">
+                <span className="text-xs text-muted-foreground min-w-[50px] text-center">
                   {selectedSlide + 1} / {slides.length}
                 </span>
                 <Button
                   variant="outline"
                   size="icon"
+                  className="h-8 w-8"
                   onClick={() => navigateSlide("next")}
                   disabled={selectedSlide === slides.length - 1}
                 >
-                  <ChevronRight className="w-4 h-4" />
+                  <ChevronRight className="w-3.5 h-3.5" />
                 </Button>
               </div>
+
+              {/* Delete Slide */}
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 text-xs text-destructive hover:bg-destructive/10"
+                onClick={handleDeleteSlide}
+                disabled={slides.length <= 1}
+              >
+                <Trash2 className="w-3.5 h-3.5 mr-1" />
+                Delete
+              </Button>
             </div>
           </div>
         </main>
