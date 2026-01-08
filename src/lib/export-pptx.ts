@@ -13,6 +13,7 @@ export interface SlideData {
   backgroundImage?: string;
   fontFamily: string;
   textColor: string;
+  lineSpacing?: number; // 1 = normal, 1.5 = 150%, 2 = double, etc.
 }
 
 // Convert hex color to RGB for pptxgenjs
