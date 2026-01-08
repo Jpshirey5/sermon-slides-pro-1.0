@@ -36,30 +36,89 @@ import { exportToProPresenter, exportToProPresenter6 } from "@/lib/export-propre
 import { toast } from "sonner";
 import { getPresentation, savePresentation, SermonPresentation } from "@/pages/Dashboard";
 
+// 50+ fonts available via Google Fonts
 const fonts = [
+  // Serif fonts
   "Playfair Display",
-  "Inter",
-  "Georgia",
   "Merriweather",
   "Lora",
-  "Roboto Slab",
+  "PT Serif",
+  "Libre Baskerville",
+  "Crimson Text",
+  "EB Garamond",
+  "Cormorant Garamond",
+  "Spectral",
+  "Source Serif Pro",
+  "Bitter",
+  "Zilla Slab",
+  "Rokkitt",
+  "Arvo",
+  "Slabo 27px",
+  // Sans-serif fonts
+  "Inter",
   "Open Sans",
+  "Roboto",
+  "Lato",
   "Montserrat",
   "Raleway",
-  "PT Serif",
+  "Poppins",
+  "Nunito",
+  "Work Sans",
+  "Source Sans Pro",
+  "Ubuntu",
+  "Rubik",
+  "Karla",
+  "Quicksand",
+  "Josefin Sans",
+  "Cabin",
+  "Mulish",
+  "DM Sans",
+  "Manrope",
+  "Plus Jakarta Sans",
+  // Display fonts
+  "Oswald",
+  "Bebas Neue",
+  "Archivo Black",
+  "Anton",
+  "Alfa Slab One",
+  "Abril Fatface",
+  "Righteous",
+  "Pacifico",
+  "Dancing Script",
+  "Great Vibes",
+  "Satisfy",
+  "Caveat",
+  "Permanent Marker",
+  "Fredoka One",
+  "Bangers",
+  // Slab fonts
+  "Roboto Slab",
+  "Crete Round",
+  "Patua One",
 ];
 
+// Primary colors palette
 const colors = [
-  "#ffffff",
-  "#f5f5f5",
-  "#e5e5e5",
-  "#d4af37",
-  "#c9a227",
-  "#ffd700",
-  "#ffb347",
-  "#ff6b6b",
-  "#4ecdc4",
-  "#45b7d1",
+  // White/Light
+  "#FFFFFF",
+  // Black
+  "#000000",
+  // Primary colors
+  "#FF0000", // Red
+  "#FF6600", // Orange
+  "#FFCC00", // Yellow
+  "#00CC00", // Green
+  "#0066FF", // Blue
+  "#6600CC", // Purple
+  "#FF00CC", // Magenta
+  "#00CCCC", // Cyan
+  // Additional shades
+  "#990000", // Dark Red
+  "#CC6600", // Dark Orange
+  "#999900", // Olive
+  "#006600", // Dark Green
+  "#003399", // Dark Blue
+  "#660099", // Dark Purple
 ];
 
 // Generate slides from sermon data
@@ -194,26 +253,26 @@ const SlideEditor = () => {
     }
   };
 
+  // Apply to ALL slides
   const handleBackgroundChange = (background: string, backgroundImage?: string) => {
-    setSlides(slides.map((slide, index) =>
-      index === selectedSlide
-        ? { ...slide, background, backgroundImage }
-        : slide
-    ));
+    setSlides(slides.map((slide) => ({ ...slide, background, backgroundImage })));
   };
 
+  // Apply to ALL slides
   const handleFontChange = (fontFamily: string) => {
-    setSlides(slides.map((slide, index) =>
-      index === selectedSlide
-        ? { ...slide, fontFamily }
-        : slide
-    ));
+    setSlides(slides.map((slide) => ({ ...slide, fontFamily })));
   };
 
+  // Apply to ALL slides
   const handleColorChange = (textColor: string) => {
+    setSlides(slides.map((slide) => ({ ...slide, textColor })));
+  };
+
+  // Inline text editing
+  const handleContentChange = (field: 'title' | 'subtitle' | 'scripture' | 'reference', value: string) => {
     setSlides(slides.map((slide, index) =>
       index === selectedSlide
-        ? { ...slide, textColor }
+        ? { ...slide, content: { ...slide.content, [field]: value } }
         : slide
     ));
   };
@@ -431,17 +490,30 @@ const SlideEditor = () => {
               values={slides}
               onReorder={handleReorder}
               className="space-y-3"
+              layoutScroll
             >
               {slides.map((slide, index) => (
                 <Reorder.Item
                   key={slide.id}
                   value={slide}
-                  className={`group relative cursor-grab active:cursor-grabbing rounded-lg overflow-hidden border-2 transition-all ${
+                  className={`group relative cursor-grab active:cursor-grabbing rounded-lg overflow-hidden border-2 ${
                     selectedSlide === index
                       ? "border-primary shadow-elevated"
                       : "border-border hover:border-primary/50"
                   }`}
-                  whileDrag={{ scale: 1.02, boxShadow: "0 8px 20px rgba(0,0,0,0.2)" }}
+                  initial={false}
+                  transition={{
+                    type: "spring",
+                    stiffness: 400,
+                    damping: 30,
+                  }}
+                  whileDrag={{ 
+                    scale: 1.03, 
+                    boxShadow: "0 10px 30px rgba(0,0,0,0.25)",
+                    zIndex: 50,
+                  }}
+                  dragListener={true}
+                  dragConstraints={{ top: 0, bottom: 0 }}
                 >
                   <div
                     onClick={() => setSelectedSlide(index)}
@@ -499,62 +571,73 @@ const SlideEditor = () => {
                 <div className="absolute inset-0 bg-black/30" />
               )}
               
-              <div className="text-center max-w-3xl px-8 relative z-10">
+              <div className="text-center max-w-3xl px-8 relative z-10 w-full">
                 {currentSlide.type === "title" && (
                   <>
-                    <h1
-                      className="text-3xl md:text-5xl font-bold mb-4"
+                    <input
+                      type="text"
+                      value={currentSlide.content.title || ""}
+                      onChange={(e) => handleContentChange('title', e.target.value)}
+                      className="text-3xl md:text-5xl font-bold mb-4 bg-transparent border-none outline-none text-center w-full focus:ring-2 focus:ring-white/30 rounded-lg px-2 py-1"
                       style={{
                         fontFamily: currentSlide.fontFamily,
                         color: currentSlide.textColor,
                       }}
-                    >
-                      {currentSlide.content.title}
-                    </h1>
-                    <p
-                      className="text-lg md:text-xl opacity-80"
+                      placeholder="Enter title..."
+                    />
+                    <input
+                      type="text"
+                      value={currentSlide.content.subtitle || ""}
+                      onChange={(e) => handleContentChange('subtitle', e.target.value)}
+                      className="text-lg md:text-xl opacity-80 bg-transparent border-none outline-none text-center w-full focus:ring-2 focus:ring-white/30 rounded-lg px-2 py-1"
                       style={{ color: currentSlide.textColor }}
-                    >
-                      {currentSlide.content.subtitle}
-                    </p>
+                      placeholder="Enter subtitle..."
+                    />
                   </>
                 )}
                 {currentSlide.type === "point" && (
                   <>
-                    <h2
-                      className="text-2xl md:text-4xl font-bold mb-4"
+                    <input
+                      type="text"
+                      value={currentSlide.content.title || ""}
+                      onChange={(e) => handleContentChange('title', e.target.value)}
+                      className="text-2xl md:text-4xl font-bold mb-4 bg-transparent border-none outline-none text-center w-full focus:ring-2 focus:ring-white/30 rounded-lg px-2 py-1"
                       style={{
                         fontFamily: currentSlide.fontFamily,
                         color: currentSlide.textColor,
                       }}
-                    >
-                      {currentSlide.content.title}
-                    </h2>
-                    <p
-                      className="text-lg md:text-xl opacity-80"
+                      placeholder="Enter point..."
+                    />
+                    <input
+                      type="text"
+                      value={currentSlide.content.subtitle || ""}
+                      onChange={(e) => handleContentChange('subtitle', e.target.value)}
+                      className="text-lg md:text-xl opacity-80 bg-transparent border-none outline-none text-center w-full focus:ring-2 focus:ring-white/30 rounded-lg px-2 py-1"
                       style={{ color: currentSlide.textColor }}
-                    >
-                      {currentSlide.content.subtitle}
-                    </p>
+                      placeholder="Enter subtitle..."
+                    />
                   </>
                 )}
                 {currentSlide.type === "scripture" && (
                   <>
-                    <p
-                      className="text-lg md:text-2xl italic mb-6 leading-relaxed"
+                    <textarea
+                      value={currentSlide.content.scripture || ""}
+                      onChange={(e) => handleContentChange('scripture', e.target.value)}
+                      className="text-lg md:text-2xl italic mb-6 leading-relaxed bg-transparent border-none outline-none text-center w-full resize-none focus:ring-2 focus:ring-white/30 rounded-lg px-2 py-1 min-h-[120px]"
                       style={{
                         fontFamily: currentSlide.fontFamily,
                         color: currentSlide.textColor,
                       }}
-                    >
-                      {currentSlide.content.scripture}
-                    </p>
-                    <p
-                      className="text-sm md:text-base opacity-70"
+                      placeholder="Enter scripture text..."
+                    />
+                    <input
+                      type="text"
+                      value={currentSlide.content.reference || ""}
+                      onChange={(e) => handleContentChange('reference', e.target.value)}
+                      className="text-sm md:text-base opacity-70 bg-transparent border-none outline-none text-center w-full focus:ring-2 focus:ring-white/30 rounded-lg px-2 py-1"
                       style={{ color: currentSlide.textColor }}
-                    >
-                      — {currentSlide.content.reference}
-                    </p>
+                      placeholder="— Reference"
+                    />
                   </>
                 )}
               </div>
@@ -587,20 +670,39 @@ const SlideEditor = () => {
               {/* Text Color */}
               <div className="flex items-center gap-2">
                 <Palette className="w-4 h-4 text-muted-foreground" />
-                <div className="flex gap-1">
-                  {colors.slice(0, 6).map((color) => (
-                    <button
-                      key={color}
-                      onClick={() => handleColorChange(color)}
-                      className={`w-6 h-6 rounded-full border-2 transition-colors ${
-                        currentSlide.textColor === color 
-                          ? 'border-primary ring-2 ring-primary/30' 
-                          : 'border-border hover:border-primary'
-                      }`}
-                      style={{ background: color }}
-                    />
-                  ))}
-                </div>
+                <Select 
+                  value={currentSlide.textColor}
+                  onValueChange={handleColorChange}
+                >
+                  <SelectTrigger className="w-32">
+                    <div className="flex items-center gap-2">
+                      <div 
+                        className="w-4 h-4 rounded-full border border-border" 
+                        style={{ background: currentSlide.textColor }}
+                      />
+                      <span className="text-xs truncate">
+                        {currentSlide.textColor}
+                      </span>
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent className="max-h-64">
+                    <div className="grid grid-cols-4 gap-1 p-2">
+                      {colors.map((color) => (
+                        <button
+                          key={color}
+                          onClick={() => handleColorChange(color)}
+                          className={`w-8 h-8 rounded-md border-2 transition-all ${
+                            currentSlide.textColor === color 
+                              ? 'border-primary ring-2 ring-primary/30 scale-110' 
+                              : 'border-border hover:border-primary hover:scale-105'
+                          }`}
+                          style={{ background: color }}
+                          title={color}
+                        />
+                      ))}
+                    </div>
+                  </SelectContent>
+                </Select>
               </div>
 
               {/* Background */}
