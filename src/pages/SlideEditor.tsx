@@ -1,9 +1,9 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { Link, useParams } from "react-router-dom";
 import { motion, Reorder } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { BookOpen, ArrowLeft, Download, Play, GripVertical, Plus, Type, Palette, ChevronLeft, ChevronRight, FileText, Presentation, Trash2, AlignVerticalSpaceAround } from "lucide-react";
+import { BookOpen, ArrowLeft, Download, Play, GripVertical, Plus, Type, Palette, ChevronLeft, ChevronRight, FileText, Presentation, Trash2, AlignVerticalSpaceAround, Undo2, Redo2, Copy } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { BackgroundPicker } from "@/components/BackgroundPicker";
 import { exportToPowerPoint, SlideData } from "@/lib/export-pptx";
@@ -163,6 +163,9 @@ const defaultSlides: SlideData[] = [{
   textColor: "#FFFFFF",
   lineSpacing: 1.5
 }];
+
+const MAX_HISTORY = 50;
+
 const SlideEditor = () => {
   const {
     id
@@ -172,6 +175,11 @@ const SlideEditor = () => {
   const [isPreviewMode, setIsPreviewMode] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [presentationTitle, setPresentationTitle] = useState("New Presentation");
+  
+  // Undo/Redo history
+  const [history, setHistory] = useState<SlideData[][]>([defaultSlides]);
+  const [historyIndex, setHistoryIndex] = useState(0);
+  const isUndoRedoRef = useRef(false);
 
   // Load presentation data
   useEffect(() => {
@@ -187,6 +195,75 @@ const SlideEditor = () => {
     }
   }, [id]);
   const currentSlide = slides[selectedSlide];
+  
+  // Update history when slides change (but not during undo/redo)
+  useEffect(() => {
+    if (isUndoRedoRef.current) {
+      isUndoRedoRef.current = false;
+      return;
+    }
+    
+    // Don't add to history if slides are the same
+    const lastHistorySlides = history[historyIndex];
+    if (JSON.stringify(lastHistorySlides) === JSON.stringify(slides)) {
+      return;
+    }
+    
+    // Add new state to history, removing any future states
+    const newHistory = history.slice(0, historyIndex + 1);
+    newHistory.push(slides);
+    
+    // Limit history size
+    if (newHistory.length > MAX_HISTORY) {
+      newHistory.shift();
+    }
+    
+    setHistory(newHistory);
+    setHistoryIndex(newHistory.length - 1);
+  }, [slides]);
+  
+  const canUndo = historyIndex > 0;
+  const canRedo = historyIndex < history.length - 1;
+  
+  const handleUndo = useCallback(() => {
+    if (!canUndo) return;
+    isUndoRedoRef.current = true;
+    const newIndex = historyIndex - 1;
+    setHistoryIndex(newIndex);
+    setSlides(history[newIndex]);
+    toast.success("Undo");
+  }, [canUndo, historyIndex, history]);
+  
+  const handleRedo = useCallback(() => {
+    if (!canRedo) return;
+    isUndoRedoRef.current = true;
+    const newIndex = historyIndex + 1;
+    setHistoryIndex(newIndex);
+    setSlides(history[newIndex]);
+    toast.success("Redo");
+  }, [canRedo, historyIndex, history]);
+  
+  // Keyboard shortcuts for undo/redo
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) {
+          handleRedo();
+        } else {
+          handleUndo();
+        }
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === 'y') {
+        e.preventDefault();
+        handleRedo();
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleUndo, handleRedo]);
+  
   const handleReorder = useCallback((newOrder: SlideData[]) => {
     setSlides(newOrder);
     // Update selected slide index if needed
@@ -297,6 +374,22 @@ const SlideEditor = () => {
     setSelectedSlide(Math.min(selectedSlide, newSlides.length - 1));
     toast.success("Slide deleted");
   };
+  
+  // Duplicate current slide
+  const handleDuplicateSlide = () => {
+    const slideToDuplicate = slides[selectedSlide];
+    const duplicatedSlide: SlideData = {
+      ...slideToDuplicate,
+      id: `slide-${Date.now()}`,
+      content: { ...slideToDuplicate.content }
+    };
+    const newSlides = [...slides];
+    newSlides.splice(selectedSlide + 1, 0, duplicatedSlide);
+    setSlides(newSlides);
+    setSelectedSlide(selectedSlide + 1);
+    toast.success("Slide duplicated");
+  };
+  
   const navigateSlide = (direction: "prev" | "next") => {
     if (direction === "prev" && selectedSlide > 0) {
       setSelectedSlide(selectedSlide - 1);
@@ -406,6 +499,16 @@ const SlideEditor = () => {
 
             {/* Actions */}
             <div className="flex items-center gap-2">
+              {/* Undo/Redo */}
+              <div className="flex items-center gap-1 mr-2">
+                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleUndo} disabled={!canUndo} title="Undo (Ctrl+Z)">
+                  <Undo2 className="w-4 h-4" />
+                </Button>
+                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleRedo} disabled={!canRedo} title="Redo (Ctrl+Shift+Z)">
+                  <Redo2 className="w-4 h-4" />
+                </Button>
+              </div>
+              
               <Button variant="outline" onClick={() => setIsPreviewMode(true)}>
                 <Play className="w-4 h-4" />
                 <span className="hidden sm:inline">Preview</span>
@@ -441,12 +544,10 @@ const SlideEditor = () => {
       </header>
 
       {/* Main Content - Fixed layout */}
-      <div className="flex-1 flex overflow-hidden" style={{
-      height: 'calc(100vh - 64px)'
-    }}>
-        {/* Slide Thumbnails - Fixed height showing ~4 slides, scrollable */}
-        <aside className="w-48 border-r border-border bg-card hidden md:flex md:flex-col flex-shrink-0">
-          <div className="p-2 border-b border-border">
+      <div className="flex-1 flex overflow-hidden">
+        {/* Slide Thumbnails - Scrollable sidebar */}
+        <aside className="w-52 border-r border-border bg-card hidden md:flex md:flex-col flex-shrink-0 overflow-hidden">
+          <div className="p-2 border-b border-border flex-shrink-0">
             <div className="flex items-center justify-between">
               <h3 className="font-semibold text-foreground text-xs">Slides</h3>
               <DropdownMenu>
@@ -522,8 +623,8 @@ const SlideEditor = () => {
 
         {/* Main Editor Area - Fixed, no scroll */}
         <main className="flex-1 flex flex-col overflow-hidden">
-          {/* Slide Preview - Smaller to always show toolbar */}
-          <div className="flex-1 flex items-center justify-center p-3 bg-muted/30 min-h-0">
+          {/* Slide Preview - Constrained to fit without scrolling */}
+          <div className="flex-1 flex items-center justify-center p-2 bg-muted/30 min-h-0 overflow-hidden">
             <motion.div key={selectedSlide} initial={{
             opacity: 0,
             scale: 0.95
@@ -532,10 +633,11 @@ const SlideEditor = () => {
             scale: 1
           }} transition={{
             duration: 0.3
-          }} className="w-full max-w-2xl aspect-video rounded-lg overflow-hidden shadow-elevated flex items-center justify-center bg-cover bg-center relative" style={{
+          }} className="w-full max-w-xl aspect-video rounded-lg overflow-hidden shadow-elevated flex items-center justify-center bg-cover bg-center relative" style={{
             background: currentSlide.backgroundImage ? `url(${currentSlide.backgroundImage})` : currentSlide.background,
             backgroundSize: 'cover',
-            backgroundPosition: 'center'
+            backgroundPosition: 'center',
+            maxHeight: 'calc(100vh - 200px)'
           }}>
               {/* Dark overlay for images */}
               {currentSlide.backgroundImage && <div className="absolute inset-0 bg-black/30" />}
@@ -652,6 +754,12 @@ const SlideEditor = () => {
                 </Button>
               </div>
 
+              {/* Duplicate Slide */}
+              <Button variant="outline" size="sm" className="h-8 text-xs" onClick={handleDuplicateSlide}>
+                <Copy className="w-3.5 h-3.5 mr-1" />
+                Duplicate
+              </Button>
+              
               {/* Delete Slide */}
               <Button variant="outline" size="sm" className="h-8 text-xs text-destructive hover:bg-destructive/10" onClick={handleDeleteSlide} disabled={slides.length <= 1}>
                 <Trash2 className="w-3.5 h-3.5 mr-1" />
