@@ -622,9 +622,9 @@ const SlideEditor = () => {
         </aside>
 
         {/* Main Editor Area - Fixed, no scroll */}
-        <main className="flex-1 flex flex-col overflow-hidden">
-          {/* Slide Preview - Constrained to fit without scrolling */}
-          <div className="flex-1 flex items-center justify-center p-2 bg-muted/30 min-h-0 overflow-hidden">
+        <main className="flex-1 flex flex-col h-full">
+          {/* Slide Preview - Fixed height container, centered slide */}
+          <div className="flex-1 flex items-center justify-center bg-muted/30 overflow-hidden" style={{ minHeight: 0 }}>
             <motion.div key={selectedSlide} initial={{
             opacity: 0,
             scale: 0.95
@@ -633,11 +633,12 @@ const SlideEditor = () => {
             scale: 1
           }} transition={{
             duration: 0.3
-          }} className="w-full max-w-xl aspect-video rounded-lg overflow-hidden shadow-elevated flex items-center justify-center bg-cover bg-center relative" style={{
+          }} className="rounded-lg overflow-hidden shadow-elevated flex items-center justify-center bg-cover bg-center relative" style={{
             background: currentSlide.backgroundImage ? `url(${currentSlide.backgroundImage})` : currentSlide.background,
             backgroundSize: 'cover',
             backgroundPosition: 'center',
-            maxHeight: 'calc(100vh - 200px)'
+            width: 'min(90%, 600px)',
+            aspectRatio: '16/9'
           }}>
               {/* Dark overlay for images */}
               {currentSlide.backgroundImage && <div className="absolute inset-0 bg-black/30" />}
