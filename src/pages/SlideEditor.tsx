@@ -521,7 +521,7 @@ const SlideEditor = () => {
         </aside>
 
         {/* Main Editor Area - Fixed, no scroll */}
-        <main className="flex-1 flex flex-col overflow-hidden">
+        <main className="flex flex-col overflow-hidden max-h-[75vh]">
           {/* Slide Preview - Smaller to always show toolbar */}
           <div className="flex-1 flex items-center justify-center p-3 bg-muted/30 min-h-0">
             <motion.div key={selectedSlide} initial={{
