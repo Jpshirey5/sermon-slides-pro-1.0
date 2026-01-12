@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { Link, useParams } from "react-router-dom";
-import { motion, Reorder } from "framer-motion";
+import { motion, Reorder, useDragControls } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { BookOpen, ArrowLeft, Download, Play, GripVertical, Plus, Type, Palette, ChevronLeft, ChevronRight, FileText, Presentation, Trash2, AlignVerticalSpaceAround, Undo2, Redo2, Copy } from "lucide-react";
@@ -9,7 +9,10 @@ import { BackgroundPicker } from "@/components/BackgroundPicker";
 import { exportToPowerPoint, SlideData } from "@/lib/export-pptx";
 import { exportToProPresenter, exportToProPresenter6 } from "@/lib/export-propresenter";
 import { toast } from "sonner";
-import { getPresentation, savePresentation, SermonPresentation } from "@/pages/Dashboard";
+import { getPresentation, savePresentation, getPresentations, SermonPresentation } from "@/pages/Dashboard";
+
+// Storage key for editor-specific slide data
+const EDITOR_STORAGE_KEY = 'sermon-editor-slides';
 
 // Microsoft Word standard fonts - alphabetically ordered
 const fonts = ["Arial", "Arial Black", "Book Antiqua", "Calibri", "Cambria", "Candara", "Century Gothic", "Comic Sans MS", "Consolas", "Constantia", "Corbel", "Courier New", "Franklin Gothic Medium", "Garamond", "Georgia", "Gill Sans MT", "Impact", "Lucida Console", "Lucida Sans Unicode", "Palatino Linotype", "Segoe UI", "Tahoma", "Times New Roman", "Trebuchet MS", "Verdana"];
@@ -166,6 +169,33 @@ const defaultSlides: SlideData[] = [{
 
 const MAX_HISTORY = 50;
 
+// Get saved editor slides from localStorage
+function getEditorSlides(presentationId: string): SlideData[] | null {
+  const stored = localStorage.getItem(`${EDITOR_STORAGE_KEY}-${presentationId}`);
+  if (stored) {
+    try {
+      return JSON.parse(stored);
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+// Save editor slides to localStorage
+function saveEditorSlides(presentationId: string, slides: SlideData[]): void {
+  localStorage.setItem(`${EDITOR_STORAGE_KEY}-${presentationId}`, JSON.stringify(slides));
+  
+  // Also update the presentation's slide count and lastModified in the main presentations list
+  const presentations = getPresentations();
+  const presentationIndex = presentations.findIndex(p => p.id === presentationId);
+  if (presentationIndex >= 0) {
+    presentations[presentationIndex].slides = slides.length;
+    presentations[presentationIndex].lastModified = 'just now';
+    localStorage.setItem('sermon-presentations', JSON.stringify(presentations));
+  }
+}
+
 const SlideEditor = () => {
   const {
     id
@@ -175,26 +205,54 @@ const SlideEditor = () => {
   const [isPreviewMode, setIsPreviewMode] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [presentationTitle, setPresentationTitle] = useState("New Presentation");
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   
   // Undo/Redo history
   const [history, setHistory] = useState<SlideData[][]>([defaultSlides]);
   const [historyIndex, setHistoryIndex] = useState(0);
   const isUndoRedoRef = useRef(false);
+  const isInitialLoadRef = useRef(true);
 
-  // Load presentation data
+  // Load presentation data - check for saved editor slides first
   useEffect(() => {
     if (id && id !== "new") {
-      const presentation = getPresentation(id);
-      if (presentation) {
-        setPresentationTitle(presentation.title);
-        const generatedSlides = generateSlidesFromData(presentation);
-        if (generatedSlides.length > 0) {
-          setSlides(generatedSlides);
+      // First, try to load saved editor slides
+      const savedEditorSlides = getEditorSlides(id);
+      if (savedEditorSlides && savedEditorSlides.length > 0) {
+        setSlides(savedEditorSlides);
+        setHistory([savedEditorSlides]);
+        setHistoryIndex(0);
+        
+        // Get title from presentation
+        const presentation = getPresentation(id);
+        if (presentation) {
+          setPresentationTitle(presentation.title);
+        }
+      } else {
+        // No saved editor slides, generate from presentation data
+        const presentation = getPresentation(id);
+        if (presentation) {
+          setPresentationTitle(presentation.title);
+          const generatedSlides = generateSlidesFromData(presentation);
+          if (generatedSlides.length > 0) {
+            setSlides(generatedSlides);
+            setHistory([generatedSlides]);
+            setHistoryIndex(0);
+          }
         }
       }
     }
+    isInitialLoadRef.current = false;
   }, [id]);
   const currentSlide = slides[selectedSlide];
+  
+  // Auto-save slides whenever they change
+  useEffect(() => {
+    if (id && id !== "new" && !isInitialLoadRef.current) {
+      saveEditorSlides(id, slides);
+    }
+  }, [slides, id]);
   
   // Update history when slides change (but not during undo/redo)
   useEffect(() => {
@@ -266,6 +324,8 @@ const SlideEditor = () => {
   
   const handleReorder = useCallback((newOrder: SlideData[]) => {
     setSlides(newOrder);
+    setIsDragging(false);
+    setDragOverIndex(null);
     // Update selected slide index if needed
     const currentId = currentSlide.id;
     const newIndex = newOrder.findIndex(s => s.id === currentId);
@@ -273,6 +333,15 @@ const SlideEditor = () => {
       setSelectedSlide(newIndex);
     }
   }, [currentSlide.id]);
+
+  const handleDragStart = useCallback(() => {
+    setIsDragging(true);
+  }, []);
+
+  const handleDragEnd = useCallback(() => {
+    setIsDragging(false);
+    setDragOverIndex(null);
+  }, []);
   const handleExport = async (format: "pptx" | "pro" | "pro6") => {
     setIsExporting(true);
     try {
@@ -577,47 +646,100 @@ const SlideEditor = () => {
           {/* Scrollable slide list - ONLY this scrolls */}
           <div className="flex-1 overflow-y-auto p-2">
             <Reorder.Group axis="y" values={slides} onReorder={handleReorder} className="space-y-1.5" layoutScroll>
-              {slides.map((slide, index) => <Reorder.Item key={slide.id} value={slide} className={`group relative cursor-grab active:cursor-grabbing rounded-md overflow-hidden border-2 ${selectedSlide === index ? "border-primary shadow-elevated" : "border-border hover:border-primary/50"}`} initial={false} transition={{
-              type: "spring",
-              stiffness: 400,
-              damping: 30
-            }} whileDrag={{
-              scale: 1.03,
-              boxShadow: "0 10px 30px rgba(0,0,0,0.25)",
-              zIndex: 50
-            }} dragListener={true} dragConstraints={{
-              top: 0,
-              bottom: 0
-            }}>
-                  <div onClick={() => setSelectedSlide(index)} className="w-full">
+              {slides.map((slide, index) => (
+                <Reorder.Item 
+                  key={slide.id} 
+                  value={slide} 
+                  className={`group relative cursor-grab active:cursor-grabbing rounded-md overflow-hidden border-2 transition-all ${
+                    selectedSlide === index 
+                      ? "border-primary shadow-elevated" 
+                      : "border-border hover:border-primary/50"
+                  }`} 
+                  initial={false} 
+                  transition={{
+                    type: "spring",
+                    stiffness: 500,
+                    damping: 35
+                  }} 
+                  whileDrag={{
+                    scale: 1.05,
+                    boxShadow: "0 15px 40px rgba(0,0,0,0.35)",
+                    zIndex: 100,
+                    cursor: "grabbing"
+                  }}
+                  onDragStart={handleDragStart}
+                  onDragEnd={handleDragEnd}
+                  dragListener={true}
+                  layout
+                >
+                  {/* Drop indicator - shows above the slide when dragging */}
+                  {isDragging && dragOverIndex === index && (
+                    <motion.div 
+                      className="absolute -top-1.5 left-0 right-0 h-1 bg-primary rounded-full z-50"
+                      initial={{ scaleX: 0, opacity: 0 }}
+                      animate={{ scaleX: 1, opacity: 1 }}
+                      exit={{ scaleX: 0, opacity: 0 }}
+                      transition={{ duration: 0.15 }}
+                    />
+                  )}
+                  
+                  <div 
+                    onClick={() => setSelectedSlide(index)} 
+                    className="w-full"
+                    onMouseEnter={() => isDragging && setDragOverIndex(index)}
+                    onMouseLeave={() => isDragging && dragOverIndex === index && setDragOverIndex(null)}
+                  >
                     <div className="flex items-center justify-between px-1.5 py-1 bg-muted/50">
                       <div className="flex items-center gap-1">
-                        <GripVertical className="w-2.5 h-2.5 text-muted-foreground" />
-                        <span className="text-[10px] text-muted-foreground">
+                        <GripVertical className="w-2.5 h-2.5 text-muted-foreground cursor-grab active:cursor-grabbing" />
+                        <span className="text-[10px] text-muted-foreground font-medium">
                           {index + 1}
                         </span>
                       </div>
-                      {selectedSlide === index && slides.length > 1 && <button onClick={e => {
-                    e.stopPropagation();
-                    handleDeleteSlide();
-                  }} className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 hover:bg-destructive/20 rounded">
+                      {selectedSlide === index && slides.length > 1 && (
+                        <button 
+                          onClick={e => {
+                            e.stopPropagation();
+                            handleDeleteSlide();
+                          }} 
+                          className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 hover:bg-destructive/20 rounded"
+                        >
                           <Trash2 className="w-2.5 h-2.5 text-destructive" />
-                        </button>}
+                        </button>
+                      )}
                     </div>
-                    <div className="aspect-video flex items-center justify-center p-1.5 bg-cover bg-center" style={{
-                  background: slide.backgroundImage ? `url(${slide.backgroundImage})` : slide.background,
-                  backgroundSize: 'cover'
-                }}>
-                      <p className="text-[8px] text-center line-clamp-2" style={{
-                    color: slide.textColor,
-                    fontFamily: slide.fontFamily
-                  }}>
+                    <div 
+                      className="aspect-video flex items-center justify-center p-1.5 bg-cover bg-center" 
+                      style={{
+                        background: slide.backgroundImage ? `url(${slide.backgroundImage})` : slide.background,
+                        backgroundSize: 'cover'
+                      }}
+                    >
+                      <p 
+                        className="text-[8px] text-center line-clamp-2" 
+                        style={{
+                          color: slide.textColor,
+                          fontFamily: slide.fontFamily
+                        }}
+                      >
                         {slide.content.title || slide.content.scripture}
                       </p>
                     </div>
                   </div>
-                </Reorder.Item>)}
+                </Reorder.Item>
+              ))}
             </Reorder.Group>
+            
+            {/* Drop indicator at the bottom when dragging past last slide */}
+            {isDragging && dragOverIndex === slides.length && (
+              <motion.div 
+                className="mt-1.5 h-1 bg-primary rounded-full"
+                initial={{ scaleX: 0, opacity: 0 }}
+                animate={{ scaleX: 1, opacity: 1 }}
+                exit={{ scaleX: 0, opacity: 0 }}
+                transition={{ duration: 0.15 }}
+              />
+            )}
           </div>
         </aside>
 
