@@ -476,11 +476,11 @@ const SlideEditor = () => {
         </div>
       </div>;
   }
-  return <div className="min-h-screen bg-background flex flex-col">
-      {/* Header */}
-      <header className="border-b border-border bg-card sticky top-0 z-50">
-        <div className="container mx-auto px-4">
-          <div className="flex items-center justify-between h-16">
+  return <div className="h-screen bg-background flex flex-col overflow-hidden">
+      {/* Header - Fixed height */}
+      <header className="h-14 border-b border-border bg-card flex-shrink-0">
+        <div className="h-full px-4">
+          <div className="flex items-center justify-between h-full">
             {/* Back */}
             <Link to="/dashboard" className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors">
               <ArrowLeft className="w-5 h-5" />
@@ -543,9 +543,9 @@ const SlideEditor = () => {
         </div>
       </header>
 
-      {/* Main Content - Fixed layout */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Slide Thumbnails - Scrollable sidebar */}
+      {/* Main Content - Fixed layout, no page scroll */}
+      <div className="flex-1 flex overflow-hidden min-h-0">
+        {/* Slide Thumbnails - ONLY scrollable area */}
         <aside className="w-52 border-r border-border bg-card hidden md:flex md:flex-col flex-shrink-0 overflow-hidden">
           <div className="p-2 border-b border-border flex-shrink-0">
             <div className="flex items-center justify-between">
@@ -574,8 +574,8 @@ const SlideEditor = () => {
             </div>
           </div>
           
-          {/* Scrollable slide list - shows about 4 slides at a time */}
-          <div className="flex-1 overflow-y-auto p-2 px-[5px] py-[5px]">
+          {/* Scrollable slide list - ONLY this scrolls */}
+          <div className="flex-1 overflow-y-auto p-2">
             <Reorder.Group axis="y" values={slides} onReorder={handleReorder} className="space-y-1.5" layoutScroll>
               {slides.map((slide, index) => <Reorder.Item key={slide.id} value={slide} className={`group relative cursor-grab active:cursor-grabbing rounded-md overflow-hidden border-2 ${selectedSlide === index ? "border-primary shadow-elevated" : "border-border hover:border-primary/50"}`} initial={false} transition={{
               type: "spring",
@@ -621,10 +621,10 @@ const SlideEditor = () => {
           </div>
         </aside>
 
-        {/* Main Editor Area - Fixed, no scroll */}
-        <main className="flex-1 flex flex-col overflow-hidden">
-          {/* Slide Preview - Constrained to fit without scrolling */}
-          <div className="flex-1 flex items-center justify-center p-2 bg-muted/30 min-h-0 overflow-hidden">
+        {/* Main Editor Area - Fixed, never scrolls */}
+        <main className="flex-1 flex flex-col overflow-hidden min-h-0">
+          {/* Slide Preview - Fixed region, centered */}
+          <div className="flex-1 flex items-center justify-center p-4 bg-muted/30 min-h-0 overflow-hidden">
             <motion.div key={selectedSlide} initial={{
             opacity: 0,
             scale: 0.95
@@ -633,11 +633,11 @@ const SlideEditor = () => {
             scale: 1
           }} transition={{
             duration: 0.3
-          }} className="w-full max-w-xl aspect-video rounded-lg overflow-hidden shadow-elevated flex items-center justify-center bg-cover bg-center relative" style={{
+          }} className="w-full max-w-2xl aspect-video rounded-lg overflow-hidden shadow-elevated flex items-center justify-center bg-cover bg-center relative" style={{
             background: currentSlide.backgroundImage ? `url(${currentSlide.backgroundImage})` : currentSlide.background,
             backgroundSize: 'cover',
             backgroundPosition: 'center',
-            maxHeight: 'calc(100vh - 200px)'
+            maxHeight: 'calc(100% - 1rem)'
           }}>
               {/* Dark overlay for images */}
               {currentSlide.backgroundImage && <div className="absolute inset-0 bg-black/30" />}
@@ -681,8 +681,8 @@ const SlideEditor = () => {
             </motion.div>
           </div>
 
-          {/* Toolbar - Always visible */}
-          <div className="border-t border-border bg-card p-3 flex-shrink-0">
+          {/* Toolbar - Fixed at bottom, always visible */}
+          <div className="h-16 border-t border-border bg-card flex-shrink-0 flex items-center justify-center px-4">
             <div className="flex items-center justify-center gap-4 flex-wrap">
               {/* Font */}
               <div className="flex items-center gap-1.5">
