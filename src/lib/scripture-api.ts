@@ -5,6 +5,8 @@ export interface ScriptureResult {
   text: string;
   reference: string;
   translation: string;
+  error?: boolean;
+  errorMessage?: string;
 }
 
 // Parse scripture reference (e.g., "John 3:16" or "Genesis 1:1-5")
@@ -265,14 +267,37 @@ export async function lookupScripture(
   reference: string,
   translation: string = 'KJV'
 ): Promise<ScriptureResult | null> {
+  // Validate reference format early
+  if (!reference || reference.trim().length < 3) {
+    return {
+      text: '',
+      reference: reference,
+      translation,
+      error: true,
+      errorMessage: 'Please enter a valid scripture reference (e.g., John 3:16)',
+    };
+  }
+
   const parsed = parseScriptureReference(reference);
   if (!parsed) {
-    return null;
+    return {
+      text: '',
+      reference: reference,
+      translation,
+      error: true,
+      errorMessage: `Invalid format: "${reference}". Use format like "John 3:16" or "Genesis 1:1-5"`,
+    };
   }
 
   const bookCode = getBookCode(parsed.book);
   if (!bookCode) {
-    return null;
+    return {
+      text: '',
+      reference: reference,
+      translation,
+      error: true,
+      errorMessage: `Unknown book: "${parsed.book}". Please check the spelling.`,
+    };
   }
 
   // Format the reference nicely
@@ -354,11 +379,13 @@ export async function lookupScripture(
     console.log('Secondary API failed...');
   }
 
-  // Return a helpful message if verse not found
+  // Return error for verse not found
   return {
-    text: `Scripture text for ${reference}. Please verify the reference format (e.g., John 3:16).`,
+    text: '',
     reference: formattedRef,
     translation,
+    error: true,
+    errorMessage: `Could not find "${reference}". The verse may not exist or there may be a network issue. Please check the chapter and verse numbers.`,
   };
 }
 
