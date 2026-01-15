@@ -1,15 +1,15 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { Link, useParams } from "react-router-dom";
-import { motion, Reorder, useDragControls } from "framer-motion";
+import { motion, Reorder, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { BookOpen, ArrowLeft, Download, Play, GripVertical, Plus, Type, Palette, ChevronLeft, ChevronRight, FileText, Presentation, Trash2, AlignVerticalSpaceAround, Undo2, Redo2, Copy } from "lucide-react";
+import { BookOpen, ArrowLeft, Download, Play, GripVertical, Plus, Type, Palette, ChevronLeft, ChevronRight, FileText, Presentation, Trash2, AlignVerticalSpaceAround, Undo2, Redo2, Copy, Check, Cloud } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { BackgroundPicker } from "@/components/BackgroundPicker";
 import { exportToPowerPoint, SlideData } from "@/lib/export-pptx";
 import { exportToProPresenter, exportToProPresenter6 } from "@/lib/export-propresenter";
 import { toast } from "sonner";
-import { getPresentation, savePresentation, getPresentations, SermonPresentation } from "@/pages/Dashboard";
+import { getPresentation, getPresentations, SermonPresentation } from "@/pages/Dashboard";
 
 // Storage key for editor-specific slide data
 const EDITOR_STORAGE_KEY = 'sermon-editor-slides';
@@ -78,7 +78,7 @@ const lineSpacingOptions = [{
 // Generate slides from sermon data
 function generateSlidesFromData(presentation: SermonPresentation): SlideData[] {
   const slides: SlideData[] = [];
-  const defaultBackground = "linear-gradient(135deg, #5c1e2b 0%, #3d1219 100%)";
+  const defaultBackground = "transparent";
   const defaultFont = "Georgia";
   const defaultColor = "#FFFFFF";
   const defaultLineSpacing = 1.5;
@@ -161,7 +161,7 @@ const defaultSlides: SlideData[] = [{
       day: 'numeric'
     })
   },
-  background: "linear-gradient(135deg, #5c1e2b 0%, #3d1219 100%)",
+  background: "transparent",
   fontFamily: "Georgia",
   textColor: "#FFFFFF",
   lineSpacing: 1.5
@@ -207,6 +207,8 @@ const SlideEditor = () => {
   const [presentationTitle, setPresentationTitle] = useState("New Presentation");
   const [isDragging, setIsDragging] = useState(false);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
   // Undo/Redo history
   const [history, setHistory] = useState<SlideData[][]>([defaultSlides]);
@@ -250,8 +252,37 @@ const SlideEditor = () => {
   // Auto-save slides whenever they change
   useEffect(() => {
     if (id && id !== "new" && !isInitialLoadRef.current) {
-      saveEditorSlides(id, slides);
+      // Show saving indicator
+      setSaveStatus('saving');
+      
+      // Clear any existing timeout
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+      
+      // Debounce save
+      saveTimeoutRef.current = setTimeout(() => {
+        try {
+          saveEditorSlides(id, slides);
+          setSaveStatus('saved');
+          
+          // Reset to idle after 2 seconds
+          setTimeout(() => {
+            setSaveStatus('idle');
+          }, 2000);
+        } catch (error) {
+          console.error('Failed to save:', error);
+          toast.error('Failed to save changes');
+          setSaveStatus('idle');
+        }
+      }, 500);
     }
+    
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
   }, [slides, id]);
   
   // Update history when slides change (but not during undo/redo)
@@ -343,21 +374,35 @@ const SlideEditor = () => {
     setDragOverIndex(null);
   }, []);
   const handleExport = async (format: "pptx" | "pro" | "pro6") => {
+    if (slides.length === 0) {
+      toast.error("No slides to export. Please add some slides first.");
+      return;
+    }
+    
     setIsExporting(true);
     try {
       if (format === "pptx") {
         await exportToPowerPoint(slides, presentationTitle);
-        toast.success("PowerPoint file exported successfully!");
+        toast.success("PowerPoint file exported successfully!", {
+          description: `${slides.length} slides exported to ${presentationTitle}.pptx`
+        });
       } else if (format === "pro") {
         exportToProPresenter(slides, presentationTitle);
-        toast.success("ProPresenter 7 file exported successfully!");
+        toast.success("ProPresenter 7 file exported successfully!", {
+          description: `${slides.length} slides exported to ${presentationTitle}.pro`
+        });
       } else if (format === "pro6") {
         exportToProPresenter6(slides, presentationTitle);
-        toast.success("ProPresenter 6 file exported successfully!");
+        toast.success("ProPresenter 6 file exported successfully!", {
+          description: `${slides.length} slides exported to ${presentationTitle}.rtf`
+        });
       }
     } catch (error) {
       console.error("Export error:", error);
-      toast.error("Failed to export presentation. Please try again.");
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      toast.error("Export failed", {
+        description: `Could not export presentation: ${errorMessage}. Please try again.`
+      });
     } finally {
       setIsExporting(false);
     }
@@ -556,14 +601,42 @@ const SlideEditor = () => {
               <span className="hidden sm:inline">Dashboard</span>
             </Link>
 
-            {/* Title */}
-            <div className="flex items-center gap-2">
+            {/* Title + Save Indicator */}
+            <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-lg gradient-hero flex items-center justify-center">
                 <BookOpen className="w-4 h-4 text-primary-foreground" />
               </div>
               <span className="font-serif text-lg font-semibold text-foreground">
                 {presentationTitle}
               </span>
+              
+              {/* Save Indicator */}
+              <AnimatePresence mode="wait">
+                {saveStatus === 'saving' && (
+                  <motion.div
+                    key="saving"
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.8 }}
+                    className="flex items-center gap-1.5 text-xs text-muted-foreground bg-muted/50 px-2 py-1 rounded-full"
+                  >
+                    <Cloud className="w-3 h-3 animate-pulse" />
+                    <span>Saving...</span>
+                  </motion.div>
+                )}
+                {saveStatus === 'saved' && (
+                  <motion.div
+                    key="saved"
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.8 }}
+                    className="flex items-center gap-1.5 text-xs text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-900/30 px-2 py-1 rounded-full"
+                  >
+                    <Check className="w-3 h-3" />
+                    <span>Saved</span>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
 
             {/* Actions */}
@@ -709,14 +782,34 @@ const SlideEditor = () => {
                       )}
                     </div>
                     <div 
-                      className="aspect-video flex items-center justify-center p-1.5 bg-cover bg-center" 
+                      className="aspect-video flex items-center justify-center p-1.5 bg-cover bg-center relative" 
                       style={{
-                        background: slide.backgroundImage ? `url(${slide.backgroundImage})` : slide.background,
                         backgroundSize: 'cover'
                       }}
                     >
+                      {/* Checkerboard pattern for transparent backgrounds */}
+                      {slide.background === 'transparent' && !slide.backgroundImage && (
+                        <div 
+                          className="absolute inset-0"
+                          style={{
+                            backgroundImage: 'repeating-conic-gradient(#374151 0% 25%, #1f2937 0% 50%)',
+                            backgroundSize: '8px 8px'
+                          }}
+                        />
+                      )}
+                      {/* Actual background */}
+                      {(slide.background !== 'transparent' || slide.backgroundImage) && (
+                        <div 
+                          className="absolute inset-0"
+                          style={{
+                            background: slide.backgroundImage ? `url(${slide.backgroundImage})` : slide.background,
+                            backgroundSize: 'cover',
+                            backgroundPosition: 'center'
+                          }}
+                        />
+                      )}
                       <p 
-                        className="text-[8px] text-center line-clamp-2" 
+                        className="text-[8px] text-center line-clamp-2 relative z-10" 
                         style={{
                           color: slide.textColor,
                           fontFamily: slide.fontFamily
@@ -755,12 +848,32 @@ const SlideEditor = () => {
             scale: 1
           }} transition={{
             duration: 0.3
-          }} className="w-full max-w-2xl aspect-video rounded-lg overflow-hidden shadow-elevated flex items-center justify-center bg-cover bg-center relative" style={{
-            background: currentSlide.backgroundImage ? `url(${currentSlide.backgroundImage})` : currentSlide.background,
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
+          }} className="w-full max-w-2xl aspect-video rounded-lg overflow-hidden shadow-elevated flex items-center justify-center relative" style={{
             maxHeight: 'calc(100% - 1rem)'
           }}>
+              {/* Checkerboard pattern for transparent backgrounds */}
+              {currentSlide.background === 'transparent' && !currentSlide.backgroundImage && (
+                <div 
+                  className="absolute inset-0"
+                  style={{
+                    backgroundImage: 'repeating-conic-gradient(#374151 0% 25%, #1f2937 0% 50%)',
+                    backgroundSize: '16px 16px'
+                  }}
+                />
+              )}
+              
+              {/* Actual background layer */}
+              {(currentSlide.background !== 'transparent' || currentSlide.backgroundImage) && (
+                <div 
+                  className="absolute inset-0 bg-cover bg-center"
+                  style={{
+                    background: currentSlide.backgroundImage ? `url(${currentSlide.backgroundImage})` : currentSlide.background,
+                    backgroundSize: 'cover',
+                    backgroundPosition: 'center'
+                  }}
+                />
+              )}
+              
               {/* Dark overlay for images */}
               {currentSlide.backgroundImage && <div className="absolute inset-0 bg-black/30" />}
               

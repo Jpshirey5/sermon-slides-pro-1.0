@@ -30,6 +30,8 @@ interface Scripture {
   reference: string;
   text?: string;
   isLoading?: boolean;
+  error?: boolean;
+  errorMessage?: string;
 }
 
 interface SermonPoint {
@@ -132,18 +134,47 @@ const CreateSermon = () => {
       try {
         const result = await lookupScripture(reference, globalTranslation);
         if (result) {
-          setPoints(prev =>
-            prev.map((p) =>
-              p.id === pointId
-                ? {
-                    ...p,
-                    scriptures: p.scriptures.map((s, i) =>
-                      i === index ? { ...s, text: result.text, isLoading: false } : s
-                    ),
-                  }
-                : p
-            )
-          );
+          if (result.error) {
+            // Handle error from API
+            setPoints(prev =>
+              prev.map((p) =>
+                p.id === pointId
+                  ? {
+                      ...p,
+                      scriptures: p.scriptures.map((s, i) =>
+                        i === index ? { 
+                          ...s, 
+                          text: undefined, 
+                          isLoading: false,
+                          error: true,
+                          errorMessage: result.errorMessage || 'Could not find scripture'
+                        } : s
+                      ),
+                    }
+                  : p
+              )
+            );
+          } else {
+            // Success
+            setPoints(prev =>
+              prev.map((p) =>
+                p.id === pointId
+                  ? {
+                      ...p,
+                      scriptures: p.scriptures.map((s, i) =>
+                        i === index ? { 
+                          ...s, 
+                          text: result.text, 
+                          isLoading: false,
+                          error: false,
+                          errorMessage: undefined
+                        } : s
+                      ),
+                    }
+                  : p
+              )
+            );
+          }
         } else {
           setPoints(prev =>
             prev.map((p) =>
@@ -151,7 +182,12 @@ const CreateSermon = () => {
                 ? {
                     ...p,
                     scriptures: p.scriptures.map((s, i) =>
-                      i === index ? { ...s, isLoading: false } : s
+                      i === index ? { 
+                        ...s, 
+                        isLoading: false,
+                        error: true,
+                        errorMessage: 'Could not find scripture. Please check the reference.'
+                      } : s
                     ),
                   }
                 : p
@@ -165,7 +201,12 @@ const CreateSermon = () => {
               ? {
                   ...p,
                   scriptures: p.scriptures.map((s, i) =>
-                    i === index ? { ...s, isLoading: false } : s
+                    i === index ? { 
+                      ...s, 
+                      isLoading: false,
+                      error: true,
+                      errorMessage: 'Network error. Please try again.'
+                    } : s
                   ),
                 }
               : p
@@ -491,7 +532,14 @@ const CreateSermon = () => {
                                   <Trash2 className="w-4 h-4" />
                                 </button>
                               </div>
-                              {scripture.text && (
+                              {scripture.error && scripture.errorMessage && (
+                                <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/30">
+                                  <p className="text-sm text-destructive">
+                                    {scripture.errorMessage}
+                                  </p>
+                                </div>
+                              )}
+                              {scripture.text && !scripture.error && (
                                 <div className="p-3 rounded-lg bg-muted/50 border border-border">
                                   <p className="text-sm text-muted-foreground italic">
                                     "{scripture.text}"

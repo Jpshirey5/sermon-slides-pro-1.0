@@ -44,12 +44,16 @@ export function ScriptureLookup({
     try {
       const scriptureResult = await lookupScripture(reference, translation);
       if (scriptureResult) {
-        setResult(scriptureResult);
+        if (scriptureResult.error) {
+          setError(scriptureResult.errorMessage || 'Could not find scripture. Check the reference format.');
+        } else {
+          setResult(scriptureResult);
+        }
       } else {
         setError('Could not find scripture. Check the reference format.');
       }
     } catch (err) {
-      setError('Error looking up scripture. Please try again.');
+      setError('Network error. Please check your connection and try again.');
     } finally {
       setIsLoading(false);
     }
@@ -162,12 +166,16 @@ export function ScriptureLookupButton({
     try {
       const scriptureResult = await lookupScripture(reference, translation);
       if (scriptureResult) {
-        setResult(scriptureResult);
+        if (scriptureResult.error) {
+          setError(scriptureResult.errorMessage || 'Could not find scripture');
+        } else {
+          setResult(scriptureResult);
+        }
       } else {
         setError('Could not find scripture');
       }
     } catch (err) {
-      setError('Lookup failed');
+      setError('Network error. Please try again.');
     } finally {
       setIsLoading(false);
     }
