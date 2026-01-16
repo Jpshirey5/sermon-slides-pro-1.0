@@ -257,6 +257,10 @@ export type Database = {
         Args: { _account_id: string; _user_id: string }
         Returns: boolean
       }
+      users_share_account: {
+        Args: { _user_id_1: string; _user_id_2: string }
+        Returns: boolean
+      }
     }
     Enums: {
       account_role: "owner" | "member"
