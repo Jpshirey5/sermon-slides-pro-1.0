@@ -1,42 +1,105 @@
-import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { BookOpen, ArrowLeft, Eye, EyeOff, Check } from "lucide-react";
+import { BookOpen, ArrowLeft, Eye, EyeOff, Check, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
+import { z } from "zod";
+
+const signupSchema = z.object({
+  name: z.string().min(2, "Name must be at least 2 characters"),
+  email: z.string().email("Please enter a valid email address"),
+  password: z.string().min(8, "Password must be at least 8 characters"),
+});
 
 const Signup = () => {
+  const [searchParams] = useSearchParams();
+  const plan = searchParams.get("plan");
+  
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [errors, setErrors] = useState<{ name?: string; email?: string; password?: string }>({});
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { signUp, user, loading } = useAuth();
+
+  // Redirect if already logged in
+  useEffect(() => {
+    if (!loading && user) {
+      navigate("/dashboard");
+    }
+  }, [user, loading, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setErrors({});
+
+    // Validate input
+    const result = signupSchema.safeParse({ name, email, password });
+    if (!result.success) {
+      const fieldErrors: { name?: string; email?: string; password?: string } = {};
+      result.error.errors.forEach((err) => {
+        if (err.path[0] === "name") fieldErrors.name = err.message;
+        if (err.path[0] === "email") fieldErrors.email = err.message;
+        if (err.path[0] === "password") fieldErrors.password = err.message;
+      });
+      setErrors(fieldErrors);
+      return;
+    }
+
     setIsLoading(true);
 
-    // Simulate signup - replace with actual auth
-    setTimeout(() => {
+    const { error } = await signUp(email, password, name);
+
+    if (error) {
       setIsLoading(false);
+      let message = "Failed to create account. Please try again.";
+      
+      if (error.message.includes("already registered")) {
+        message = "This email is already registered. Please sign in instead.";
+      }
+
       toast({
-        title: "Account created!",
-        description: "Welcome to SermonSlides. Let's create your first presentation.",
+        title: "Sign up failed",
+        description: message,
+        variant: "destructive",
       });
+      return;
+    }
+
+    toast({
+      title: "Account created!",
+      description: "Welcome to SermonSlides. Check your email to confirm your account.",
+    });
+    
+    // If they came from the unlimited plan, redirect to dashboard to subscribe
+    if (plan === "unlimited") {
+      navigate("/dashboard?subscribe=true");
+    } else {
       navigate("/dashboard");
-    }, 1000);
+    }
   };
 
   const benefits = [
-    "14-day free trial, no credit card required",
     "Unlimited sermon presentations",
     "Export to PowerPoint & ProPresenter",
-    "Access to all Bible translations",
+    "Team collaboration",
+    "Saved sermon library",
   ];
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen gradient-warm flex">
@@ -52,11 +115,12 @@ const Signup = () => {
             <BookOpen className="w-12 h-12 text-white" />
           </div>
           <h2 className="font-serif text-3xl font-bold text-white mb-4">
-            Start Your Free Trial
+            {plan === "unlimited" ? "Start Your Unlimited Plan" : "Create Beautiful Sermon Slides"}
           </h2>
           <p className="text-white/80 mb-8">
-            Join thousands of ministry leaders who save hours every week with
-            SermonSlides.
+            {plan === "unlimited" 
+              ? "Get unlimited exports, team collaboration, and a saved sermon library for $49/month."
+              : "Join thousands of ministry leaders who save hours every week with SermonSlides."}
           </p>
           <ul className="space-y-4">
             {benefits.map((benefit) => (
@@ -103,7 +167,9 @@ const Signup = () => {
             Create your account
           </h1>
           <p className="text-muted-foreground mb-8">
-            Start your 14-day free trial. No credit card required.
+            {plan === "unlimited" 
+              ? "Create an account to start your Unlimited subscription."
+              : "Get started with SermonSlides today."}
           </p>
 
           {/* Form */}
@@ -116,9 +182,11 @@ const Signup = () => {
                 placeholder="Pastor John Smith"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                required
-                className="h-12"
+                className={`h-12 ${errors.name ? "border-destructive" : ""}`}
               />
+              {errors.name && (
+                <p className="text-sm text-destructive">{errors.name}</p>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -129,9 +197,11 @@ const Signup = () => {
                 placeholder="you@church.org"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                required
-                className="h-12"
+                className={`h-12 ${errors.email ? "border-destructive" : ""}`}
               />
+              {errors.email && (
+                <p className="text-sm text-destructive">{errors.email}</p>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -143,9 +213,7 @@ const Signup = () => {
                   placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  required
-                  minLength={8}
-                  className="h-12 pr-12"
+                  className={`h-12 pr-12 ${errors.password ? "border-destructive" : ""}`}
                 />
                 <button
                   type="button"
@@ -159,6 +227,9 @@ const Signup = () => {
                   )}
                 </button>
               </div>
+              {errors.password && (
+                <p className="text-sm text-destructive">{errors.password}</p>
+              )}
               <p className="text-sm text-muted-foreground">
                 Must be at least 8 characters
               </p>
@@ -171,7 +242,16 @@ const Signup = () => {
               className="w-full"
               disabled={isLoading}
             >
-              {isLoading ? "Creating account..." : "Start Free Trial"}
+              {isLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Creating account...
+                </>
+              ) : plan === "unlimited" ? (
+                "Create Account & Subscribe"
+              ) : (
+                "Create Account"
+              )}
             </Button>
 
             <p className="text-sm text-center text-muted-foreground">

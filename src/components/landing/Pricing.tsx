@@ -1,62 +1,51 @@
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import { Check, Sparkles } from "lucide-react";
+import { Check, Sparkles, Zap, Users } from "lucide-react";
+import { STRIPE_CONFIG } from "@/contexts/AuthContext";
 
 const plans = [
   {
-    name: "Starter",
-    price: "Free",
-    description: "Perfect for trying out SermonSlides",
+    name: "Pay Per Sermon",
+    price: `$${STRIPE_CONFIG.payPerSermon.price}`,
+    description: "Perfect for occasional use",
+    icon: Zap,
     features: [
-      "5 presentations per month",
-      "Basic slide templates",
-      "PowerPoint export",
-      "Email support",
+      "One-time payment per export",
+      "Full editor access",
+      "Export to PowerPoint",
+      "Export to ProPresenter",
+      "No account required",
     ],
     cta: "Get Started",
     variant: "outline" as const,
     popular: false,
+    href: "/create",
   },
   {
-    name: "Ministry",
-    price: "$19",
+    name: "Unlimited",
+    price: `$${STRIPE_CONFIG.unlimited.price}`,
     period: "/month",
-    description: "For active ministry leaders",
+    description: "For churches & ministry teams",
+    icon: Users,
     features: [
-      "Unlimited presentations",
-      "All slide templates",
-      "PowerPoint & ProPresenter export",
-      "Custom backgrounds",
-      "50+ fonts",
+      "Unlimited exports",
+      "Saved sermon library",
+      "Team collaboration (up to 5 users)",
+      "Shared templates & assets",
       "Priority support",
-      "Scripture auto-lookup",
+      "Custom backgrounds",
     ],
-    cta: "Start Free Trial",
+    cta: "Start Unlimited",
     variant: "hero" as const,
     popular: true,
-  },
-  {
-    name: "Church",
-    price: "$49",
-    period: "/month",
-    description: "For entire ministry teams",
-    features: [
-      "Everything in Ministry",
-      "5 team members",
-      "Church branding presets",
-      "Shared template library",
-      "Team collaboration",
-      "Admin controls",
-      "Dedicated support",
-    ],
-    cta: "Contact Sales",
-    variant: "outline" as const,
-    popular: false,
+    href: "/signup?plan=unlimited",
   },
 ];
 
 const Pricing = () => {
+  const navigate = useNavigate();
+
   return (
     <section id="pricing" className="py-24 gradient-warm">
       <div className="container mx-auto px-4">
@@ -75,13 +64,12 @@ const Pricing = () => {
             Simple, Transparent Pricing
           </h2>
           <p className="text-lg text-muted-foreground">
-            Choose the plan that fits your ministry. All plans include a 14-day
-            free trial.
+            Pay only for what you need. No hidden fees.
           </p>
         </motion.div>
 
         {/* Pricing Cards */}
-        <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
+        <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
           {plans.map((plan, index) => (
             <motion.div
               key={plan.name}
@@ -99,26 +87,32 @@ const Pricing = () => {
                 <div className="absolute -top-4 left-1/2 -translate-x-1/2">
                   <div className="flex items-center gap-1.5 px-4 py-1.5 rounded-full gradient-gold text-accent-foreground text-sm font-medium shadow-glow">
                     <Sparkles className="w-4 h-4" />
-                    Most Popular
+                    Best Value
                   </div>
                 </div>
               )}
 
-              <div className="text-center mb-8">
+              <div className="mb-6">
+                <div className={`w-12 h-12 rounded-xl flex items-center justify-center mb-4 ${
+                  plan.popular ? "gradient-hero" : "bg-secondary"
+                }`}>
+                  <plan.icon className={`w-6 h-6 ${plan.popular ? "text-white" : "text-primary"}`} />
+                </div>
                 <h3 className="font-serif text-2xl font-bold text-foreground mb-2">
                   {plan.name}
                 </h3>
-                <p className="text-muted-foreground text-sm mb-4">
+                <p className="text-muted-foreground text-sm">
                   {plan.description}
                 </p>
-                <div className="flex items-baseline justify-center gap-1">
-                  <span className="font-serif text-5xl font-bold text-foreground">
-                    {plan.price}
-                  </span>
-                  {plan.period && (
-                    <span className="text-muted-foreground">{plan.period}</span>
-                  )}
-                </div>
+              </div>
+
+              <div className="flex items-baseline gap-1 mb-8">
+                <span className="font-serif text-5xl font-bold text-foreground">
+                  {plan.price}
+                </span>
+                {plan.period && (
+                  <span className="text-muted-foreground">{plan.period}</span>
+                )}
               </div>
 
               <ul className="space-y-3 mb-8">
@@ -132,11 +126,14 @@ const Pricing = () => {
                 ))}
               </ul>
 
-              <Link to="/signup">
-                <Button variant={plan.variant} size="lg" className="w-full">
-                  {plan.cta}
-                </Button>
-              </Link>
+              <Button 
+                variant={plan.variant} 
+                size="lg" 
+                className="w-full"
+                onClick={() => navigate(plan.href)}
+              >
+                {plan.cta}
+              </Button>
             </motion.div>
           ))}
         </div>
@@ -149,7 +146,7 @@ const Pricing = () => {
           transition={{ duration: 0.5, delay: 0.4 }}
           className="text-center text-muted-foreground mt-12"
         >
-          30-day money-back guarantee. No questions asked.
+          Secure payment powered by Stripe. Cancel anytime.
         </motion.p>
       </div>
     </section>
