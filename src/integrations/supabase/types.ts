@@ -50,6 +50,13 @@ export type Database = {
             referencedRelation: "accounts"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "account_invites_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts_public"
+            referencedColumns: ["id"]
+          },
         ]
       }
       account_members: {
@@ -89,6 +96,13 @@ export type Database = {
             columns: ["account_id"]
             isOneToOne: false
             referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "account_members_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts_public"
             referencedColumns: ["id"]
           },
         ]
@@ -195,50 +209,61 @@ export type Database = {
             referencedRelation: "accounts"
             referencedColumns: ["id"]
           },
-        ]
-      }
-    }
-    Views: {
-      account_members_public: {
-        Row: {
-          accepted_at: string | null
-          account_id: string | null
-          created_at: string | null
-          id: string | null
-          invited_at: string | null
-          role: Database["public"]["Enums"]["account_role"] | null
-          user_id: string | null
-        }
-        Insert: {
-          accepted_at?: string | null
-          account_id?: string | null
-          created_at?: string | null
-          id?: string | null
-          invited_at?: string | null
-          role?: Database["public"]["Enums"]["account_role"] | null
-          user_id?: string | null
-        }
-        Update: {
-          accepted_at?: string | null
-          account_id?: string | null
-          created_at?: string | null
-          id?: string | null
-          invited_at?: string | null
-          role?: Database["public"]["Enums"]["account_role"] | null
-          user_id?: string | null
-        }
-        Relationships: [
           {
-            foreignKeyName: "account_members_account_id_fkey"
+            foreignKeyName: "sermons_account_id_fkey"
             columns: ["account_id"]
             isOneToOne: false
-            referencedRelation: "accounts"
+            referencedRelation: "accounts_public"
             referencedColumns: ["id"]
           },
         ]
       }
     }
+    Views: {
+      accounts_public: {
+        Row: {
+          created_at: string | null
+          id: string | null
+          name: string | null
+          subscription_status:
+            | Database["public"]["Enums"]["subscription_status"]
+            | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string | null
+          name?: string | null
+          subscription_status?:
+            | Database["public"]["Enums"]["subscription_status"]
+            | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string | null
+          name?: string | null
+          subscription_status?:
+            | Database["public"]["Enums"]["subscription_status"]
+            | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+    }
     Functions: {
+      get_account_members_for_user: {
+        Args: { _user_id: string }
+        Returns: {
+          accepted_at: string
+          account_id: string
+          created_at: string
+          id: string
+          invited_at: string
+          role: string
+          user_id: string
+        }[]
+      }
       get_invite_by_token: {
         Args: { _token: string }
         Returns: {
