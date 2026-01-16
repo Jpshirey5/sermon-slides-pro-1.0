@@ -202,6 +202,15 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      get_invite_by_token: {
+        Args: { _token: string }
+        Returns: {
+          account_id: string
+          email: string
+          expires_at: string
+          id: string
+        }[]
+      }
       get_user_account_id: { Args: { _user_id: string }; Returns: string }
       is_account_member: {
         Args: { _account_id: string; _user_id: string }
