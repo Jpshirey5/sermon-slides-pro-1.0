@@ -14,16 +14,212 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      account_invites: {
+        Row: {
+          account_id: string
+          created_at: string
+          email: string
+          expires_at: string
+          id: string
+          invited_by: string
+          token: string
+        }
+        Insert: {
+          account_id: string
+          created_at?: string
+          email: string
+          expires_at?: string
+          id?: string
+          invited_by: string
+          token?: string
+        }
+        Update: {
+          account_id?: string
+          created_at?: string
+          email?: string
+          expires_at?: string
+          id?: string
+          invited_by?: string
+          token?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "account_invites_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      account_members: {
+        Row: {
+          accepted_at: string | null
+          account_id: string
+          created_at: string
+          id: string
+          invited_at: string | null
+          invited_email: string | null
+          role: Database["public"]["Enums"]["account_role"]
+          user_id: string
+        }
+        Insert: {
+          accepted_at?: string | null
+          account_id: string
+          created_at?: string
+          id?: string
+          invited_at?: string | null
+          invited_email?: string | null
+          role?: Database["public"]["Enums"]["account_role"]
+          user_id: string
+        }
+        Update: {
+          accepted_at?: string | null
+          account_id?: string
+          created_at?: string
+          id?: string
+          invited_at?: string | null
+          invited_email?: string | null
+          role?: Database["public"]["Enums"]["account_role"]
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "account_members_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      accounts: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          stripe_customer_id: string | null
+          stripe_subscription_id: string | null
+          subscription_period_end: string | null
+          subscription_status: Database["public"]["Enums"]["subscription_status"]
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name?: string
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          subscription_period_end?: string | null
+          subscription_status?: Database["public"]["Enums"]["subscription_status"]
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          subscription_period_end?: string | null
+          subscription_status?: Database["public"]["Enums"]["subscription_status"]
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          created_at: string
+          full_name: string | null
+          id: string
+          updated_at: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string
+          full_name?: string | null
+          id: string
+          updated_at?: string
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string
+          full_name?: string | null
+          id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      sermons: {
+        Row: {
+          account_id: string
+          background_settings: Json | null
+          created_at: string
+          created_by_user_id: string
+          font_settings: Json | null
+          id: string
+          scripture_reference: string | null
+          slides: Json
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          background_settings?: Json | null
+          created_at?: string
+          created_by_user_id: string
+          font_settings?: Json | null
+          id?: string
+          scripture_reference?: string | null
+          slides?: Json
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          background_settings?: Json | null
+          created_at?: string
+          created_by_user_id?: string
+          font_settings?: Json | null
+          id?: string
+          scripture_reference?: string | null
+          slides?: Json
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sermons_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      get_user_account_id: { Args: { _user_id: string }; Returns: string }
+      is_account_member: {
+        Args: { _account_id: string; _user_id: string }
+        Returns: boolean
+      }
+      is_account_owner: {
+        Args: { _account_id: string; _user_id: string }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      account_role: "owner" | "member"
+      subscription_status:
+        | "active"
+        | "past_due"
+        | "canceled"
+        | "trialing"
+        | "inactive"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +346,15 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      account_role: ["owner", "member"],
+      subscription_status: [
+        "active",
+        "past_due",
+        "canceled",
+        "trialing",
+        "inactive",
+      ],
+    },
   },
 } as const
