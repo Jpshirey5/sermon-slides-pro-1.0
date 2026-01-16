@@ -199,7 +199,44 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      account_members_public: {
+        Row: {
+          accepted_at: string | null
+          account_id: string | null
+          created_at: string | null
+          id: string | null
+          invited_at: string | null
+          role: Database["public"]["Enums"]["account_role"] | null
+          user_id: string | null
+        }
+        Insert: {
+          accepted_at?: string | null
+          account_id?: string | null
+          created_at?: string | null
+          id?: string | null
+          invited_at?: string | null
+          role?: Database["public"]["Enums"]["account_role"] | null
+          user_id?: string | null
+        }
+        Update: {
+          accepted_at?: string | null
+          account_id?: string | null
+          created_at?: string | null
+          id?: string | null
+          invited_at?: string | null
+          role?: Database["public"]["Enums"]["account_role"] | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "account_members_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       get_invite_by_token: {
