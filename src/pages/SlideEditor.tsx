@@ -4,11 +4,14 @@ import { motion, Reorder, AnimatePresence } from "framer-motion";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { BookOpen, ArrowLeft, Download, Play, GripVertical, Plus, Type, Palette, ChevronLeft, ChevronRight, FileText, Presentation, Trash2, AlignVerticalSpaceAround, Undo2, Redo2, Copy, Check, Cloud } from "lucide-react";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
+import { BookOpen, ArrowLeft, Download, Play, GripVertical, Plus, Type, Palette, ChevronLeft, ChevronRight, Trash2, AlignVerticalSpaceAround, Undo2, Redo2, Copy, Check, Cloud } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { BackgroundPicker } from "@/components/BackgroundPicker";
 import { exportToPowerPoint, SlideData } from "@/lib/export-pptx";
-import { exportToProPresenter, exportToProPresenter6 } from "@/lib/export-propresenter";
+import { exportToProPresenter6 } from "@/lib/export-propresenter";
+import { exportAsProBundle } from "@/services/proPresenterExport";
+import { PaymentPromptModal } from "@/components/PaymentPromptModal";
+import { ExportOptionsModal } from "@/components/ExportOptionsModal";
 import { toast } from "sonner";
 import { getPresentation, getPresentations, SermonPresentation } from "@/lib/presentations";
 
@@ -218,6 +221,8 @@ const SlideEditor = () => {
     return false;
   });
   const [isRedirectingToStripe, setIsRedirectingToStripe] = useState(false);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
   
   // Undo/Redo history
   const [history, setHistory] = useState<SlideData[][]>([defaultSlides]);
@@ -225,7 +230,7 @@ const SlideEditor = () => {
   const isUndoRedoRef = useRef(false);
   const isInitialLoadRef = useRef(true);
   
-  // Check if returning from successful payment - set localStorage flag for this presentation
+  // Check if returning from successful payment - set localStorage flag and show export modal
   useEffect(() => {
     if (searchParams.get('export') === 'true' && id && id !== "new") {
       // Store unlock in localStorage for THIS specific presentation
@@ -234,7 +239,9 @@ const SlideEditor = () => {
       // Clear the query param
       searchParams.delete('export');
       setSearchParams(searchParams, { replace: true });
-      toast.success('Export unlocked! Choose your format below.');
+      // Show export options modal after payment success
+      setShowExportModal(true);
+      toast.success('Payment successful! Choose your export format.');
     }
     if (searchParams.get('payment') === 'canceled') {
       searchParams.delete('payment');
@@ -400,8 +407,8 @@ const SlideEditor = () => {
     setIsDragging(false);
     setDragOverIndex(null);
   }, []);
-  // Handle export click - check payment first, redirect to Stripe if needed
-  const handleExportClick = async (format: "pptx" | "pro" | "pro6") => {
+  // Handle export button click - show payment modal if locked, export modal if unlocked
+  const handleExportButtonClick = () => {
     // Check localStorage for unlock status for this specific presentation
     const isUnlocked = id && id !== "new" 
       ? localStorage.getItem(`export_unlocked:${id}`) === "true"
@@ -412,42 +419,53 @@ const SlideEditor = () => {
         toast.error("Please save your presentation first");
         return;
       }
-      
-      // Force save before Stripe redirect
-      saveEditorSlides(id, slides);
-      console.log('[SlideEditor] Saved slides before Stripe redirect for ID:', id);
-      
-      setIsRedirectingToStripe(true);
-      
-      try {
-        const { data, error } = await supabase.functions.invoke('create-payment', {
-          body: {
-            sermonId: id,
-            returnUrl: window.location.origin,
-          },
-        });
-
-        if (error) throw error;
-        
-        if (data?.url) {
-          console.log('[SlideEditor] Redirecting to Stripe:', data.url);
-          // Direct redirect - no modal, no new tab
-          window.location.href = data.url;
-        } else {
-          throw new Error('No checkout URL received');
-        }
-      } catch (error) {
-        console.error('[SlideEditor] Payment error:', error);
-        toast.error('Failed to create payment session. Please try again.');
-        setIsRedirectingToStripe(false);
-      }
+      // Show payment modal
+      setShowPaymentModal(true);
+    } else {
+      // Show export options modal
+      setShowExportModal(true);
+    }
+  };
+  
+  // Handle payment redirect
+  const handleProceedToPayment = async () => {
+    if (!id || id === "new") {
+      toast.error("Please save your presentation first");
       return;
     }
     
-    handleExport(format);
+    // Force save before Stripe redirect
+    saveEditorSlides(id, slides);
+    console.log('[SlideEditor] Saved slides before Stripe redirect for ID:', id);
+    
+    setIsRedirectingToStripe(true);
+    
+    try {
+      const { data, error } = await supabase.functions.invoke('create-payment', {
+        body: {
+          sermonId: id,
+          returnUrl: window.location.origin,
+        },
+      });
+
+      if (error) throw error;
+      
+      if (data?.url) {
+        console.log('[SlideEditor] Redirecting to Stripe:', data.url);
+        // Direct redirect - no modal, no new tab
+        window.location.href = data.url;
+      } else {
+        throw new Error('No checkout URL received');
+      }
+    } catch (error) {
+      console.error('[SlideEditor] Payment error:', error);
+      toast.error('Failed to create payment session. Please try again.');
+      setIsRedirectingToStripe(false);
+      setShowPaymentModal(false);
+    }
   };
 
-  const handleExport = async (format: "pptx" | "pro" | "pro6") => {
+  const handleExport = async (format: "pptx" | "probundle" | "pro6") => {
     if (slides.length === 0) {
       toast.error("No slides to export. Please add some slides first.");
       return;
@@ -460,10 +478,10 @@ const SlideEditor = () => {
         toast.success("PowerPoint file exported successfully!", {
           description: `${slides.length} slides exported to ${presentationTitle}.pptx`
         });
-      } else if (format === "pro") {
-        exportToProPresenter(slides, presentationTitle);
+      } else if (format === "probundle") {
+        await exportAsProBundle(slides, presentationTitle);
         toast.success("ProPresenter 7 file exported successfully!", {
-          description: `${slides.length} slides exported to ${presentationTitle}.pro`
+          description: `${slides.length} slides exported to ${presentationTitle}.probundle`
         });
       } else if (format === "pro6") {
         exportToProPresenter6(slides, presentationTitle);
@@ -471,6 +489,7 @@ const SlideEditor = () => {
           description: `${slides.length} slides exported to ${presentationTitle}.rtf`
         });
       }
+      setShowExportModal(false);
     } catch (error) {
       console.error("Export error:", error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
@@ -729,31 +748,12 @@ const SlideEditor = () => {
                 <Play className="w-4 h-4" />
                 <span className="hidden sm:inline">Preview</span>
               </Button>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="hero" disabled={isExporting}>
-                    <Download className="w-4 h-4" />
-                    <span className="hidden sm:inline">
-                      {isExporting ? "Exporting..." : "Export"}
-                    </span>
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={() => handleExportClick("pptx")}>
-                    <FileText className="w-4 h-4 mr-2" />
-                    PowerPoint (.pptx)
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => handleExportClick("pro")}>
-                    <Presentation className="w-4 h-4 mr-2" />
-                    ProPresenter 7 (.pro)
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleExportClick("pro6")}>
-                    <Presentation className="w-4 h-4 mr-2" />
-                    ProPresenter 6 (.rtf)
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <Button variant="hero" disabled={isExporting} onClick={handleExportButtonClick}>
+                <Download className="w-4 h-4" />
+                <span className="hidden sm:inline">
+                  {isExporting ? "Exporting..." : "Export"}
+                </span>
+              </Button>
             </div>
           </div>
         </div>
@@ -1089,6 +1089,22 @@ const SlideEditor = () => {
           </div>
         </div>
       )}
+      
+      {/* Payment Prompt Modal */}
+      <PaymentPromptModal
+        isOpen={showPaymentModal}
+        onClose={() => setShowPaymentModal(false)}
+        onProceedToPayment={handleProceedToPayment}
+        isLoading={isRedirectingToStripe}
+      />
+      
+      {/* Export Options Modal */}
+      <ExportOptionsModal
+        isOpen={showExportModal}
+        onClose={() => setShowExportModal(false)}
+        onExport={handleExport}
+        isExporting={isExporting}
+      />
     </div>;
 };
 export default SlideEditor;
