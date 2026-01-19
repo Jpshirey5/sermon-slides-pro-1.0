@@ -8,8 +8,7 @@ import { BookOpen, ArrowLeft, Download, Play, GripVertical, Plus, Type, Palette,
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { BackgroundPicker } from "@/components/BackgroundPicker";
 import { exportToPowerPoint, SlideData } from "@/lib/export-pptx";
-import { exportToProPresenter6 } from "@/lib/export-propresenter";
-import { exportAsProBundle } from "@/services/proPresenterExport";
+import { exportAsPro6, exportAsPlainText, validateSlidesForExport } from "@/services/proPresenterExport";
 import { PaymentPromptModal } from "@/components/PaymentPromptModal";
 import { ExportOptionsModal } from "@/components/ExportOptionsModal";
 import { toast } from "sonner";
@@ -465,9 +464,13 @@ const SlideEditor = () => {
     }
   };
 
-  const handleExport = async (format: "pptx" | "probundle" | "pro6") => {
-    if (slides.length === 0) {
-      toast.error("No slides to export. Please add some slides first.");
+  const handleExport = async (format: "pptx" | "pro6" | "txt") => {
+    // Validate slides before export
+    const validation = validateSlidesForExport(slides);
+    if (!validation.isValid) {
+      toast.error("Cannot export", {
+        description: validation.errors.join(' ')
+      });
       return;
     }
     
@@ -478,15 +481,15 @@ const SlideEditor = () => {
         toast.success("PowerPoint file exported successfully!", {
           description: `${slides.length} slides exported to ${presentationTitle}.pptx`
         });
-      } else if (format === "probundle") {
-        await exportAsProBundle(slides, presentationTitle);
-        toast.success("ProPresenter 7 file exported successfully!", {
-          description: `${slides.length} slides exported to ${presentationTitle}.probundle`
-        });
       } else if (format === "pro6") {
-        exportToProPresenter6(slides, presentationTitle);
-        toast.success("ProPresenter 6 file exported successfully!", {
-          description: `${slides.length} slides exported to ${presentationTitle}.rtf`
+        exportAsPro6(slides, presentationTitle);
+        toast.success("ProPresenter file exported successfully!", {
+          description: `${slides.length} slides exported to ${presentationTitle}.pro6`
+        });
+      } else if (format === "txt") {
+        exportAsPlainText(slides, presentationTitle);
+        toast.success("Plain text file exported successfully!", {
+          description: `${slides.length} slides exported to ${presentationTitle}.txt`
         });
       }
       setShowExportModal(false);
