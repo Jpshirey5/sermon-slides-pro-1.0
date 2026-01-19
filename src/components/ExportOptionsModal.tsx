@@ -1,11 +1,11 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { FileText, Presentation, Download, Loader2 } from "lucide-react";
+import { FileText, Presentation, Download, Loader2, FileType } from "lucide-react";
 
 interface ExportOptionsModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onExport: (format: "pptx" | "probundle" | "pro6") => void;
+  onExport: (format: "pptx" | "pro6" | "txt") => void;
   isExporting: boolean;
 }
 
@@ -32,39 +32,39 @@ export function ExportOptionsModal({
           <Button
             variant="outline"
             className="w-full justify-start h-auto py-4"
+            onClick={() => onExport("pro6")}
+            disabled={isExporting}
+          >
+            <Presentation className="w-5 h-5 mr-3 text-purple-500" />
+            <div className="text-left">
+              <div className="font-medium">ProPresenter (.pro6)</div>
+              <div className="text-xs text-muted-foreground">XML format - Auto-upgrades in ProPresenter 7</div>
+            </div>
+          </Button>
+          
+          <Button
+            variant="outline"
+            className="w-full justify-start h-auto py-4"
             onClick={() => onExport("pptx")}
             disabled={isExporting}
           >
             <FileText className="w-5 h-5 mr-3 text-blue-500" />
             <div className="text-left">
-              <div className="font-medium">PowerPoint</div>
-              <div className="text-xs text-muted-foreground">.pptx - Compatible with Microsoft PowerPoint</div>
+              <div className="font-medium">PowerPoint (.pptx)</div>
+              <div className="text-xs text-muted-foreground">Compatible with Microsoft PowerPoint</div>
             </div>
           </Button>
           
           <Button
             variant="outline"
             className="w-full justify-start h-auto py-4"
-            onClick={() => onExport("probundle")}
+            onClick={() => onExport("txt")}
             disabled={isExporting}
           >
-            <Presentation className="w-5 h-5 mr-3 text-purple-500" />
+            <FileType className="w-5 h-5 mr-3 text-gray-500" />
             <div className="text-left">
-              <div className="font-medium">ProPresenter 7</div>
-              <div className="text-xs text-muted-foreground">.probundle - Import directly into ProPresenter 7</div>
-            </div>
-          </Button>
-          
-          <Button
-            variant="outline"
-            className="w-full justify-start h-auto py-4"
-            onClick={() => onExport("pro6")}
-            disabled={isExporting}
-          >
-            <Presentation className="w-5 h-5 mr-3 text-orange-500" />
-            <div className="text-left">
-              <div className="font-medium">ProPresenter 6</div>
-              <div className="text-xs text-muted-foreground">.rtf - Compatible with ProPresenter 6</div>
+              <div className="font-medium">Plain Text (.txt)</div>
+              <div className="text-xs text-muted-foreground">Simple text export for copying</div>
             </div>
           </Button>
         </div>

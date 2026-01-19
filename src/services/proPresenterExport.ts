@@ -1,4 +1,3 @@
-import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 
 export interface SlideData {
@@ -14,6 +13,11 @@ export interface SlideData {
   backgroundImage?: string;
   fontFamily: string;
   textColor: string;
+}
+
+export interface ExportValidationResult {
+  isValid: boolean;
+  errors: string[];
 }
 
 /**
@@ -165,7 +169,7 @@ function escapeXML(text: string): string {
  * Sanitize filename for safe file system usage
  * Keeps spaces and common characters, removes only filesystem-unsafe ones
  */
-function sanitizeFileName(name: string): string {
+export function sanitizeFileName(name: string): string {
   return name
     .replace(/[<>:"/\\|?*&()!]/g, '')
     .replace(/\s+/g, ' ')
@@ -173,8 +177,41 @@ function sanitizeFileName(name: string): string {
 }
 
 /**
+ * Validate slides before export
+ */
+export function validateSlidesForExport(slides: SlideData[]): ExportValidationResult {
+  const errors: string[] = [];
+  
+  if (!slides || slides.length === 0) {
+    errors.push('No slides to export. Please add at least one slide.');
+  }
+  
+  // Check that at least one slide has text content
+  const slidesWithText = slides.filter(slide => {
+    const text = getSlideText(slide);
+    return text && text.trim().length > 0;
+  });
+  
+  if (slides.length > 0 && slidesWithText.length === 0) {
+    errors.push('All slides are empty. Please add content to at least one slide.');
+  }
+  
+  // Check for unique IDs
+  const ids = slides.map(s => s.id);
+  const uniqueIds = new Set(ids);
+  if (ids.length !== uniqueIds.size) {
+    errors.push('Duplicate slide IDs detected. This may cause import issues.');
+  }
+  
+  return {
+    isValid: errors.length === 0,
+    errors
+  };
+}
+
+/**
  * Generate Pro6 XML document for ProPresenter 7 import
- * This format is designed to be "upgraded" by ProPresenter 7 during import
+ * ProPresenter 7 automatically upgrades .pro6 files on import
  */
 function generatePro6XML(presentationName: string, slides: SlideData[]): string {
   const presentationUUID = generateUUID();
@@ -204,7 +241,7 @@ function generatePro6XML(presentationName: string, slides: SlideData[]): string 
     </RVDisplaySlide>`;
   }).join('\n');
 
-  // Full Pro6 XML document with all required attributes for Pro7 upgrade
+  // Full Pro6 XML document - ProPresenter 7 will automatically upgrade this format
   return `<?xml version="1.0" encoding="UTF-8"?>
 <RVPresentationDocument height="1080" width="1920" versionNumber="600" docType="0" creatorCode="1349676880" lastDateUsed="${new Date().toISOString()}" usedCount="0" category="Presentation" resourcesDirectory="" backgroundColor="0 0 0 1" drawingBackgroundColor="0" notes="" artist="" author="" album="" CCLIDisplay="0" CCLIArtistCredits="" CCLISongTitle="${safeName}" CCLIPublisher="" CCLICopyrightInfo="" CCLILicenseNumber="" chordChartPath="" selectedArrangementID="" UUID="${presentationUUID}">
   <timeline duration="0" loop="0" selectedMediaTrackIndex="0" timeOffset="0" rvXMLIvarName="timeline">
@@ -225,56 +262,41 @@ ${slideElements}
 }
 
 /**
- * Export slides as a ProPresenter .probundle file
- * A .probundle is a ZIP archive containing a .pro6 XML presentation file
+ * Export slides as a ProPresenter .pro6 file (XML format)
+ * This is a direct XML file, NOT a ZIP bundle
+ * ProPresenter 7 will automatically upgrade this format on import
  */
-export async function exportAsProBundle(
+export function exportAsPro6(
   slides: SlideData[],
   presentationTitle: string
-): Promise<void> {
-  const zip = new JSZip();
+): void {
+  // Validate before export
+  const validation = validateSlidesForExport(slides);
+  if (!validation.isValid) {
+    throw new Error(validation.errors.join(' '));
+  }
   
-  // Sanitize filename - ProPresenter is picky about filenames
+  // Sanitize filename
   const safeTitle = sanitizeFileName(presentationTitle);
   
   // Generate Pro6 XML
   const xmlContent = generatePro6XML(safeTitle, slides);
   
-  // Add the .pro6 file to the ZIP root (MUST be at root, not in a folder)
-  zip.file(`${safeTitle}.pro6`, xmlContent, { binary: false });
-  
-  // Add background images if any slides have them
-  const hasMedia = slides.some(s => s.backgroundImage);
-  if (hasMedia) {
-    const mediaFolder = zip.folder('media');
-    if (mediaFolder) {
-      for (let i = 0; i < slides.length; i++) {
-        const slide = slides[i];
-        if (slide.backgroundImage) {
-          try {
-            const response = await fetch(slide.backgroundImage);
-            if (response.ok) {
-              const blob = await response.blob();
-              const extension = slide.backgroundImage.split('.').pop()?.split('?')[0] || 'jpg';
-              mediaFolder.file(`slide_${i}_bg.${extension}`, blob);
-            }
-          } catch (error) {
-            console.warn('Failed to add media for slide:', i, error);
-          }
-        }
-      }
+  // Validate XML is well-formed by attempting to parse it
+  try {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(xmlContent, 'application/xml');
+    const parseError = doc.querySelector('parsererror');
+    if (parseError) {
+      throw new Error('Generated XML is malformed');
     }
+  } catch (e) {
+    throw new Error('Failed to generate valid XML. Please try again.');
   }
   
-  // Generate the ZIP file with standard compression
-  const blob = await zip.generateAsync({ 
-    type: 'blob',
-    compression: 'DEFLATE',
-    compressionOptions: { level: 6 }
-  });
-  
-  // Save as .probundle
-  saveAs(blob, `${safeTitle}.probundle`);
+  // Save as .pro6 file (direct XML, not zipped)
+  const blob = new Blob([xmlContent], { type: 'application/xml;charset=utf-8' });
+  saveAs(blob, `${safeTitle}.pro6`);
 }
 
 /**
