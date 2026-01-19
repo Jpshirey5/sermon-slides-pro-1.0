@@ -24,7 +24,7 @@ import {
   Book,
 } from "lucide-react";
 import { lookupScripture } from "@/lib/scripture-api";
-import { savePresentation } from "@/pages/Dashboard";
+import { savePresentation } from "@/lib/presentations";
 
 interface Scripture {
   reference: string;
@@ -331,11 +331,11 @@ const CreateSermon = () => {
           <div className="flex items-center justify-between h-16">
             {/* Back */}
             <Link
-              to="/dashboard"
+              to="/"
               className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
             >
               <ArrowLeft className="w-5 h-5" />
-              <span className="hidden sm:inline">Back to Dashboard</span>
+              <span className="hidden sm:inline">Back to Home</span>
             </Link>
 
             {/* Logo */}

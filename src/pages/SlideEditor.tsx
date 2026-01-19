@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
+import { PaymentModal } from "@/components/PaymentModal";
 import { motion, Reorder, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -9,7 +10,7 @@ import { BackgroundPicker } from "@/components/BackgroundPicker";
 import { exportToPowerPoint, SlideData } from "@/lib/export-pptx";
 import { exportToProPresenter, exportToProPresenter6 } from "@/lib/export-propresenter";
 import { toast } from "sonner";
-import { getPresentation, getPresentations, SermonPresentation } from "@/pages/Dashboard";
+import { getPresentation, getPresentations, SermonPresentation } from "@/lib/presentations";
 
 // Storage key for editor-specific slide data
 const EDITOR_STORAGE_KEY = 'sermon-editor-slides';
@@ -197,9 +198,8 @@ function saveEditorSlides(presentationId: string, slides: SlideData[]): void {
 }
 
 const SlideEditor = () => {
-  const {
-    id
-  } = useParams();
+  const { id } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [slides, setSlides] = useState<SlideData[]>(defaultSlides);
   const [selectedSlide, setSelectedSlide] = useState(0);
   const [isPreviewMode, setIsPreviewMode] = useState(false);
@@ -210,11 +210,31 @@ const SlideEditor = () => {
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
+  // Payment state
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [isExportUnlocked, setIsExportUnlocked] = useState(false);
+  
   // Undo/Redo history
   const [history, setHistory] = useState<SlideData[][]>([defaultSlides]);
   const [historyIndex, setHistoryIndex] = useState(0);
   const isUndoRedoRef = useRef(false);
   const isInitialLoadRef = useRef(true);
+  
+  // Check if returning from successful payment
+  useEffect(() => {
+    if (searchParams.get('export') === 'true') {
+      setIsExportUnlocked(true);
+      // Clear the query param
+      searchParams.delete('export');
+      setSearchParams(searchParams, { replace: true });
+      toast.success('Export unlocked! Choose your format below.');
+    }
+    if (searchParams.get('payment') === 'canceled') {
+      searchParams.delete('payment');
+      setSearchParams(searchParams, { replace: true });
+      toast.info('Payment was canceled. You can try again when ready.');
+    }
+  }, [searchParams, setSearchParams]);
 
   // Load presentation data - check for saved editor slides first
   useEffect(() => {
@@ -373,6 +393,15 @@ const SlideEditor = () => {
     setIsDragging(false);
     setDragOverIndex(null);
   }, []);
+  // Handle export click - check payment first
+  const handleExportClick = (format: "pptx" | "pro" | "pro6") => {
+    if (!isExportUnlocked) {
+      setShowPaymentModal(true);
+      return;
+    }
+    handleExport(format);
+  };
+
   const handleExport = async (format: "pptx" | "pro" | "pro6") => {
     if (slides.length === 0) {
       toast.error("No slides to export. Please add some slides first.");
@@ -596,9 +625,9 @@ const SlideEditor = () => {
         <div className="h-full px-4">
           <div className="flex items-center justify-between h-full">
             {/* Back */}
-            <Link to="/dashboard" className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors">
+            <Link to="/" className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors">
               <ArrowLeft className="w-5 h-5" />
-              <span className="hidden sm:inline">Dashboard</span>
+              <span className="hidden sm:inline">Home</span>
             </Link>
 
             {/* Title + Save Indicator */}
@@ -665,18 +694,21 @@ const SlideEditor = () => {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={() => handleExport("pptx")}>
+                  <DropdownMenuItem onClick={() => handleExportClick("pptx")}>
                     <FileText className="w-4 h-4 mr-2" />
                     PowerPoint (.pptx)
+                    {!isExportUnlocked && <span className="ml-auto text-xs text-muted-foreground">$9</span>}
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => handleExport("pro")}>
+                  <DropdownMenuItem onClick={() => handleExportClick("pro")}>
                     <Presentation className="w-4 h-4 mr-2" />
                     ProPresenter 7 (.pro)
+                    {!isExportUnlocked && <span className="ml-auto text-xs text-muted-foreground">$9</span>}
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleExport("pro6")}>
+                  <DropdownMenuItem onClick={() => handleExportClick("pro6")}>
                     <Presentation className="w-4 h-4 mr-2" />
                     ProPresenter 6 (.rtf)
+                    {!isExportUnlocked && <span className="ml-auto text-xs text-muted-foreground">$9</span>}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -1004,6 +1036,13 @@ const SlideEditor = () => {
           </div>
         </main>
       </div>
+      
+      {/* Payment Modal */}
+      <PaymentModal 
+        open={showPaymentModal} 
+        onOpenChange={setShowPaymentModal}
+        sermonId={id}
+      />
     </div>;
 };
 export default SlideEditor;
