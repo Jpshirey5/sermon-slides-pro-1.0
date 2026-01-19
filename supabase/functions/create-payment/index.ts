@@ -45,7 +45,9 @@ serve(async (req) => {
 
     // Create one-time payment session
     // No authentication required - guest checkout
-    // Redirect back to editor with export=true after payment
+    // Use the provided sermonId for redirect URLs
+    const redirectPath = sermonId ? `/editor/${sermonId}` : '/';
+    
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
       customer_email: customerId ? undefined : email,
@@ -56,8 +58,8 @@ serve(async (req) => {
         },
       ],
       mode: "payment",
-      success_url: `${origin}/editor/${sermonId || 'new'}?export=true`,
-      cancel_url: `${origin}/editor/${sermonId || 'new'}?payment=canceled`,
+      success_url: `${origin}${redirectPath}?export=true`,
+      cancel_url: `${origin}${redirectPath}?payment=canceled`,
       metadata: {
         sermon_id: sermonId || '',
         type: 'pay_per_sermon',
