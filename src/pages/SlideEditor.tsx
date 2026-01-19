@@ -396,6 +396,11 @@ const SlideEditor = () => {
   // Handle export click - check payment first
   const handleExportClick = (format: "pptx" | "pro" | "pro6") => {
     if (!isExportUnlocked) {
+      // Force save before opening payment modal
+      if (id && id !== "new") {
+        saveEditorSlides(id, slides);
+        console.log('[SlideEditor] Saved slides before payment redirect for ID:', id);
+      }
       setShowPaymentModal(true);
       return;
     }
