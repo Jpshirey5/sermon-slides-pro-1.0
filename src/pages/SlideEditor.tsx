@@ -8,7 +8,7 @@ import { BookOpen, ArrowLeft, Download, Play, GripVertical, Plus, Type, Palette,
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { BackgroundPicker } from "@/components/BackgroundPicker";
 import { exportToPowerPoint, SlideData } from "@/lib/export-pptx";
-import { exportAsPro6, exportAsPlainText, validateSlidesForExport } from "@/services/proPresenterExport";
+import { exportAsProBundle, exportAsPlainText, validateSlidesForExport } from "@/services/proPresenterExport";
 import { PaymentPromptModal } from "@/components/PaymentPromptModal";
 import { ExportOptionsModal } from "@/components/ExportOptionsModal";
 import { toast } from "sonner";
@@ -464,7 +464,7 @@ const SlideEditor = () => {
     }
   };
 
-  const handleExport = async (format: "pptx" | "pro6" | "txt") => {
+  const handleExport = async (format: "pptx" | "probundle" | "txt") => {
     // Validate slides before export
     const validation = validateSlidesForExport(slides);
     if (!validation.isValid) {
@@ -481,10 +481,10 @@ const SlideEditor = () => {
         toast.success("PowerPoint file exported successfully!", {
           description: `${slides.length} slides exported to ${presentationTitle}.pptx`
         });
-      } else if (format === "pro6") {
-        exportAsPro6(slides, presentationTitle);
+      } else if (format === "probundle") {
+        await exportAsProBundle(slides, presentationTitle);
         toast.success("ProPresenter file exported successfully!", {
-          description: `${slides.length} slides exported to ${presentationTitle}.pro6`
+          description: `${slides.length} slides exported to ${presentationTitle}.probundle`
         });
       } else if (format === "txt") {
         exportAsPlainText(slides, presentationTitle);

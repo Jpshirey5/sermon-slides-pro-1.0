@@ -1,3 +1,4 @@
+import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 
 export interface SlideData {
@@ -45,7 +46,6 @@ function escapeRTF(text: string): string {
     else if (char === '}') result += '\\}';
     else if (char === '\n') result += '\\par ';
     else if (code > 127) {
-      // Handle unicode characters
       result += `\\u${code}?`;
     } else {
       result += char;
@@ -59,7 +59,6 @@ function escapeRTF(text: string): string {
  */
 function hexToRGB(hex: string): { r: number; g: number; b: number } {
   const cleanHex = hex.replace('#', '');
-  // Handle 3-character hex
   if (cleanHex.length === 3) {
     return {
       r: parseInt(cleanHex[0] + cleanHex[0], 16),
@@ -76,11 +75,9 @@ function hexToRGB(hex: string): { r: number; g: number; b: number } {
 
 /**
  * Encode text as Base64-encoded RTF for ProPresenter
- * Uses the exact RTF format that ProPresenter expects
  */
 function encodeRTF(text: string, textColor: string = '#FFFFFF', fontSize: number = 96): string {
   if (!text || text.trim() === '') {
-    // Return minimal valid RTF for empty text
     const rtf = `{\\rtf1\\ansi\\ansicpg1252\\cocoartf2639\n{\\fonttbl\\f0\\fswiss\\fcharset0 Arial;}\n{\\colortbl;\\red255\\green255\\blue255;}\n\\pard\\tx560\\tx1120\\qc\\pardirnatural\\partightenfactor0\n\\f0\\fs96\\cf1 }`;
     return btoa(rtf);
   }
@@ -88,14 +85,12 @@ function encodeRTF(text: string, textColor: string = '#FFFFFF', fontSize: number
   const rgb = hexToRGB(textColor);
   const escapedText = escapeRTF(text);
   
-  // ProPresenter-compatible RTF format with proper headers
   const rtf = `{\\rtf1\\ansi\\ansicpg1252\\cocoartf2639
 {\\fonttbl\\f0\\fswiss\\fcharset0 Arial;}
 {\\colortbl;\\red${rgb.r}\\green${rgb.g}\\blue${rgb.b};}
 \\pard\\tx560\\tx1120\\qc\\pardirnatural\\partightenfactor0
 \\f0\\fs${fontSize * 2}\\cf1 ${escapedText}}`;
   
-  // Use TextEncoder for proper UTF-8 handling, then base64 encode
   try {
     const encoder = new TextEncoder();
     const data = encoder.encode(rtf);
@@ -105,7 +100,6 @@ function encodeRTF(text: string, textColor: string = '#FFFFFF', fontSize: number
     }
     return btoa(binary);
   } catch {
-    // Fallback for older browsers
     return btoa(unescape(encodeURIComponent(rtf)));
   }
 }
@@ -150,24 +144,11 @@ function parseBackgroundColor(bg: string): { r: number; g: number; b: number } {
   if (bg.startsWith('#')) {
     return hexToRGB(bg);
   }
-  return { r: 92, g: 30, b: 43 }; // Default dark red
-}
-
-/**
- * Escape special characters for XML
- */
-function escapeXML(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
+  return { r: 92, g: 30, b: 43 };
 }
 
 /**
  * Sanitize filename for safe file system usage
- * Keeps spaces and common characters, removes only filesystem-unsafe ones
  */
 export function sanitizeFileName(name: string): string {
   return name
@@ -186,7 +167,6 @@ export function validateSlidesForExport(slides: SlideData[]): ExportValidationRe
     errors.push('No slides to export. Please add at least one slide.');
   }
   
-  // Check that at least one slide has text content
   const slidesWithText = slides.filter(slide => {
     const text = getSlideText(slide);
     return text && text.trim().length > 0;
@@ -196,7 +176,6 @@ export function validateSlidesForExport(slides: SlideData[]): ExportValidationRe
     errors.push('All slides are empty. Please add content to at least one slide.');
   }
   
-  // Check for unique IDs
   const ids = slides.map(s => s.id);
   const uniqueIds = new Set(ids);
   if (ids.length !== uniqueIds.size) {
@@ -210,28 +189,113 @@ export function validateSlidesForExport(slides: SlideData[]): ExportValidationRe
 }
 
 /**
- * Generate Pro6 XML document for ProPresenter 7 import
- * ProPresenter 7 automatically upgrades .pro6 files on import
+ * Get image extension from URL or data URL
  */
-function generatePro6XML(presentationName: string, slides: SlideData[]): string {
+function getImageExtension(url: string): string {
+  if (url.startsWith('data:image/')) {
+    const match = url.match(/data:image\/(\w+)/);
+    if (match) return match[1] === 'jpeg' ? 'jpg' : match[1];
+  }
+  const ext = url.split('.').pop()?.toLowerCase()?.split('?')[0];
+  if (ext && ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) {
+    return ext === 'jpeg' ? 'jpg' : ext;
+  }
+  return 'jpg';
+}
+
+/**
+ * Fetch image as blob
+ */
+async function fetchImageAsBlob(url: string): Promise<Blob | null> {
+  try {
+    if (url.startsWith('data:')) {
+      const response = await fetch(url);
+      return await response.blob();
+    }
+    const response = await fetch(url, { mode: 'cors' });
+    if (!response.ok) return null;
+    return await response.blob();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Generate Info.plist content
+ */
+function generateInfoPlist(): string {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key>
+  <string>com.renewedvision.propresenter7.document</string>
+  <key>CFBundleVersion</key>
+  <string>1.0</string>
+  <key>RVBundleFormatVersion</key>
+  <integer>1</integer>
+</dict>
+</plist>`;
+}
+
+/**
+ * Generate Manifest.plist content
+ */
+function generateManifestPlist(presentationFileName: string, mediaFiles: string[]): string {
+  let mediaEntries = '';
+  mediaFiles.forEach((filename) => {
+    mediaEntries += `    <string>Media/${filename}</string>\n`;
+  });
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>RVPresentationDocument</key>
+  <string>Documents/${presentationFileName}</string>
+  <key>RVMediaFiles</key>
+  <array>
+${mediaEntries}  </array>
+</dict>
+</plist>`;
+}
+
+/**
+ * Generate Pro7 presentation document
+ */
+function generatePro7Document(
+  presentationName: string,
+  slides: SlideData[],
+  mediaMap: Map<number, string>
+): string {
   const presentationUUID = generateUUID();
   const groupUUID = generateUUID();
-  const safeName = escapeXML(presentationName);
-  
+
   const slideElements = slides.map((slide, index) => {
     const slideUUID = generateUUID();
     const textElementUUID = generateUUID();
     const text = getSlideText(slide);
-    const label = escapeXML(getSlideLabel(slide, index));
+    const label = getSlideLabel(slide, index);
     const rtfData = encodeRTF(text, slide.textColor);
     const bgColor = parseBackgroundColor(slide.background);
     
-    // ProPresenter uses 0-1 range for colors
-    const bgColorAttr = `${(bgColor.r / 255).toFixed(6)} ${(bgColor.g / 255).toFixed(6)} ${(bgColor.b / 255).toFixed(6)} 1`;
+    const bgR = (bgColor.r / 255).toFixed(6);
+    const bgG = (bgColor.g / 255).toFixed(6);
+    const bgB = (bgColor.b / 255).toFixed(6);
     
-    return `    <RVDisplaySlide backgroundColor="${bgColorAttr}" enabled="1" highlightColor="0 0 0 0" hotKey="" label="${label}" notes="" UUID="${slideUUID}" drawingBackgroundColor="0" chordChartPath="" socialItemCount="1">
+    let backgroundElement = '';
+    const mediaFilename = mediaMap.get(index);
+    if (mediaFilename) {
+      const mediaElementUUID = generateUUID();
+      backgroundElement = `
+        <RVMediaElement UUID="${mediaElementUUID}" typeID="0" displayName="Background" locked="0" persistent="0" revealType="0" displayDelay="0" source="Media/${mediaFilename}" bezelRadius="0" rotation="0" drawingFill="0" drawingShadow="0" drawingStroke="0" fillColor="0 0 0 0" strokeColor="0 0 0 0" strokeWidth="0" shadowColor="0 0 0 0" shadowBlurRadius="0" shadowAngle="0" shadowOffset="0" scaleBehavior="3" flippedHorizontally="0" flippedVertically="0" naturalSize="{1920, 1080}" manufactureName="" manufactureURL="" manufactureID="">
+          <_-RVRect3D-_position x="0" y="0" z="0" width="1920" height="1080"/>
+        </RVMediaElement>`;
+    }
+
+    return `    <RVDisplaySlide backgroundColor="${bgR} ${bgG} ${bgB} 1" enabled="1" highlightColor="0 0 0 0" hotKey="" label="${escapeXML(label)}" notes="" UUID="${slideUUID}" drawingBackgroundColor="0" chordChartPath="" socialItemCount="1">
       <cues containerClass="NSMutableArray"></cues>
-      <displayElements containerClass="NSMutableArray">
+      <displayElements containerClass="NSMutableArray">${backgroundElement}
         <RVTextElement UUID="${textElementUUID}" typeID="0" displayName="TextElement" locked="0" persistent="0" revealType="0" displayDelay="0" source="" bezelRadius="0" rotation="0" drawingFill="0" drawingShadow="1" drawingStroke="0" fillColor="0 0 0 0" strokeColor="0 0 0 0" strokeWidth="0" shadowColor="0 0 0 0.5" shadowBlurRadius="4" shadowAngle="315" shadowOffset="3" verticalAlignment="1" RTFData="${rtfData}" fromTemplate="0">
           <_-RVRect3D-_position x="50" y="50" z="0" width="1820" height="980"/>
           <shadow containerClass="NSMutableDictionary"/>
@@ -241,9 +305,10 @@ function generatePro6XML(presentationName: string, slides: SlideData[]): string 
     </RVDisplaySlide>`;
   }).join('\n');
 
-  // Full Pro6 XML document - ProPresenter 7 will automatically upgrade this format
+  const escapedName = escapeXML(presentationName);
+
   return `<?xml version="1.0" encoding="UTF-8"?>
-<RVPresentationDocument height="1080" width="1920" versionNumber="600" docType="0" creatorCode="1349676880" lastDateUsed="${new Date().toISOString()}" usedCount="0" category="Presentation" resourcesDirectory="" backgroundColor="0 0 0 1" drawingBackgroundColor="0" notes="" artist="" author="" album="" CCLIDisplay="0" CCLIArtistCredits="" CCLISongTitle="${safeName}" CCLIPublisher="" CCLICopyrightInfo="" CCLILicenseNumber="" chordChartPath="" selectedArrangementID="" UUID="${presentationUUID}">
+<RVPresentationDocument height="1080" width="1920" versionNumber="700" docType="0" creatorCode="1349676880" lastDateUsed="${new Date().toISOString()}" usedCount="0" category="Presentation" resourcesDirectory="" backgroundColor="0 0 0 1" drawingBackgroundColor="0" notes="" artist="" author="" album="" CCLIDisplay="0" CCLIArtistCredits="" CCLISongTitle="${escapedName}" CCLIPublisher="" CCLICopyrightInfo="" CCLILicenseNumber="" chordChartPath="" selectedArrangementID="" UUID="${presentationUUID}">
   <timeline duration="0" loop="0" selectedMediaTrackIndex="0" timeOffset="0" rvXMLIvarName="timeline">
     <timeCues containerClass="NSMutableArray"></timeCues>
     <mediaTracks containerClass="NSMutableArray"></mediaTracks>
@@ -251,7 +316,7 @@ function generatePro6XML(presentationName: string, slides: SlideData[]): string 
   <bibleReference containerClass="NSMutableDictionary"></bibleReference>
   <_-RVProTransitionObject-_transitionObject transitionType="-1" transitionDuration="1" motionEnabled="0" motionDuration="0" motionSpeed="0"/>
   <groups containerClass="NSMutableArray">
-    <RVSlideGrouping name="${safeName}" uuid="${groupUUID}" color="0 0 0 0">
+    <RVSlideGrouping name="${escapedName}" uuid="${groupUUID}" color="0 0 0 0">
       <slides containerClass="NSMutableArray">
 ${slideElements}
       </slides>
@@ -262,45 +327,67 @@ ${slideElements}
 }
 
 /**
- * Export slides as a ProPresenter .pro6 file (XML format)
- * This is a direct XML file, NOT a ZIP bundle
- * ProPresenter 7 will automatically upgrade this format on import
+ * Escape special characters for XML
  */
-export function exportAsPro6(
+function escapeXML(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+/**
+ * Export slides as a ProPresenter .probundle file
+ * This is a ZIP archive with the .probundle extension
+ */
+export async function exportAsProBundle(
   slides: SlideData[],
   presentationTitle: string
-): void {
-  // Validate before export
+): Promise<void> {
   const validation = validateSlidesForExport(slides);
   if (!validation.isValid) {
     throw new Error(validation.errors.join(' '));
   }
-  
-  // Sanitize filename
+
   const safeTitle = sanitizeFileName(presentationTitle);
+  const zip = new JSZip();
+
+  // Collect media files
+  const mediaMap = new Map<number, string>();
+  const mediaFiles: string[] = [];
   
-  // Generate Pro6 XML
-  const xmlContent = generatePro6XML(safeTitle, slides);
-  
-  // Validate XML is well-formed by attempting to parse it
-  try {
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(xmlContent, 'application/xml');
-    const parseError = doc.querySelector('parsererror');
-    if (parseError) {
-      throw new Error('Generated XML is malformed');
+  for (let i = 0; i < slides.length; i++) {
+    const slide = slides[i];
+    if (slide.backgroundImage) {
+      const ext = getImageExtension(slide.backgroundImage);
+      const filename = `bg_${String(i + 1).padStart(3, '0')}.${ext}`;
+      
+      const blob = await fetchImageAsBlob(slide.backgroundImage);
+      if (blob) {
+        zip.file(`Media/${filename}`, blob);
+        mediaMap.set(i, filename);
+        mediaFiles.push(filename);
+      }
     }
-  } catch (e) {
-    throw new Error('Failed to generate valid XML. Please try again.');
   }
+
+  // Generate and add files
+  const presentationFileName = 'Presentation.pro7';
+  const pro7Content = generatePro7Document(safeTitle, slides, mediaMap);
   
-  // Save as .pro6 file (direct XML, not zipped)
-  const blob = new Blob([xmlContent], { type: 'application/xml;charset=utf-8' });
-  saveAs(blob, `${safeTitle}.pro6`);
+  zip.file('Info.plist', generateInfoPlist());
+  zip.file('Manifest.plist', generateManifestPlist(presentationFileName, mediaFiles));
+  zip.file(`Documents/${presentationFileName}`, pro7Content);
+
+  // Generate and save the bundle
+  const content = await zip.generateAsync({ type: 'blob' });
+  saveAs(content, `${safeTitle}.probundle`);
 }
 
 /**
- * Export slides as plain text (for copying to other applications)
+ * Export slides as plain text
  */
 export function exportAsPlainText(
   slides: SlideData[],
