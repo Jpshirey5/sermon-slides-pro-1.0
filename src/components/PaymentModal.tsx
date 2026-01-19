@@ -37,9 +37,11 @@ export function PaymentModal({ open, onOpenChange, sermonId }: PaymentModalProps
       if (error) throw error;
       
       if (data?.url) {
-        console.log('[PaymentModal] Redirecting to Stripe:', data.url);
-        // Redirect in same window so we return to the editor after payment
-        window.location.href = data.url;
+        console.log('[PaymentModal] Opening Stripe in new tab:', data.url);
+        // Open Stripe in new tab - presentation is already saved in localStorage
+        window.open(data.url, '_blank');
+        onOpenChange(false);
+        setIsLoading(false);
       } else {
         throw new Error('No checkout URL received from payment service');
       }
@@ -59,7 +61,7 @@ export function PaymentModal({ open, onOpenChange, sermonId }: PaymentModalProps
             Unlock Export
           </DialogTitle>
           <DialogDescription>
-            Your slides are ready! Pay once to export this presentation.
+            Your slides are ready! Pay once to export this presentation. After payment, return to this tab to download.
           </DialogDescription>
         </DialogHeader>
 
@@ -110,7 +112,8 @@ export function PaymentModal({ open, onOpenChange, sermonId }: PaymentModalProps
           </Button>
 
           <p className="text-xs text-center text-muted-foreground mt-4">
-            Secure payment via Stripe. No account required.
+            Secure payment via Stripe. A new tab will open for checkout.<br />
+            Return to this tab after payment to download your files.
           </p>
         </div>
       </DialogContent>
