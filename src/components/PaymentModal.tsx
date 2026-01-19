@@ -23,6 +23,8 @@ export function PaymentModal({ open, onOpenChange, sermonId }: PaymentModalProps
   const handlePayment = async () => {
     setIsLoading(true);
     try {
+      console.log('[PaymentModal] Creating payment session for sermon:', sermonId);
+      
       const { data, error } = await supabase.functions.invoke('create-payment', {
         body: {
           sermonId,
@@ -30,13 +32,19 @@ export function PaymentModal({ open, onOpenChange, sermonId }: PaymentModalProps
         },
       });
 
+      console.log('[PaymentModal] Response:', { data, error });
+
       if (error) throw error;
+      
       if (data?.url) {
+        console.log('[PaymentModal] Redirecting to Stripe:', data.url);
         // Redirect in same window so we return to the editor after payment
         window.location.href = data.url;
+      } else {
+        throw new Error('No checkout URL received from payment service');
       }
     } catch (error) {
-      console.error('Payment error:', error);
+      console.error('[PaymentModal] Payment error:', error);
       toast.error('Failed to create payment session. Please try again.');
       setIsLoading(false);
     }
