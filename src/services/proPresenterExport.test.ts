@@ -113,7 +113,7 @@ describe('ProPresenter Export', () => {
 
     // Check slide grouping structure
     expect(xmlContent).toContain('<groups containerClass="NSMutableArray">');
-    expect(xmlContent).toContain('<RVSlideGrouping name="Main"');
+    expect(xmlContent).toContain('<RVSlideGrouping name="Slide Test"');
     expect(xmlContent).toContain('<slides containerClass="NSMutableArray">');
     
     // Check each slide has required elements
@@ -208,6 +208,8 @@ describe('ProPresenter Export', () => {
     expect(filename).not.toContain(')');
     expect(filename).not.toContain('!');
     expect(filename).toContain('.probundle');
+    // Should preserve spaces and alphanumeric
+    expect(filename).toBe('My Sermon Love Faith 2024.probundle');
   });
 
   it('should handle empty slides array', async () => {
