@@ -45,53 +45,48 @@ function parseGradientColor(bg: string): string {
   return '#000000';
 }
 
-// Encode text to RTF format (simple encoding for special characters)
-function encodeRtfText(text: string): string {
-  let result = '';
-  for (let i = 0; i < text.length; i++) {
-    const charCode = text.charCodeAt(i);
-    if (charCode > 127) {
-      result += `\\u${charCode}?`;
-    } else if (text[i] === '\\') {
-      result += '\\\\';
-    } else if (text[i] === '{') {
-      result += '\\{';
-    } else if (text[i] === '}') {
-      result += '\\}';
-    } else if (text[i] === '\n') {
-      result += '\\line ';
-    } else {
-      result += text[i];
-    }
-  }
-  return result;
+// Escape special XML characters
+function escapeXml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
 }
 
-// Encode RTF to Base64
-function textToBase64(text: string): string {
-  // Convert the text to bytes and then base64
-  const encoder = new TextEncoder();
-  const bytes = encoder.encode(text);
-  let binary = '';
-  bytes.forEach((byte) => {
-    binary += String.fromCharCode(byte);
-  });
-  return btoa(binary);
-}
-
-// Create RTF string for slide text
-function createRtfString(text: string, fontName: string, fontSize: number, textColor: string): string {
+// Generate RTF string and Base64 encode it (as per ProPresenter requirements)
+function generateRTF(text: string, fontName: string = 'Helvetica', fontSize: number = 60, textColor: string = '#FFFFFF'): string {
   const rgb = hexToRgb(textColor);
   // RTF font size is in half-points
   const rtfFontSize = fontSize * 2;
   
+  // Escape RTF special characters in text
+  let escapedText = '';
+  for (let i = 0; i < text.length; i++) {
+    const charCode = text.charCodeAt(i);
+    if (charCode > 127) {
+      escapedText += `\\u${charCode}?`;
+    } else if (text[i] === '\\') {
+      escapedText += '\\\\';
+    } else if (text[i] === '{') {
+      escapedText += '\\{';
+    } else if (text[i] === '}') {
+      escapedText += '\\}';
+    } else if (text[i] === '\n') {
+      escapedText += '\\line ';
+    } else {
+      escapedText += text[i];
+    }
+  }
+  
   const rtf = `{\\rtf1\\ansi\\deff0
-{\\fonttbl{\\f0 ${fontName};}}
+{\\fonttbl{\\f0\\fswiss ${fontName};}}
 {\\colortbl;\\red${rgb.r}\\green${rgb.g}\\blue${rgb.b};}
-\\f0\\fs${rtfFontSize}\\cf1 ${encodeRtfText(text)}
+\\f0\\fs${rtfFontSize}\\cf1 ${escapedText}
 }`;
   
-  return rtf;
+  return btoa(rtf); // Base64 encode for XML safety
 }
 
 // Get slide text content
@@ -142,21 +137,22 @@ function createPro6Xml(slides: SlideData[], title: string): string {
   const presentationUuid = generateUUID();
   const groupUuid = generateUUID();
   const createdDate = new Date().toISOString();
+  const safeTitle = escapeXml(title);
   
-  // Build slides XML
+  // Build slides XML - each slide as RVDisplaySlide with RVTextElement
   const slidesXml = slides.map((slide, index) => {
     const slideUuid = generateUUID();
     const textElementUuid = generateUUID();
     const slideText = getSlideText(slide);
-    const slideLabel = getSlideLabel(slide, index);
+    const slideLabel = escapeXml(getSlideLabel(slide, index));
     const bgColor = parseGradientColor(slide.background);
     const rgb = hexToRgb(bgColor);
     
-    
-    // Create RTF data
+    // Determine font size based on slide type
     const fontSize = slide.type === 'title' ? 80 : slide.type === 'scripture' ? 48 : 64;
-    const rtfString = createRtfString(slideText, slide.fontFamily || 'Arial', fontSize, slide.textColor);
-    const rtfBase64 = textToBase64(rtfString);
+    
+    // Generate RTF with Base64 encoding
+    const rtfBase64 = generateRTF(slideText, slide.fontFamily || 'Helvetica', fontSize, slide.textColor);
     
     // Background color as 0-1 floats
     const bgR = (rgb.r / 255).toFixed(6);
@@ -164,49 +160,44 @@ function createPro6Xml(slides: SlideData[], title: string): string {
     const bgB = (rgb.b / 255).toFixed(6);
     
     return `
-    <RVDisplaySlide backgroundColor="${bgR} ${bgG} ${bgB} 1" enabled="1" highlightColor="0 0 0 0" hotKey="" label="${encodeRtfText(slideLabel)}" notes="" slideType="1" sort_index="${index}" UUID="${slideUuid}" drawingBackgroundColor="0" chordChartPath="" serialization-array-index="${index}">
-      <cues containerClass="NSMutableArray"></cues>
-      <displayElements containerClass="NSMutableArray">
-        <RVTextElement displayDelay="0" displayName="Default" locked="0" persistent="0" typeID="0" fromTemplate="0" bezelRadius="0" drawingFill="0" drawingShadow="1" drawingStroke="0" fillColor="0 0 0 0" rotation="0" source="" adjustsHeightToFit="0" verticalAlignment="1" RTFData="${rtfBase64}" revealType="0" serialization-array-index="0" UUID="${textElementUuid}">
-          <stroke containerClass="NSMutableDictionary">
-            <NSColor serialization-native-value="0 0 0 1" serialization-dictionary-key="RVShapeElementStrokeColorKey"></NSColor>
-            <NSNumber serialization-native-value="1" serialization-dictionary-key="RVShapeElementStrokeWidthKey"></NSNumber>
-          </stroke>
-          <_shadow containerClass="NSMutableDictionary">
-            <NSNumber serialization-native-value="0" serialization-dictionary-key="RVShadowOffsetXKey"></NSNumber>
-            <NSNumber serialization-native-value="0" serialization-dictionary-key="RVShadowOffsetYKey"></NSNumber>
-            <NSNumber serialization-native-value="4" serialization-dictionary-key="RVShadowBlurRadiusKey"></NSNumber>
-            <NSColor serialization-native-value="0 0 0 0.5" serialization-dictionary-key="RVShadowColorKey"></NSColor>
-          </_shadow>
-          <position containerClass="NSMutableDictionary">
-            <NSNumber serialization-native-value="0" serialization-dictionary-key="x"></NSNumber>
-            <NSNumber serialization-native-value="0" serialization-dictionary-key="y"></NSNumber>
-            <NSNumber serialization-native-value="1920" serialization-dictionary-key="width"></NSNumber>
-            <NSNumber serialization-native-value="1080" serialization-dictionary-key="height"></NSNumber>
-          </position>
-        </RVTextElement>
-      </displayElements>
-    </RVDisplaySlide>`;
-  }).join('\n');
+        <RVDisplaySlide UUID="${slideUuid}" label="${slideLabel}" backgroundColor="${bgR} ${bgG} ${bgB} 1" enabled="1" highlightColor="0 0 0 0" hotKey="" notes="" slideType="1" sort_index="${index}" drawingBackgroundColor="0" chordChartPath="" serialization-array-index="${index}">
+          <cues containerClass="NSMutableArray"></cues>
+          <displayElements containerClass="NSMutableArray">
+            <RVTextElement displayName="Text" RTFData="${rtfBase64}" displayDelay="0" locked="0" persistent="0" typeID="0" fromTemplate="0" bezelRadius="0" drawingFill="0" drawingShadow="1" drawingStroke="0" fillColor="0 0 0 0" rotation="0" source="" adjustsHeightToFit="0" verticalAlignment="1" revealType="0" serialization-array-index="0" UUID="${textElementUuid}">
+              <_-RVRect3D-_position x="100" y="100" z="0" width="1720" height="880"/>
+              <stroke containerClass="NSMutableDictionary">
+                <NSColor serialization-native-value="0 0 0 1" serialization-dictionary-key="RVShapeElementStrokeColorKey"/>
+                <NSNumber serialization-native-value="1" serialization-dictionary-key="RVShapeElementStrokeWidthKey"/>
+              </stroke>
+              <_shadow containerClass="NSMutableDictionary">
+                <NSNumber serialization-native-value="0" serialization-dictionary-key="RVShadowOffsetXKey"/>
+                <NSNumber serialization-native-value="0" serialization-dictionary-key="RVShadowOffsetYKey"/>
+                <NSNumber serialization-native-value="4" serialization-dictionary-key="RVShadowBlurRadiusKey"/>
+                <NSColor serialization-native-value="0 0 0 0.5" serialization-dictionary-key="RVShadowColorKey"/>
+              </_shadow>
+            </RVTextElement>
+          </displayElements>
+        </RVDisplaySlide>`;
+  }).join('');
   
-  // Full Pro6 XML structure
+  // Full Pro6 XML structure with slides inside <slides> container within <RVSlideGrouping>
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<RVPresentationDocument height="1080" width="1920" versionNumber="600" docType="0" creatorCode="1349676880" lastDateUsed="${createdDate}" usedCount="0" category="Sermon" resourcesDirectory="" backgroundColor="0 0 0 1" drawingBackgroundColor="0" notes="" artist="" author="" album="" CCLIDisplay="0" CCLIArtistCredits="" CCLISongTitle="${title}" CCLIPublisher="" CCLICopyrightInfo="" CCLILicenseNumber="" chordChartPath="" os="2" buildNumber="16177" selectedArrangementID="${groupUuid}" UUID="${presentationUuid}">
+<RVPresentationDocument height="1080" width="1920" versionNumber="600" docType="0" creatorCode="1349676880" lastDateUsed="${createdDate}" usedCount="0" category="Sermon" resourcesDirectory="" backgroundColor="0 0 0 1" drawingBackgroundColor="0" notes="" artist="" author="" album="" CCLIDisplay="0" CCLIArtistCredits="" CCLISongTitle="${safeTitle}" CCLIPublisher="" CCLICopyrightInfo="" CCLILicenseNumber="" chordChartPath="" os="2" buildNumber="16177" selectedArrangementID="${groupUuid}" UUID="${presentationUuid}">
   <timeline timeOffSet="0" selectedMediaTrackIndex="0" unitOfMeasure="60" duration="0" loop="0" containerClass="NSMutableDictionary">
-    <timeCues containerClass="NSMutableArray"></timeCues>
-    <mediaTracks containerClass="NSMutableArray"></mediaTracks>
+    <timeCues containerClass="NSMutableArray"/>
+    <mediaTracks containerClass="NSMutableArray"/>
   </timeline>
-  <bibleReference containerClass="NSMutableDictionary"></bibleReference>
-  <_groups containerClass="NSMutableArray">
-    <RVSlideGrouping name="${title}" uuid="${groupUuid}" color="0.36078431 0.11764706 0.16862745 1" serialization-array-index="0">
+  <bibleReference containerClass="NSMutableDictionary"/>
+  <groups containerClass="NSMutableArray">
+    <RVSlideGrouping name="${safeTitle}" uuid="${groupUuid}" color="0.36078431 0.11764706 0.16862745 1" serialization-array-index="0">
       <slides containerClass="NSMutableArray">${slidesXml}
       </slides>
     </RVSlideGrouping>
-  </_groups>
+  </groups>
   <arrangements containerClass="NSMutableArray">
     <RVSongArrangement name="Master" uuid="${groupUuid}" color="0 0 0 0" serialization-array-index="0">
       <groupIDs containerClass="NSMutableArray">
-        <NSMutableString serialization-native-value="${groupUuid}" serialization-array-index="0"></NSMutableString>
+        <NSMutableString serialization-native-value="${groupUuid}" serialization-array-index="0"/>
       </groupIDs>
     </RVSongArrangement>
   </arrangements>
