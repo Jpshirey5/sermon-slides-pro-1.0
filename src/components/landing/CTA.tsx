@@ -39,7 +39,7 @@ const CTA = () => {
           <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 border border-white/20 mb-8">
             <Sparkles className="w-4 h-4 text-white" />
             <span className="text-sm font-medium text-white">
-              Start your 14-day free trial today
+              Create and edit slides for free
             </span>
           </div>
 
@@ -48,24 +48,15 @@ const CTA = () => {
           </h2>
 
           <p className="text-lg text-white/80 mb-10 max-w-2xl mx-auto">
-            Join thousands of ministry leaders who save hours every week. 
-            No credit card required to start.
+            Create beautiful sermon slides in minutes. 
+            Pay only $9 when you're ready to export.
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <Link to="/signup">
+            <Link to="/create">
               <Button variant="gold" size="xl">
-                Start Free Trial
+                Get Started Free
                 <ArrowRight className="w-5 h-5" />
-              </Button>
-            </Link>
-            <Link to="/login">
-              <Button
-                variant="outline"
-                size="xl"
-                className="border-white/30 text-white hover:bg-white/10 hover:text-white"
-              >
-                Log In
               </Button>
             </Link>
           </div>

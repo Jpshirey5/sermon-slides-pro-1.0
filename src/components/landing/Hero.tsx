@@ -71,9 +71,9 @@ const Hero = () => {
             transition={{ duration: 0.5, delay: 0.3 }}
             className="flex flex-col sm:flex-row items-center justify-center gap-4"
           >
-            <Link to="/signup">
+            <Link to="/create">
               <Button variant="hero" size="xl">
-                Start Your Free Trial
+                Get Started Free
                 <ArrowRight className="w-5 h-5" />
               </Button>
             </Link>
