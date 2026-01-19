@@ -697,18 +697,15 @@ const SlideEditor = () => {
                   <DropdownMenuItem onClick={() => handleExportClick("pptx")}>
                     <FileText className="w-4 h-4 mr-2" />
                     PowerPoint (.pptx)
-                    {!isExportUnlocked && <span className="ml-auto text-xs text-muted-foreground">$9</span>}
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={() => handleExportClick("pro")}>
                     <Presentation className="w-4 h-4 mr-2" />
                     ProPresenter 7 (.pro)
-                    {!isExportUnlocked && <span className="ml-auto text-xs text-muted-foreground">$9</span>}
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => handleExportClick("pro6")}>
                     <Presentation className="w-4 h-4 mr-2" />
                     ProPresenter 6 (.rtf)
-                    {!isExportUnlocked && <span className="ml-auto text-xs text-muted-foreground">$9</span>}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>

@@ -32,13 +32,12 @@ export function PaymentModal({ open, onOpenChange, sermonId }: PaymentModalProps
 
       if (error) throw error;
       if (data?.url) {
-        window.open(data.url, '_blank');
-        toast.info('Complete payment in the new tab to unlock export');
+        // Redirect in same window so we return to the editor after payment
+        window.location.href = data.url;
       }
     } catch (error) {
       console.error('Payment error:', error);
       toast.error('Failed to create payment session. Please try again.');
-    } finally {
       setIsLoading(false);
     }
   };
