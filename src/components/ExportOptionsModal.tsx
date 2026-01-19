@@ -5,7 +5,7 @@ import { FileText, Presentation, Download, Loader2, FileType } from "lucide-reac
 interface ExportOptionsModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onExport: (format: "pptx" | "pro6" | "txt") => void;
+  onExport: (format: "pptx" | "probundle" | "txt") => void;
   isExporting: boolean;
 }
 
@@ -32,13 +32,13 @@ export function ExportOptionsModal({
           <Button
             variant="outline"
             className="w-full justify-start h-auto py-4"
-            onClick={() => onExport("pro6")}
+            onClick={() => onExport("probundle")}
             disabled={isExporting}
           >
             <Presentation className="w-5 h-5 mr-3 text-purple-500" />
             <div className="text-left">
-              <div className="font-medium">ProPresenter (.pro6)</div>
-              <div className="text-xs text-muted-foreground">XML format - Auto-upgrades in ProPresenter 7</div>
+              <div className="font-medium">ProPresenter (.probundle)</div>
+              <div className="text-xs text-muted-foreground">Bundle format with media support for ProPresenter 7+</div>
             </div>
           </Button>
           

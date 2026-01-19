@@ -5,8 +5,20 @@ vi.mock('file-saver', () => ({
   saveAs: vi.fn(),
 }));
 
+// Mock JSZip
+vi.mock('jszip', () => {
+  const mockFile = vi.fn().mockReturnThis();
+  const mockGenerateAsync = vi.fn().mockResolvedValue(new Blob(['test'], { type: 'application/zip' }));
+  return {
+    default: vi.fn().mockImplementation(() => ({
+      file: mockFile,
+      generateAsync: mockGenerateAsync,
+    })),
+  };
+});
+
 // Import after mocking
-import { exportAsPro6, exportAsPlainText, validateSlidesForExport, sanitizeFileName, SlideData } from './proPresenterExport';
+import { exportAsProBundle, exportAsPlainText, validateSlidesForExport, sanitizeFileName, SlideData } from './proPresenterExport';
 import { saveAs } from 'file-saver';
 
 describe('ProPresenter Export', () => {
@@ -58,47 +70,34 @@ describe('ProPresenter Export', () => {
     },
   ];
 
-  describe('exportAsPro6', () => {
-    it('should export a .pro6 file with correct filename', () => {
+  describe('exportAsProBundle', () => {
+    it('should export a .probundle file with correct filename', async () => {
       const slides = createMockSlides();
       const title = 'Test Presentation';
 
-      exportAsPro6(slides, title);
+      await exportAsProBundle(slides, title);
 
       // Verify saveAs was called with a Blob and correct filename
       expect(saveAs).toHaveBeenCalledTimes(1);
       const [blob, filename] = (saveAs as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
       
       expect(blob).toBeInstanceOf(Blob);
-      expect(filename).toBe('Test Presentation.pro6');
+      expect(filename).toBe('Test Presentation.probundle');
     });
 
-    it('should include valid Pro6 XML content', () => {
-      const slides = createMockSlides();
-      const title = 'My Sermon';
-
-      exportAsPro6(slides, title);
-
-      const [blob] = (saveAs as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
-      
-      // Blob should be XML content
-      expect(blob.type).toContain('xml');
-    });
-
-    it('should have unique UUIDs for each element', () => {
+    it('should have unique UUIDs for each element', async () => {
       const slides = createMockSlides();
       const title = 'UUID Test';
 
       // Since we're exporting a Blob, we can verify the function runs without error
-      // and the internal UUID generation is tested implicitly
-      expect(() => exportAsPro6(slides, title)).not.toThrow();
+      await expect(exportAsProBundle(slides, title)).resolves.not.toThrow();
     });
 
-    it('should sanitize filename properly', () => {
+    it('should sanitize filename properly', async () => {
       const slides = createMockSlides();
       const title = 'My Sermon: "Love & Faith" (2024)!';
 
-      exportAsPro6(slides, title);
+      await exportAsProBundle(slides, title);
 
       const [, filename] = (saveAs as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
       
@@ -109,9 +108,9 @@ describe('ProPresenter Export', () => {
       expect(filename).not.toContain('(');
       expect(filename).not.toContain(')');
       expect(filename).not.toContain('!');
-      expect(filename).toContain('.pro6');
+      expect(filename).toContain('.probundle');
       // Should preserve spaces and alphanumeric
-      expect(filename).toBe('My Sermon Love Faith 2024.pro6');
+      expect(filename).toBe('My Sermon Love Faith 2024.probundle');
     });
   });
 
