@@ -12,9 +12,7 @@ import { ExportOptionsModal } from "@/components/ExportOptionsModal";
 import { PaymentPromptModal } from "@/components/PaymentPromptModal";
 import { toast } from "sonner";
 import { getPresentation, getPresentations, SermonPresentation } from "@/lib/presentations";
-
-// Stripe Payment Link for $9 Pay-Per-Sermon
-const STRIPE_PAYMENT_LINK = "https://buy.stripe.com/test_14A9AVe6xapIdNs8KSaVa00";
+import { supabase } from "@/integrations/supabase/client";
 // Storage key for editor-specific slide data
 const EDITOR_STORAGE_KEY = 'sermon-editor-slides';
 
@@ -438,8 +436,8 @@ const SlideEditor = () => {
     }
   };
   
-  // Handle payment redirect to Stripe Payment Link
-  const handleProceedToPayment = () => {
+  // Handle payment redirect to Stripe via edge function
+  const handleProceedToPayment = async () => {
     if (!id || id === "new") {
       toast.error("Please save your presentation first");
       return;
@@ -456,8 +454,31 @@ const SlideEditor = () => {
     // Store the presentation ID so the success page knows where to redirect
     localStorage.setItem("pending_payment_sermon_id", id);
     
-    // Redirect directly to Stripe Payment Link
-    window.location.href = STRIPE_PAYMENT_LINK;
+    try {
+      // Call edge function to create Stripe Checkout session
+      const { data, error } = await supabase.functions.invoke('create-payment', {
+        body: { sermon_id: id }
+      });
+      
+      if (error) {
+        throw new Error(error.message || 'Failed to create payment session');
+      }
+      
+      if (!data?.url) {
+        throw new Error('No checkout URL returned');
+      }
+      
+      // Redirect to Stripe Checkout
+      window.location.href = data.url;
+    } catch (error) {
+      console.error('Payment error:', error);
+      setIsRedirectingToStripe(false);
+      localStorage.removeItem(`payment_pending:${id}`);
+      setHasPendingPayment(false);
+      toast.error('Failed to start payment', {
+        description: error instanceof Error ? error.message : 'Please try again'
+      });
+    }
   };
 
 
