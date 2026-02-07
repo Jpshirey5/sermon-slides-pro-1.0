@@ -1,146 +1,130 @@
 
 
-# Plan: Stripe Embedded Checkout in Modal
+# Plan: Remove Supabase and Simplify Payment Flow
 
 ## Overview
-Replace the redirect-based Stripe Checkout with an embedded payment form that displays directly in your app. Users will see the Stripe payment form inside a modal without leaving your site.
 
-## Current Issue
-The edge function is failing with "Failed to fetch" error, likely due to deployment issues. The current approach also redirects users away from your app to complete payment.
+Remove all Supabase integration from the app. Since Supabase Edge Functions were being used to create Stripe checkout sessions, we'll switch to using **Stripe Payment Links** - a simple URL-based payment approach that requires no backend.
 
-## Solution: Embedded Checkout
+## Current Supabase Usage
 
-Stripe offers an "Embedded Checkout" mode where the payment form renders directly in your application using an iframe. This:
-- Keeps users on your site
-- Provides a seamless modal experience
-- Still handles all payment processing securely through Stripe
+| Location | Purpose |
+|----------|---------|
+| `src/integrations/supabase/` | Supabase client and types |
+| `supabase/functions/create-payment/` | Edge function for Stripe payments |
+| `supabase/config.toml` | Supabase configuration |
+| `supabase/migrations/` | Database migrations |
+| `.env` | Supabase environment variables |
+| `src/components/StripeEmbeddedCheckout.tsx` | Uses Supabase to call edge function |
+| `src/pages/SlideEditor.tsx` | Imports Supabase client (unused) |
 
-## Prerequisites
+## New Payment Approach: Stripe Payment Links
 
-You'll need a **Stripe Publishable Key** to initialize Stripe.js on the frontend. This is a public key (starts with `pk_test_` or `pk_live_`) that's safe to include in client-side code.
+Instead of embedded checkout (which requires a backend), we'll use **Stripe Payment Links**:
 
-## Technical Implementation
+1. You create a Payment Link in your Stripe Dashboard for the $9 product
+2. When users click "Pay $9", they open the payment link in a new tab
+3. After payment, Stripe redirects back to your app with success parameters
+4. The app detects the return and unlocks exports
 
-### Step 1: Install React Stripe.js
-Add the required npm packages:
-- `@stripe/stripe-js` - Stripe.js loader
-- `@stripe/react-stripe-js` - React components
+This is simpler, requires no backend, and works reliably.
 
-### Step 2: Fix and Update Edge Function
-Modify `supabase/functions/create-payment/index.ts` to:
-- Add `ui_mode: "embedded"` to create an embedded session
-- Return the `client_secret` instead of the checkout URL
-- The `return_url` replaces `success_url` in embedded mode
+## Implementation Steps
 
-### Step 3: Create Embedded Checkout Component
-Create a new component that:
-- Fetches the checkout session client secret from the edge function
-- Uses `EmbeddedCheckoutProvider` and `EmbeddedCheckout` from React Stripe.js
-- Renders inside your existing payment modal
+### Step 1: Delete Supabase Files
 
-### Step 4: Update Payment Modal
-Modify `PaymentPromptModal` to:
-- Show the embedded checkout form when user clicks "Pay $9"
-- Handle completion callback when payment succeeds
-- Close modal and unlock exports on success
+Remove these files/folders:
+- `src/integrations/supabase/` (entire folder)
+- `supabase/` (entire folder - functions, config, migrations)
+- `src/components/StripeEmbeddedCheckout.tsx`
 
-## User Action Required
+### Step 2: Update .env
 
-You'll need to provide your **Stripe Publishable Key**. You can find it in:
-1. Go to [Stripe Dashboard](https://dashboard.stripe.com/apikeys)
-2. Copy the "Publishable key" (starts with `pk_test_` for test mode)
+Remove Supabase variables, add Stripe Payment Link:
+```
+VITE_STRIPE_PAYMENT_LINK="https://buy.stripe.com/YOUR_PAYMENT_LINK"
+```
 
-This is a public key and is safe to store in your code.
+### Step 3: Simplify PaymentPromptModal
 
-## Architecture
+Replace the embedded checkout with a simple "Pay Now" button that:
+- Saves the sermon ID to localStorage
+- Opens the Stripe Payment Link in a new tab with return URL
+
+### Step 4: Update SlideEditor
+
+- Remove the Supabase import
+- Keep the existing payment success detection from URL params
+
+### Step 5: Keep PaymentSuccess Page
+
+This page still works - it reads from localStorage and redirects properly.
+
+### Step 6: Remove Stripe React Packages (Optional)
+
+Since we're not using embedded checkout, we can remove:
+- `@stripe/stripe-js`
+- `@stripe/react-stripe-js`
+
+## Files to Modify/Delete
+
+| Action | File |
+|--------|------|
+| Delete | `src/integrations/supabase/client.ts` |
+| Delete | `src/integrations/supabase/types.ts` |
+| Delete | `src/integrations/` folder |
+| Delete | `supabase/functions/create-payment/index.ts` |
+| Delete | `supabase/config.toml` |
+| Delete | `supabase/` folder |
+| Delete | `src/components/StripeEmbeddedCheckout.tsx` |
+| Modify | `src/components/PaymentPromptModal.tsx` |
+| Modify | `src/pages/SlideEditor.tsx` |
+| Modify | `.env` |
+| Modify | `package.json` (remove Supabase packages) |
+
+## New Payment Flow
 
 ```text
+User clicks "Export" → Not unlocked
+         |
+         v
+PaymentPromptModal opens
+         |
+         v
 User clicks "Pay $9"
          |
          v
-PaymentPromptModal shows loading state
+App saves sermon ID to localStorage
+Opens Stripe Payment Link in new tab
          |
          v
-Frontend calls create-payment edge function
+User completes payment on Stripe
          |
          v
-Edge function creates Checkout Session with ui_mode: "embedded"
-Returns: { clientSecret: "cs_..." }
+Stripe redirects to /payment-success
          |
          v
-EmbeddedCheckoutProvider initializes with clientSecret
+PaymentSuccess page reads localStorage
+Redirects to /editor/:id?payment=success
          |
          v
-EmbeddedCheckout renders Stripe payment form in modal
-         |
-         v
-User completes payment in the modal
-         |
-         v
-onComplete callback fires
-         |
-         v
-Modal closes, export unlocked, ExportOptionsModal opens
+SlideEditor detects success, unlocks export
 ```
 
-## Files to Create/Modify
+## User Action Required
 
-| File | Change |
-|------|--------|
-| `package.json` | Add `@stripe/stripe-js` and `@stripe/react-stripe-js` |
-| `supabase/functions/create-payment/index.ts` | Update to use `ui_mode: "embedded"` and return `client_secret` |
-| `src/components/StripeEmbeddedCheckout.tsx` | New component for embedded checkout form |
-| `src/components/PaymentPromptModal.tsx` | Update to show embedded checkout instead of redirect |
-| `src/pages/SlideEditor.tsx` | Simplify payment handling (no redirect needed) |
+You'll need to create a **Stripe Payment Link** in your Stripe Dashboard:
 
-## Benefits Over Current Approach
+1. Go to [Stripe Dashboard → Payment Links](https://dashboard.stripe.com/payment-links)
+2. Create a new payment link for $9
+3. Set the "After payment" redirect to: `https://id-preview--4106109b-8adc-4e56-b2c6-847326cb6d74.lovable.app/payment-success`
+4. Copy the payment link URL (looks like `https://buy.stripe.com/xxx`)
 
-| Feature | Current (Redirect) | New (Embedded) |
-|---------|-------------------|----------------|
-| User stays on site | No | Yes |
-| Modal experience | No | Yes |
-| Edge function complexity | Same | Same |
-| LocalStorage dance | Required | Not needed |
-| Success page redirect | Required | Not needed |
+## Benefits
 
-## Technical Details
-
-### Edge Function Changes
-
-The edge function will be updated to:
-```typescript
-// Change from:
-mode: "payment",
-success_url: `${origin}/payment-success`,
-cancel_url: cancelUrl,
-
-// To:
-mode: "payment",
-ui_mode: "embedded",
-return_url: `${origin}/editor/${sermonId}?payment=success`,
-```
-
-And return `client_secret` instead of `url`:
-```typescript
-return new Response(JSON.stringify({ 
-  clientSecret: session.client_secret 
-}), ...);
-```
-
-### Frontend Stripe Integration
-
-```typescript
-import { loadStripe } from "@stripe/stripe-js";
-import { EmbeddedCheckoutProvider, EmbeddedCheckout } from "@stripe/react-stripe-js";
-
-const stripePromise = loadStripe("pk_test_...");
-
-// In component:
-<EmbeddedCheckoutProvider
-  stripe={stripePromise}
-  options={{ clientSecret }}
->
-  <EmbeddedCheckout />
-</EmbeddedCheckoutProvider>
-```
+- No backend required
+- No Supabase dependency
+- Simpler architecture
+- Payment Links are fully managed by Stripe
+- Easy to update pricing in Stripe Dashboard
 
