@@ -41,19 +41,19 @@ export function PaymentPromptModal({
           
           <ul className="text-sm text-muted-foreground space-y-1">
             <li className="flex items-center gap-2">
-              <Check className="w-4 h-4 text-green-500" />
+              <Check className="w-4 h-4 text-primary" />
               PowerPoint (.pptx) format
             </li>
             <li className="flex items-center gap-2">
-              <Check className="w-4 h-4 text-green-500" />
+              <Check className="w-4 h-4 text-primary" />
               ProPresenter 7 (.probundle) format
             </li>
             <li className="flex items-center gap-2">
-              <Check className="w-4 h-4 text-green-500" />
+              <Check className="w-4 h-4 text-primary" />
               Plain text (.txt) format
             </li>
             <li className="flex items-center gap-2">
-              <Check className="w-4 h-4 text-green-500" />
+              <Check className="w-4 h-4 text-primary" />
               Unlimited downloads for this presentation
             </li>
           </ul>
