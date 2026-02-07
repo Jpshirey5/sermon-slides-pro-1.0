@@ -26,7 +26,7 @@ serve(async (req) => {
     }
     logStep("Stripe key verified");
 
-    // Parse request body for optional sermon_id (used for cancel URL)
+    // Parse request body for optional sermon_id (used for return URL)
     let sermonId: string | null = null;
     try {
       const body = await req.json();
@@ -42,12 +42,12 @@ serve(async (req) => {
     const origin = req.headers.get("origin") || "https://id-preview--4106109b-8adc-4e56-b2c6-847326cb6d74.lovable.app";
     logStep("Origin determined", { origin });
 
-    // Create cancel URL - return to editor if sermon_id provided, otherwise home
-    const cancelUrl = sermonId 
-      ? `${origin}/editor/${sermonId}?payment=canceled`
-      : `${origin}?payment=canceled`;
+    // Build return URL for embedded checkout
+    const returnUrl = sermonId 
+      ? `${origin}/editor/${sermonId}?payment=success`
+      : `${origin}?payment=success`;
 
-    // Create one-time payment session
+    // Create embedded checkout session
     const session = await stripe.checkout.sessions.create({
       line_items: [
         {
@@ -56,13 +56,13 @@ serve(async (req) => {
         },
       ],
       mode: "payment",
-      success_url: `${origin}/payment-success`,
-      cancel_url: cancelUrl,
+      ui_mode: "embedded",
+      return_url: returnUrl,
     });
 
-    logStep("Checkout session created", { sessionId: session.id, url: session.url });
+    logStep("Embedded checkout session created", { sessionId: session.id, hasClientSecret: !!session.client_secret });
 
-    return new Response(JSON.stringify({ url: session.url }), {
+    return new Response(JSON.stringify({ clientSecret: session.client_secret }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 200,
     });
