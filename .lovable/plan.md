@@ -1,88 +1,146 @@
 
 
-# Plan: Create Dynamic Stripe Checkout with Redirect
+# Plan: Stripe Embedded Checkout in Modal
 
-## The Problem
-The current Payment Link (`https://buy.stripe.com/test_14A9AVe6xapIdNs8KSaVa00`) was created via API and cannot be edited in the Dashboard. My available tools don't support updating Payment Links with redirect URLs.
+## Overview
+Replace the redirect-based Stripe Checkout with an embedded payment form that displays directly in your app. Users will see the Stripe payment form inside a modal without leaving your site.
 
-## The Solution
-Instead of using a static Payment Link, we'll create a lightweight edge function that generates Stripe Checkout Sessions with full redirect control. This approach:
-- Uses the same $9 price (`price_1SqEznP2Yr0z0IcsXrxP90T7`)
-- Supports guest checkout (no authentication required)
-- Redirects users back to `/payment-success` after payment
+## Current Issue
+The edge function is failing with "Failed to fetch" error, likely due to deployment issues. The current approach also redirects users away from your app to complete payment.
+
+## Solution: Embedded Checkout
+
+Stripe offers an "Embedded Checkout" mode where the payment form renders directly in your application using an iframe. This:
+- Keeps users on your site
+- Provides a seamless modal experience
+- Still handles all payment processing securely through Stripe
+
+## Prerequisites
+
+You'll need a **Stripe Publishable Key** to initialize Stripe.js on the frontend. This is a public key (starts with `pk_test_` or `pk_live_`) that's safe to include in client-side code.
+
+## Technical Implementation
+
+### Step 1: Install React Stripe.js
+Add the required npm packages:
+- `@stripe/stripe-js` - Stripe.js loader
+- `@stripe/react-stripe-js` - React components
+
+### Step 2: Fix and Update Edge Function
+Modify `supabase/functions/create-payment/index.ts` to:
+- Add `ui_mode: "embedded"` to create an embedded session
+- Return the `client_secret` instead of the checkout URL
+- The `return_url` replaces `success_url` in embedded mode
+
+### Step 3: Create Embedded Checkout Component
+Create a new component that:
+- Fetches the checkout session client secret from the edge function
+- Uses `EmbeddedCheckoutProvider` and `EmbeddedCheckout` from React Stripe.js
+- Renders inside your existing payment modal
+
+### Step 4: Update Payment Modal
+Modify `PaymentPromptModal` to:
+- Show the embedded checkout form when user clicks "Pay $9"
+- Handle completion callback when payment succeeds
+- Close modal and unlock exports on success
+
+## User Action Required
+
+You'll need to provide your **Stripe Publishable Key**. You can find it in:
+1. Go to [Stripe Dashboard](https://dashboard.stripe.com/apikeys)
+2. Copy the "Publishable key" (starts with `pk_test_` for test mode)
+
+This is a public key and is safe to store in your code.
 
 ## Architecture
 
 ```text
-User clicks "Pay $9" in Payment Modal
+User clicks "Pay $9"
+         |
+         v
+PaymentPromptModal shows loading state
          |
          v
 Frontend calls create-payment edge function
          |
          v
-Edge function creates Stripe Checkout Session with:
-  - price_id: price_1SqEznP2Yr0z0IcsXrxP90T7
-  - mode: "payment" (one-time)
-  - success_url: https://[origin]/payment-success
-  - cancel_url: https://[origin]/editor/[id]
+Edge function creates Checkout Session with ui_mode: "embedded"
+Returns: { clientSecret: "cs_..." }
          |
          v
-Returns checkout session URL
+EmbeddedCheckoutProvider initializes with clientSecret
          |
          v
-User redirected to Stripe Checkout
+EmbeddedCheckout renders Stripe payment form in modal
          |
          v
-After payment, Stripe redirects to /payment-success
+User completes payment in the modal
          |
          v
-PaymentSuccess page reads localStorage, redirects to editor
+onComplete callback fires
          |
          v
-Editor unlocks export automatically
+Modal closes, export unlocked, ExportOptionsModal opens
 ```
-
-## Technical Implementation
-
-### Step 1: Create Edge Function
-Create `supabase/functions/create-payment/index.ts`:
-- Accept optional `sermon_id` in request body (for cancel URL)
-- Create Stripe Checkout Session with `mode: "payment"`
-- Set `success_url` to `/payment-success`
-- Return the checkout session URL
-
-### Step 2: Update SlideEditor
-Modify `src/pages/SlideEditor.tsx`:
-- Replace direct Payment Link redirect with edge function call
-- Call `supabase.functions.invoke('create-payment', { body: { sermon_id: id } })`
-- Redirect to the returned checkout URL
-
-### Step 3: Update Config
-Add the function to `supabase/config.toml`
 
 ## Files to Create/Modify
 
 | File | Change |
 |------|--------|
-| `supabase/functions/create-payment/index.ts` | **Create** - Edge function for dynamic checkout sessions |
-| `supabase/config.toml` | **Modify** - Register the new function |
-| `src/pages/SlideEditor.tsx` | **Modify** - Use edge function instead of static Payment Link |
+| `package.json` | Add `@stripe/stripe-js` and `@stripe/react-stripe-js` |
+| `supabase/functions/create-payment/index.ts` | Update to use `ui_mode: "embedded"` and return `client_secret` |
+| `src/components/StripeEmbeddedCheckout.tsx` | New component for embedded checkout form |
+| `src/components/PaymentPromptModal.tsx` | Update to show embedded checkout instead of redirect |
+| `src/pages/SlideEditor.tsx` | Simplify payment handling (no redirect needed) |
 
-## Key Code Details
+## Benefits Over Current Approach
 
-The edge function will:
-- NOT require authentication (guest checkout)
-- Use `mode: "payment"` for one-time purchase
-- Set success_url dynamically based on request origin
-- Use the existing price ID: `price_1SqEznP2Yr0z0IcsXrxP90T7`
+| Feature | Current (Redirect) | New (Embedded) |
+|---------|-------------------|----------------|
+| User stays on site | No | Yes |
+| Modal experience | No | Yes |
+| Edge function complexity | Same | Same |
+| LocalStorage dance | Required | Not needed |
+| Success page redirect | Required | Not needed |
 
-The frontend will:
-- Still store `pending_payment_sermon_id` in localStorage before redirect
-- Handle errors gracefully with toast notifications
+## Technical Details
 
-## Benefits Over Static Payment Link
-- Full control over redirect URLs
-- Can pass sermon_id for better cancel URL handling
-- No manual Stripe Dashboard configuration needed
-- Easier to update in the future
+### Edge Function Changes
+
+The edge function will be updated to:
+```typescript
+// Change from:
+mode: "payment",
+success_url: `${origin}/payment-success`,
+cancel_url: cancelUrl,
+
+// To:
+mode: "payment",
+ui_mode: "embedded",
+return_url: `${origin}/editor/${sermonId}?payment=success`,
+```
+
+And return `client_secret` instead of `url`:
+```typescript
+return new Response(JSON.stringify({ 
+  clientSecret: session.client_secret 
+}), ...);
+```
+
+### Frontend Stripe Integration
+
+```typescript
+import { loadStripe } from "@stripe/stripe-js";
+import { EmbeddedCheckoutProvider, EmbeddedCheckout } from "@stripe/react-stripe-js";
+
+const stripePromise = loadStripe("pk_test_...");
+
+// In component:
+<EmbeddedCheckoutProvider
+  stripe={stripePromise}
+  options={{ clientSecret }}
+>
+  <EmbeddedCheckout />
+</EmbeddedCheckoutProvider>
+```
 
