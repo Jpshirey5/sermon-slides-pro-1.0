@@ -1,19 +1,23 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Download, CreditCard, Loader2, Check } from "lucide-react";
+import { Download, CreditCard, Loader2, Check, RefreshCw } from "lucide-react";
 
 interface PaymentPromptModalProps {
   isOpen: boolean;
   onClose: () => void;
   onProceedToPayment: () => void;
+  onConfirmPaid?: () => void;
   isLoading: boolean;
+  showConfirmPaid?: boolean;
 }
 
 export function PaymentPromptModal({
   isOpen,
   onClose,
   onProceedToPayment,
+  onConfirmPaid,
   isLoading,
+  showConfirmPaid = false,
 }: PaymentPromptModalProps) {
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && !isLoading && onClose()}>
@@ -59,23 +63,37 @@ export function PaymentPromptModal({
           </ul>
         </div>
         
-        <div className="flex gap-3">
-          <Button variant="outline" onClick={onClose} className="flex-1" disabled={isLoading}>
-            Cancel
-          </Button>
-          <Button onClick={onProceedToPayment} className="flex-1" disabled={isLoading}>
-            {isLoading ? (
-              <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Redirecting...
-              </>
-            ) : (
-              <>
-                <CreditCard className="w-4 h-4 mr-2" />
-                Pay $9
-              </>
-            )}
-          </Button>
+        <div className="flex flex-col gap-2">
+          <div className="flex gap-3">
+            <Button variant="outline" onClick={onClose} className="flex-1" disabled={isLoading}>
+              Cancel
+            </Button>
+            <Button onClick={onProceedToPayment} className="flex-1" disabled={isLoading}>
+              {isLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Redirecting...
+                </>
+              ) : (
+                <>
+                  <CreditCard className="w-4 h-4 mr-2" />
+                  Pay $9
+                </>
+              )}
+            </Button>
+          </div>
+          
+          {showConfirmPaid && onConfirmPaid && (
+            <Button 
+              variant="ghost" 
+              onClick={onConfirmPaid} 
+              className="w-full text-sm"
+              disabled={isLoading}
+            >
+              <RefreshCw className="w-4 h-4 mr-2" />
+              I already paid - unlock export
+            </Button>
+          )}
         </div>
         
         <p className="text-xs text-center text-muted-foreground">

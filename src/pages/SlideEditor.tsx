@@ -1,7 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { motion, Reorder, AnimatePresence } from "framer-motion";
-import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { BookOpen, ArrowLeft, Download, Play, GripVertical, Plus, Type, Palette, ChevronLeft, ChevronRight, Trash2, AlignVerticalSpaceAround, Undo2, Redo2, Copy, Check, Cloud } from "lucide-react";
@@ -13,6 +12,9 @@ import { ExportOptionsModal } from "@/components/ExportOptionsModal";
 import { PaymentPromptModal } from "@/components/PaymentPromptModal";
 import { toast } from "sonner";
 import { getPresentation, getPresentations, SermonPresentation } from "@/lib/presentations";
+
+// Stripe Payment Link for $9 Pay-Per-Sermon
+const STRIPE_PAYMENT_LINK = "https://buy.stripe.com/test_14A9AVe6xapIdNs8KSaVa00";
 // Storage key for editor-specific slide data
 const EDITOR_STORAGE_KEY = 'sermon-editor-slides';
 
@@ -232,21 +234,30 @@ const SlideEditor = () => {
   useEffect(() => {
     const paymentStatus = searchParams.get('payment');
     
+    // Check if returning from Stripe with success param
     if (paymentStatus === 'success' && id && id !== "new") {
-      // Unlock export for this presentation
       localStorage.setItem(`export_unlocked:${id}`, "true");
       setIsExportUnlocked(true);
-      // Clear query params
       searchParams.delete('payment');
       searchParams.delete('session_id');
       setSearchParams(searchParams, { replace: true });
-      // Show export modal
       setShowExportModal(true);
       toast.success('Payment successful! Choose your export format.');
     } else if (paymentStatus === 'canceled') {
       searchParams.delete('payment');
       setSearchParams(searchParams, { replace: true });
       toast.info('Payment was canceled. You can try again when ready.');
+    }
+    
+    // Check for pending payment (user manually returned after paying)
+    const pendingSermonId = localStorage.getItem('pending_payment_sermon_id');
+    if (pendingSermonId && pendingSermonId === id) {
+      // Clear the pending flag
+      localStorage.removeItem('pending_payment_sermon_id');
+      // Show a prompt to confirm payment
+      toast.info('If you completed payment, click Export again to unlock your presentation.', {
+        duration: 8000,
+      });
     }
   }, [searchParams, setSearchParams, id]);
 
@@ -428,8 +439,8 @@ const SlideEditor = () => {
     }
   };
   
-  // Handle payment redirect to Stripe
-  const handleProceedToPayment = async () => {
+  // Handle payment redirect to Stripe Payment Link
+  const handleProceedToPayment = () => {
     if (!id || id === "new") {
       toast.error("Please save your presentation first");
       return;
@@ -439,28 +450,11 @@ const SlideEditor = () => {
     saveEditorSlides(id, slides);
     setIsRedirectingToStripe(true);
     
-    try {
-      const { data, error } = await supabase.functions.invoke('create-payment', {
-        body: {
-          sermonId: id,
-          returnUrl: window.location.origin,
-        },
-      });
-
-      if (error) throw error;
-      
-      if (data?.url) {
-        // Redirect to Stripe Checkout
-        window.location.href = data.url;
-      } else {
-        throw new Error('No checkout URL received');
-      }
-    } catch (error) {
-      console.error('Payment error:', error);
-      toast.error('Failed to start payment. Please try again.');
-      setIsRedirectingToStripe(false);
-      setShowPaymentModal(false);
-    }
+    // Store the presentation ID so we can unlock it when user returns
+    localStorage.setItem('pending_payment_sermon_id', id);
+    
+    // Redirect directly to Stripe Payment Link
+    window.location.href = STRIPE_PAYMENT_LINK;
   };
 
 
@@ -1098,7 +1092,17 @@ const SlideEditor = () => {
         isOpen={showPaymentModal}
         onClose={() => setShowPaymentModal(false)}
         onProceedToPayment={handleProceedToPayment}
+        onConfirmPaid={() => {
+          if (id && id !== "new") {
+            localStorage.setItem(`export_unlocked:${id}`, "true");
+            setIsExportUnlocked(true);
+            setShowPaymentModal(false);
+            setShowExportModal(true);
+            toast.success('Export unlocked! Choose your format.');
+          }
+        }}
         isLoading={isRedirectingToStripe}
+        showConfirmPaid={true}
       />
       
       {/* Export Options Modal */}
