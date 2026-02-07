@@ -453,6 +453,9 @@ const SlideEditor = () => {
     localStorage.setItem(`payment_pending:${id}`, "true");
     setHasPendingPayment(true);
     
+    // Store the presentation ID so the success page knows where to redirect
+    localStorage.setItem("pending_payment_sermon_id", id);
+    
     // Redirect directly to Stripe Payment Link
     window.location.href = STRIPE_PAYMENT_LINK;
   };
