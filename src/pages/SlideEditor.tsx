@@ -220,6 +220,13 @@ const SlideEditor = () => {
     }
     return false;
   });
+  const [hasPendingPayment, setHasPendingPayment] = useState(() => {
+    // Check if this presentation has been redirected to Stripe before
+    if (id && id !== "new") {
+      return localStorage.getItem(`payment_pending:${id}`) === "true";
+    }
+    return false;
+  });
   const [isRedirectingToStripe, setIsRedirectingToStripe] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
@@ -236,8 +243,11 @@ const SlideEditor = () => {
     
     // Check if returning from Stripe with success param
     if (paymentStatus === 'success' && id && id !== "new") {
+      // Clear pending payment flag
+      localStorage.removeItem(`payment_pending:${id}`);
       localStorage.setItem(`export_unlocked:${id}`, "true");
       setIsExportUnlocked(true);
+      setHasPendingPayment(false);
       searchParams.delete('payment');
       searchParams.delete('session_id');
       setSearchParams(searchParams, { replace: true });
@@ -247,17 +257,6 @@ const SlideEditor = () => {
       searchParams.delete('payment');
       setSearchParams(searchParams, { replace: true });
       toast.info('Payment was canceled. You can try again when ready.');
-    }
-    
-    // Check for pending payment (user manually returned after paying)
-    const pendingSermonId = localStorage.getItem('pending_payment_sermon_id');
-    if (pendingSermonId && pendingSermonId === id) {
-      // Clear the pending flag
-      localStorage.removeItem('pending_payment_sermon_id');
-      // Show a prompt to confirm payment
-      toast.info('If you completed payment, click Export again to unlock your presentation.', {
-        duration: 8000,
-      });
     }
   }, [searchParams, setSearchParams, id]);
 
@@ -450,8 +449,9 @@ const SlideEditor = () => {
     saveEditorSlides(id, slides);
     setIsRedirectingToStripe(true);
     
-    // Store the presentation ID so we can unlock it when user returns
-    localStorage.setItem('pending_payment_sermon_id', id);
+    // Mark this presentation as having a pending payment
+    localStorage.setItem(`payment_pending:${id}`, "true");
+    setHasPendingPayment(true);
     
     // Redirect directly to Stripe Payment Link
     window.location.href = STRIPE_PAYMENT_LINK;
@@ -691,7 +691,7 @@ const SlideEditor = () => {
               <span className="hidden sm:inline">Home</span>
             </Link>
 
-            {/* Title + Save Indicator */}
+            {/* Title + Paid Badge + Save Indicator */}
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-lg gradient-hero flex items-center justify-center">
                 <BookOpen className="w-4 h-4 text-primary-foreground" />
@@ -699,6 +699,14 @@ const SlideEditor = () => {
               <span className="font-serif text-lg font-semibold text-foreground">
                 {presentationTitle}
               </span>
+              
+              {/* Paid Badge - shows when export is unlocked */}
+              {isExportUnlocked && (
+                <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/10 border border-primary/20">
+                  <Check className="w-3 h-3 text-primary" />
+                  <span className="text-xs font-medium text-primary">Paid</span>
+                </div>
+              )}
               
               {/* Save Indicator */}
               <AnimatePresence mode="wait">
@@ -720,7 +728,7 @@ const SlideEditor = () => {
                     initial={{ opacity: 0, scale: 0.8 }}
                     animate={{ opacity: 1, scale: 1 }}
                     exit={{ opacity: 0, scale: 0.8 }}
-                    className="flex items-center gap-1.5 text-xs text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-900/30 px-2 py-1 rounded-full"
+                    className="flex items-center gap-1.5 text-xs text-primary bg-primary/10 px-2 py-1 rounded-full"
                   >
                     <Check className="w-3 h-3" />
                     <span>Saved</span>
@@ -1094,15 +1102,18 @@ const SlideEditor = () => {
         onProceedToPayment={handleProceedToPayment}
         onConfirmPaid={() => {
           if (id && id !== "new") {
+            // Clear pending payment flag and unlock
+            localStorage.removeItem(`payment_pending:${id}`);
             localStorage.setItem(`export_unlocked:${id}`, "true");
             setIsExportUnlocked(true);
+            setHasPendingPayment(false);
             setShowPaymentModal(false);
             setShowExportModal(true);
             toast.success('Export unlocked! Choose your format.');
           }
         }}
         isLoading={isRedirectingToStripe}
-        showConfirmPaid={true}
+        hasPendingPayment={hasPendingPayment}
       />
       
       {/* Export Options Modal */}

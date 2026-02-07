@@ -8,7 +8,7 @@ interface PaymentPromptModalProps {
   onProceedToPayment: () => void;
   onConfirmPaid?: () => void;
   isLoading: boolean;
-  showConfirmPaid?: boolean;
+  hasPendingPayment?: boolean;
 }
 
 export function PaymentPromptModal({
@@ -17,7 +17,7 @@ export function PaymentPromptModal({
   onProceedToPayment,
   onConfirmPaid,
   isLoading,
-  showConfirmPaid = false,
+  hasPendingPayment = false,
 }: PaymentPromptModalProps) {
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && !isLoading && onClose()}>
@@ -83,7 +83,8 @@ export function PaymentPromptModal({
             </Button>
           </div>
           
-          {showConfirmPaid && onConfirmPaid && (
+          {/* Only show "Already paid?" button if user has been redirected to Stripe before */}
+          {hasPendingPayment && onConfirmPaid && (
             <Button 
               variant="ghost" 
               onClick={onConfirmPaid} 
@@ -91,7 +92,7 @@ export function PaymentPromptModal({
               disabled={isLoading}
             >
               <RefreshCw className="w-4 h-4 mr-2" />
-              I already paid - unlock export
+              Already paid? Unlock export
             </Button>
           )}
         </div>
