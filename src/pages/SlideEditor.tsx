@@ -218,14 +218,6 @@ const SlideEditor = () => {
     }
     return false;
   });
-  const [hasPendingPayment, setHasPendingPayment] = useState(() => {
-    // Check if this presentation has been redirected to Stripe before
-    if (id && id !== "new") {
-      return localStorage.getItem(`payment_pending:${id}`) === "true";
-    }
-    return false;
-  });
-  const [isRedirectingToStripe, setIsRedirectingToStripe] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   
@@ -235,28 +227,31 @@ const SlideEditor = () => {
   const isUndoRedoRef = useRef(false);
   const isInitialLoadRef = useRef(true);
 
-  // Handle payment return from Stripe
+  // Handle payment return from Stripe embedded checkout (fallback for return_url)
   useEffect(() => {
     const paymentStatus = searchParams.get('payment');
     
-    // Check if returning from Stripe with success param
     if (paymentStatus === 'success' && id && id !== "new") {
-      // Clear pending payment flag
-      localStorage.removeItem(`payment_pending:${id}`);
       localStorage.setItem(`export_unlocked:${id}`, "true");
       setIsExportUnlocked(true);
-      setHasPendingPayment(false);
       searchParams.delete('payment');
       searchParams.delete('session_id');
       setSearchParams(searchParams, { replace: true });
       setShowExportModal(true);
       toast.success('Payment successful! Choose your export format.');
-    } else if (paymentStatus === 'canceled') {
-      searchParams.delete('payment');
-      setSearchParams(searchParams, { replace: true });
-      toast.info('Payment was canceled. You can try again when ready.');
     }
   }, [searchParams, setSearchParams, id]);
+
+  // Handle successful payment from embedded checkout
+  const handlePaymentComplete = () => {
+    if (id && id !== "new") {
+      localStorage.setItem(`export_unlocked:${id}`, "true");
+      setIsExportUnlocked(true);
+      setShowPaymentModal(false);
+      setShowExportModal(true);
+      toast.success('Payment successful! Choose your export format.');
+    }
+  };
 
 
   // Load presentation data - check for saved editor slides first
@@ -436,52 +431,6 @@ const SlideEditor = () => {
     }
   };
   
-  // Handle payment redirect to Stripe via edge function
-  const handleProceedToPayment = async () => {
-    if (!id || id === "new") {
-      toast.error("Please save your presentation first");
-      return;
-    }
-    
-    // Save slides before redirecting
-    saveEditorSlides(id, slides);
-    setIsRedirectingToStripe(true);
-    
-    // Mark this presentation as having a pending payment
-    localStorage.setItem(`payment_pending:${id}`, "true");
-    setHasPendingPayment(true);
-    
-    // Store the presentation ID so the success page knows where to redirect
-    localStorage.setItem("pending_payment_sermon_id", id);
-    
-    try {
-      // Call edge function to create Stripe Checkout session
-      const { data, error } = await supabase.functions.invoke('create-payment', {
-        body: { sermon_id: id }
-      });
-      
-      if (error) {
-        throw new Error(error.message || 'Failed to create payment session');
-      }
-      
-      if (!data?.url) {
-        throw new Error('No checkout URL returned');
-      }
-      
-      // Redirect to Stripe Checkout
-      window.location.href = data.url;
-    } catch (error) {
-      console.error('Payment error:', error);
-      setIsRedirectingToStripe(false);
-      localStorage.removeItem(`payment_pending:${id}`);
-      setHasPendingPayment(false);
-      toast.error('Failed to start payment', {
-        description: error instanceof Error ? error.message : 'Please try again'
-      });
-    }
-  };
-
-
   const handleExport = async (format: "pptx" | "probundle" | "txt") => {
     // Validate slides before export
     const validation = validateSlidesForExport(slides);
@@ -1108,36 +1057,12 @@ const SlideEditor = () => {
         </main>
       </div>
       
-      {/* Loading overlay when redirecting to Stripe */}
-      {isRedirectingToStripe && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-            <p className="text-lg font-medium">Redirecting to payment...</p>
-            <p className="text-sm text-muted-foreground mt-1">Your presentation has been saved.</p>
-          </div>
-        </div>
-      )}
-      
       {/* Payment Prompt Modal */}
       <PaymentPromptModal
         isOpen={showPaymentModal}
         onClose={() => setShowPaymentModal(false)}
-        onProceedToPayment={handleProceedToPayment}
-        onConfirmPaid={() => {
-          if (id && id !== "new") {
-            // Clear pending payment flag and unlock
-            localStorage.removeItem(`payment_pending:${id}`);
-            localStorage.setItem(`export_unlocked:${id}`, "true");
-            setIsExportUnlocked(true);
-            setHasPendingPayment(false);
-            setShowPaymentModal(false);
-            setShowExportModal(true);
-            toast.success('Export unlocked! Choose your format.');
-          }
-        }}
-        isLoading={isRedirectingToStripe}
-        hasPendingPayment={hasPendingPayment}
+        sermonId={id || ""}
+        onPaymentComplete={handlePaymentComplete}
       />
       
       {/* Export Options Modal */}
