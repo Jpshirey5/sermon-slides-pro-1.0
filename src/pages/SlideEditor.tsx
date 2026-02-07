@@ -1,7 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { motion, Reorder, AnimatePresence } from "framer-motion";
-import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { BookOpen, ArrowLeft, Download, Play, GripVertical, Plus, Type, Palette, ChevronLeft, ChevronRight, Trash2, AlignVerticalSpaceAround, Undo2, Redo2, Copy, Check, Cloud } from "lucide-react";
@@ -9,11 +8,9 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { BackgroundPicker } from "@/components/BackgroundPicker";
 import { exportToPowerPoint, SlideData } from "@/lib/export-pptx";
 import { exportAsProBundle, exportAsPlainText, validateSlidesForExport } from "@/services/proPresenterExport";
-import { PaymentPromptModal } from "@/components/PaymentPromptModal";
 import { ExportOptionsModal } from "@/components/ExportOptionsModal";
 import { toast } from "sonner";
 import { getPresentation, getPresentations, SermonPresentation } from "@/lib/presentations";
-
 // Storage key for editor-specific slide data
 const EDITOR_STORAGE_KEY = 'sermon-editor-slides';
 
@@ -201,7 +198,6 @@ function saveEditorSlides(presentationId: string, slides: SlideData[]): void {
 
 const SlideEditor = () => {
   const { id } = useParams();
-  const [searchParams, setSearchParams] = useSearchParams();
   const [slides, setSlides] = useState<SlideData[]>(defaultSlides);
   const [selectedSlide, setSelectedSlide] = useState(0);
   const [isPreviewMode, setIsPreviewMode] = useState(false);
@@ -211,16 +207,6 @@ const SlideEditor = () => {
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  
-  // Payment state - check localStorage for this specific presentation
-  const [isExportUnlocked, setIsExportUnlocked] = useState(() => {
-    if (id && id !== "new") {
-      return localStorage.getItem(`export_unlocked:${id}`) === "true";
-    }
-    return false;
-  });
-  const [isRedirectingToStripe, setIsRedirectingToStripe] = useState(false);
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   
   // Undo/Redo history
@@ -228,26 +214,7 @@ const SlideEditor = () => {
   const [historyIndex, setHistoryIndex] = useState(0);
   const isUndoRedoRef = useRef(false);
   const isInitialLoadRef = useRef(true);
-  
-  // Check if returning from successful payment - set localStorage flag and show export modal
-  useEffect(() => {
-    if (searchParams.get('export') === 'true' && id && id !== "new") {
-      // Store unlock in localStorage for THIS specific presentation
-      localStorage.setItem(`export_unlocked:${id}`, "true");
-      setIsExportUnlocked(true);
-      // Clear the query param
-      searchParams.delete('export');
-      setSearchParams(searchParams, { replace: true });
-      // Show export options modal after payment success
-      setShowExportModal(true);
-      toast.success('Payment successful! Choose your export format.');
-    }
-    if (searchParams.get('payment') === 'canceled') {
-      searchParams.delete('payment');
-      setSearchParams(searchParams, { replace: true });
-      toast.info('Payment was canceled. You can try again when ready.');
-    }
-  }, [searchParams, setSearchParams, id]);
+
 
   // Load presentation data - check for saved editor slides first
   useEffect(() => {
@@ -406,63 +373,11 @@ const SlideEditor = () => {
     setIsDragging(false);
     setDragOverIndex(null);
   }, []);
-  // Handle export button click - show payment modal if locked, export modal if unlocked
+  // Handle export button click - show export options directly (no payment)
   const handleExportButtonClick = () => {
-    // Check localStorage for unlock status for this specific presentation
-    const isUnlocked = id && id !== "new" 
-      ? localStorage.getItem(`export_unlocked:${id}`) === "true"
-      : isExportUnlocked;
-      
-    if (!isUnlocked) {
-      if (!id || id === "new") {
-        toast.error("Please save your presentation first");
-        return;
-      }
-      // Show payment modal
-      setShowPaymentModal(true);
-    } else {
-      // Show export options modal
-      setShowExportModal(true);
-    }
+    setShowExportModal(true);
   };
-  
-  // Handle payment redirect
-  const handleProceedToPayment = async () => {
-    if (!id || id === "new") {
-      toast.error("Please save your presentation first");
-      return;
-    }
-    
-    // Force save before Stripe redirect
-    saveEditorSlides(id, slides);
-    console.log('[SlideEditor] Saved slides before Stripe redirect for ID:', id);
-    
-    setIsRedirectingToStripe(true);
-    
-    try {
-      const { data, error } = await supabase.functions.invoke('create-payment', {
-        body: {
-          sermonId: id,
-          returnUrl: window.location.origin,
-        },
-      });
 
-      if (error) throw error;
-      
-      if (data?.url) {
-        console.log('[SlideEditor] Redirecting to Stripe:', data.url);
-        // Direct redirect - no modal, no new tab
-        window.location.href = data.url;
-      } else {
-        throw new Error('No checkout URL received');
-      }
-    } catch (error) {
-      console.error('[SlideEditor] Payment error:', error);
-      toast.error('Failed to create payment session. Please try again.');
-      setIsRedirectingToStripe(false);
-      setShowPaymentModal(false);
-    }
-  };
 
   const handleExport = async (format: "pptx" | "probundle" | "txt") => {
     // Validate slides before export
@@ -1081,25 +996,6 @@ const SlideEditor = () => {
           </div>
         </main>
       </div>
-      
-      {/* Loading overlay when redirecting to Stripe */}
-      {isRedirectingToStripe && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-            <p className="text-lg font-medium">Redirecting to payment...</p>
-            <p className="text-sm text-muted-foreground mt-1">Your presentation has been saved.</p>
-          </div>
-        </div>
-      )}
-      
-      {/* Payment Prompt Modal */}
-      <PaymentPromptModal
-        isOpen={showPaymentModal}
-        onClose={() => setShowPaymentModal(false)}
-        onProceedToPayment={handleProceedToPayment}
-        isLoading={isRedirectingToStripe}
-      />
       
       {/* Export Options Modal */}
       <ExportOptionsModal
