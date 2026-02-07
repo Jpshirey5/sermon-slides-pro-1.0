@@ -1,8 +1,8 @@
-import { useState, Suspense } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Download, CreditCard, Check, ArrowLeft } from "lucide-react";
-import { StripeEmbeddedCheckout, CheckoutLoading } from "@/components/StripeEmbeddedCheckout";
+import { Download, CreditCard, Check, ExternalLink } from "lucide-react";
+
+const PENDING_SERMON_KEY = "pending_payment_sermon_id";
 
 interface PaymentPromptModalProps {
   isOpen: boolean;
@@ -15,107 +15,85 @@ export function PaymentPromptModal({
   isOpen,
   onClose,
   sermonId,
-  onPaymentComplete,
 }: PaymentPromptModalProps) {
-  const [showCheckout, setShowCheckout] = useState(false);
-
-  const handleClose = () => {
-    setShowCheckout(false);
+  const handlePayClick = () => {
+    // Save the sermon ID to localStorage so we can redirect back after payment
+    localStorage.setItem(PENDING_SERMON_KEY, sermonId);
+    
+    // Get the payment link from environment
+    const paymentLink = import.meta.env.VITE_STRIPE_PAYMENT_LINK;
+    
+    if (!paymentLink || paymentLink === "https://buy.stripe.com/YOUR_PAYMENT_LINK") {
+      console.error("Stripe Payment Link not configured");
+      alert("Payment is not configured yet. Please contact support.");
+      return;
+    }
+    
+    // Open Stripe Payment Link in new tab
+    window.open(paymentLink, "_blank");
+    
+    // Close modal
     onClose();
   };
 
-  const handleComplete = () => {
-    setShowCheckout(false);
-    onPaymentComplete();
-  };
-
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
-      <DialogContent className={showCheckout ? "sm:max-w-2xl" : "sm:max-w-md"}>
-        {!showCheckout ? (
-          <>
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <Download className="w-5 h-5 text-primary" />
-                Export Your Presentation
-              </DialogTitle>
-              <DialogDescription>
-                Unlock export for this presentation with a one-time payment.
-              </DialogDescription>
-            </DialogHeader>
-            
-            <div className="space-y-4 py-4">
-              <div className="bg-muted/50 rounded-lg p-4 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="font-medium">One-time Export Access</span>
-                  <span className="text-xl font-bold">$9</span>
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  Export this presentation to PowerPoint or ProPresenter formats.
-                </p>
-              </div>
-              
-              <ul className="text-sm text-muted-foreground space-y-1">
-                <li className="flex items-center gap-2">
-                  <Check className="w-4 h-4 text-primary" />
-                  PowerPoint (.pptx) format
-                </li>
-                <li className="flex items-center gap-2">
-                  <Check className="w-4 h-4 text-primary" />
-                  ProPresenter 7 (.probundle) format
-                </li>
-                <li className="flex items-center gap-2">
-                  <Check className="w-4 h-4 text-primary" />
-                  Plain text (.txt) format
-                </li>
-                <li className="flex items-center gap-2">
-                  <Check className="w-4 h-4 text-primary" />
-                  Unlimited downloads for this presentation
-                </li>
-              </ul>
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Download className="w-5 h-5 text-primary" />
+            Export Your Presentation
+          </DialogTitle>
+          <DialogDescription>
+            Unlock export for this presentation with a one-time payment.
+          </DialogDescription>
+        </DialogHeader>
+        
+        <div className="space-y-4 py-4">
+          <div className="bg-muted/50 rounded-lg p-4 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="font-medium">One-time Export Access</span>
+              <span className="text-xl font-bold">$9</span>
             </div>
-            
-            <div className="flex gap-3">
-              <Button variant="outline" onClick={handleClose} className="flex-1">
-                Cancel
-              </Button>
-              <Button onClick={() => setShowCheckout(true)} className="flex-1">
-                <CreditCard className="w-4 h-4 mr-2" />
-                Pay $9
-              </Button>
-            </div>
-            
-            <p className="text-xs text-center text-muted-foreground">
-              Secure payment via Stripe. No account required.
+            <p className="text-sm text-muted-foreground">
+              Export this presentation to PowerPoint or ProPresenter formats.
             </p>
-          </>
-        ) : (
-          <>
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  onClick={() => setShowCheckout(false)}
-                  className="mr-2 -ml-2"
-                >
-                  <ArrowLeft className="w-4 h-4" />
-                </Button>
-                Complete Payment
-              </DialogTitle>
-              <DialogDescription>
-                Enter your payment details to unlock exports.
-              </DialogDescription>
-            </DialogHeader>
-            
-            <Suspense fallback={<CheckoutLoading />}>
-              <StripeEmbeddedCheckout 
-                sermonId={sermonId} 
-                onComplete={handleComplete} 
-              />
-            </Suspense>
-          </>
-        )}
+          </div>
+          
+          <ul className="text-sm text-muted-foreground space-y-1">
+            <li className="flex items-center gap-2">
+              <Check className="w-4 h-4 text-primary" />
+              PowerPoint (.pptx) format
+            </li>
+            <li className="flex items-center gap-2">
+              <Check className="w-4 h-4 text-primary" />
+              ProPresenter 7 (.probundle) format
+            </li>
+            <li className="flex items-center gap-2">
+              <Check className="w-4 h-4 text-primary" />
+              Plain text (.txt) format
+            </li>
+            <li className="flex items-center gap-2">
+              <Check className="w-4 h-4 text-primary" />
+              Unlimited downloads for this presentation
+            </li>
+          </ul>
+        </div>
+        
+        <div className="flex gap-3">
+          <Button variant="outline" onClick={onClose} className="flex-1">
+            Cancel
+          </Button>
+          <Button onClick={handlePayClick} className="flex-1">
+            <CreditCard className="w-4 h-4 mr-2" />
+            Pay $9
+            <ExternalLink className="w-3 h-3 ml-1" />
+          </Button>
+        </div>
+        
+        <p className="text-xs text-center text-muted-foreground">
+          Secure payment via Stripe. Opens in a new tab.
+        </p>
       </DialogContent>
     </Dialog>
   );

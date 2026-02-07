@@ -12,7 +12,6 @@ import { ExportOptionsModal } from "@/components/ExportOptionsModal";
 import { PaymentPromptModal } from "@/components/PaymentPromptModal";
 import { toast } from "sonner";
 import { getPresentation, getPresentations, SermonPresentation } from "@/lib/presentations";
-import { supabase } from "@/integrations/supabase/client";
 // Storage key for editor-specific slide data
 const EDITOR_STORAGE_KEY = 'sermon-editor-slides';
 
