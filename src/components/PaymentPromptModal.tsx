@@ -1,6 +1,6 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Download, CreditCard, Check, ExternalLink } from "lucide-react";
+import { Download, CreditCard, Check, ArrowRight } from "lucide-react";
 
 const PENDING_SERMON_KEY = "pending_payment_sermon_id";
 
@@ -29,11 +29,8 @@ export function PaymentPromptModal({
       return;
     }
     
-    // Open Stripe Payment Link in new tab
-    window.open(paymentLink, "_blank");
-    
-    // Close modal
-    onClose();
+    // Navigate to Stripe Payment Link in same tab
+    window.location.href = paymentLink;
   };
 
   return (
@@ -87,12 +84,12 @@ export function PaymentPromptModal({
           <Button onClick={handlePayClick} className="flex-1">
             <CreditCard className="w-4 h-4 mr-2" />
             Pay $9
-            <ExternalLink className="w-3 h-3 ml-1" />
+            <ArrowRight className="w-4 h-4 ml-1" />
           </Button>
         </div>
         
         <p className="text-xs text-center text-muted-foreground">
-          Secure payment via Stripe. Opens in a new tab.
+          Secure payment via Stripe. You'll return here after payment.
         </p>
       </DialogContent>
     </Dialog>
