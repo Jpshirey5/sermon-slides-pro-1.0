@@ -1,130 +1,99 @@
 
 
-# Plan: Remove Supabase and Simplify Payment Flow
+# Plan: Embed Stripe Payment in Same-Tab Flow
 
-## Overview
+## The Challenge
 
-Remove all Supabase integration from the app. Since Supabase Edge Functions were being used to create Stripe checkout sessions, we'll switch to using **Stripe Payment Links** - a simple URL-based payment approach that requires no backend.
+Unfortunately, **Stripe Payment Links cannot be embedded in iframes**. Stripe sets security headers (`X-Frame-Options: DENY`) on their `buy.stripe.com` domain to prevent clickjacking attacks. This is a security measure that cannot be bypassed.
 
-## Current Supabase Usage
+## Best Alternative: Same-Tab Redirect
 
-| Location | Purpose |
-|----------|---------|
-| `src/integrations/supabase/` | Supabase client and types |
-| `supabase/functions/create-payment/` | Edge function for Stripe payments |
-| `supabase/config.toml` | Supabase configuration |
-| `supabase/migrations/` | Database migrations |
-| `.env` | Supabase environment variables |
-| `src/components/StripeEmbeddedCheckout.tsx` | Uses Supabase to call edge function |
-| `src/pages/SlideEditor.tsx` | Imports Supabase client (unused) |
+Instead of opening Stripe in a **new tab** (which feels disconnected), we can open it in the **same tab**. This creates a smoother experience:
 
-## New Payment Approach: Stripe Payment Links
+1. User clicks "Pay $9" 
+2. They're taken to Stripe (same tab) 
+3. After payment, Stripe automatically redirects them back to your app
+4. The export modal opens automatically
 
-Instead of embedded checkout (which requires a backend), we'll use **Stripe Payment Links**:
+The user never loses context because they return to exactly where they were, with the export modal ready.
 
-1. You create a Payment Link in your Stripe Dashboard for the $9 product
-2. When users click "Pay $9", they open the payment link in a new tab
-3. After payment, Stripe redirects back to your app with success parameters
-4. The app detects the return and unlocks exports
+## What This Changes
 
-This is simpler, requires no backend, and works reliably.
+| Current Behavior | New Behavior |
+|-----------------|--------------|
+| Opens Stripe in new tab | Navigates to Stripe in same tab |
+| User has to manually return | Auto-redirects back to editor |
+| Modal says "Opens in a new tab" | Modal says "Continue to payment" |
+| ExternalLink icon on button | Arrow icon instead |
 
-## Implementation Steps
+## Implementation
 
-### Step 1: Delete Supabase Files
+### Step 1: Update PaymentPromptModal
 
-Remove these files/folders:
-- `src/integrations/supabase/` (entire folder)
-- `supabase/` (entire folder - functions, config, migrations)
-- `src/components/StripeEmbeddedCheckout.tsx`
+Change the payment button to navigate in the same window instead of opening a new tab:
 
-### Step 2: Update .env
+```typescript
+// Change from:
+window.open(paymentLink, "_blank");
 
-Remove Supabase variables, add Stripe Payment Link:
-```
-VITE_STRIPE_PAYMENT_LINK="https://buy.stripe.com/YOUR_PAYMENT_LINK"
+// To:
+window.location.href = paymentLink;
 ```
 
-### Step 3: Simplify PaymentPromptModal
+Also update the UI text to reflect this behavior.
 
-Replace the embedded checkout with a simple "Pay Now" button that:
-- Saves the sermon ID to localStorage
-- Opens the Stripe Payment Link in a new tab with return URL
+### Step 2: Keep Existing Success Flow
 
-### Step 4: Update SlideEditor
+The current flow already handles the return perfectly:
+1. Stripe redirects to `/payment-success`
+2. `PaymentSuccess` page reads the sermon ID from localStorage
+3. Redirects to `/editor/:id?payment=success`
+4. `SlideEditor` detects the param and unlocks export
 
-- Remove the Supabase import
-- Keep the existing payment success detection from URL params
+This all stays the same - it's already well designed!
 
-### Step 5: Keep PaymentSuccess Page
+## Files to Modify
 
-This page still works - it reads from localStorage and redirects properly.
+| File | Change |
+|------|--------|
+| `src/components/PaymentPromptModal.tsx` | Change `window.open` to `window.location.href`, update button text |
 
-### Step 6: Remove Stripe React Packages (Optional)
-
-Since we're not using embedded checkout, we can remove:
-- `@stripe/stripe-js`
-- `@stripe/react-stripe-js`
-
-## Files to Modify/Delete
-
-| Action | File |
-|--------|------|
-| Delete | `src/integrations/supabase/client.ts` |
-| Delete | `src/integrations/supabase/types.ts` |
-| Delete | `src/integrations/` folder |
-| Delete | `supabase/functions/create-payment/index.ts` |
-| Delete | `supabase/config.toml` |
-| Delete | `supabase/` folder |
-| Delete | `src/components/StripeEmbeddedCheckout.tsx` |
-| Modify | `src/components/PaymentPromptModal.tsx` |
-| Modify | `src/pages/SlideEditor.tsx` |
-| Modify | `.env` |
-| Modify | `package.json` (remove Supabase packages) |
-
-## New Payment Flow
+## User Experience
 
 ```text
-User clicks "Export" → Not unlocked
-         |
-         v
-PaymentPromptModal opens
-         |
-         v
+User clicks Export → Modal opens
+          |
+          v
 User clicks "Pay $9"
-         |
-         v
-App saves sermon ID to localStorage
-Opens Stripe Payment Link in new tab
-         |
-         v
-User completes payment on Stripe
-         |
-         v
-Stripe redirects to /payment-success
-         |
-         v
-PaymentSuccess page reads localStorage
-Redirects to /editor/:id?payment=success
-         |
-         v
-SlideEditor detects success, unlocks export
+          |
+          v
+Same tab navigates to Stripe checkout
+          |
+          v
+User completes payment
+          |
+          v
+Stripe redirects to /payment-success (same tab)
+          |
+          v
+Auto-redirect to /editor/:id?payment=success
+          |
+          v
+Export modal opens, download ready
 ```
 
-## User Action Required
+## Why This Works Well
 
-You'll need to create a **Stripe Payment Link** in your Stripe Dashboard:
+1. **No context switching** - user stays in the same browser tab
+2. **Automatic return** - no need to remember where they were
+3. **Clean flow** - feels like part of your app, not a separate experience
+4. **Reliable** - no iframe restrictions or CORS issues
 
-1. Go to [Stripe Dashboard → Payment Links](https://dashboard.stripe.com/payment-links)
-2. Create a new payment link for $9
-3. Set the "After payment" redirect to: `https://id-preview--4106109b-8adc-4e56-b2c6-847326cb6d74.lovable.app/payment-success`
-4. Copy the payment link URL (looks like `https://buy.stripe.com/xxx`)
+## Note on True Embedded Checkout
 
-## Benefits
+If you want a truly embedded payment form (card fields inside your modal), you would need:
+- A backend (Supabase Edge Functions or Lovable Cloud) to create PaymentIntent/Checkout sessions
+- The Stripe.js and React Stripe.js libraries
 
-- No backend required
-- No Supabase dependency
-- Simpler architecture
-- Payment Links are fully managed by Stripe
-- Easy to update pricing in Stripe Dashboard
+This is possible in the future if you decide to add a backend, but for now the same-tab redirect is the best no-backend solution.
 
