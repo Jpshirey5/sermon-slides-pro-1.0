@@ -389,6 +389,79 @@ export async function lookupScripture(
   };
 }
 
+// Split multi-verse text into individual verses
+// Returns an array of { text, reference } for each verse
+export function splitVerseText(
+  text: string,
+  reference: string
+): { text: string; reference: string }[] {
+  const parsed = parseScriptureReference(reference);
+  if (!parsed || !parsed.verseEnd) {
+    // Single verse or unparseable — return as-is
+    return [{ text, reference }];
+  }
+
+  const { book, chapter, verseStart, verseEnd } = parsed;
+  const totalVerses = verseEnd - verseStart + 1;
+
+  // Strategy 1: Split by numbered verse markers like "16 ...", "17 ..."
+  const numberPattern = new RegExp(
+    `(?:^|\\s)(${Array.from({ length: totalVerses }, (_, i) => verseStart + i).join('|')})\\s`,
+    'g'
+  );
+  const markers: { verse: number; pos: number }[] = [];
+  let m: RegExpExecArray | null;
+  const searchText = ' ' + text; // pad so first verse can match
+  while ((m = numberPattern.exec(searchText)) !== null) {
+    const verseNum = parseInt(m[1]);
+    if (verseNum >= verseStart && verseNum <= verseEnd) {
+      markers.push({ verse: verseNum, pos: m.index + m[0].indexOf(m[1]) - 1 }); // adjust for padding
+    }
+  }
+
+  // If we found markers for most verses, use them
+  if (markers.length >= totalVerses * 0.6) {
+    // Deduplicate and sort
+    const uniqueMarkers = markers
+      .filter((m, i, arr) => i === 0 || m.verse !== arr[i - 1].verse)
+      .sort((a, b) => a.pos - b.pos);
+
+    const results: { text: string; reference: string }[] = [];
+    for (let i = 0; i < uniqueMarkers.length; i++) {
+      const start = uniqueMarkers[i].pos;
+      const end = i + 1 < uniqueMarkers.length ? uniqueMarkers[i + 1].pos : text.length;
+      const verseText = text.slice(start, end).replace(/^\d+\s*/, '').trim();
+      if (verseText) {
+        results.push({
+          text: verseText,
+          reference: `${book} ${chapter}:${uniqueMarkers[i].verse}`,
+        });
+      }
+    }
+    if (results.length > 0) return results;
+  }
+
+  // Strategy 2: Split by sentences and distribute evenly
+  const sentences = text.split(/(?<=[.!?])\s+/).filter(s => s.trim());
+  if (sentences.length >= totalVerses) {
+    const results: { text: string; reference: string }[] = [];
+    const perVerse = Math.ceil(sentences.length / totalVerses);
+    for (let i = 0; i < totalVerses; i++) {
+      const chunk = sentences.slice(i * perVerse, (i + 1) * perVerse).join(' ').trim();
+      if (chunk) {
+        results.push({
+          text: chunk,
+          reference: `${book} ${chapter}:${verseStart + i}`,
+        });
+      }
+    }
+    if (results.length > 0) return results;
+  }
+
+  // Fallback: return as single block
+  return [{ text, reference }];
+}
+
 // Search for scripture by keywords (simplified version)
 export function searchScripture(query: string): string[] {
   const suggestions = [

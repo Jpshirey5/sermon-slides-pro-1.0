@@ -8,6 +8,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { BackgroundPicker } from "@/components/BackgroundPicker";
 import { exportToPowerPoint, SlideData } from "@/lib/export-pptx";
 import { exportAsProBundle, exportAsPlainText, validateSlidesForExport } from "@/services/proPresenterExport";
+import { splitVerseText } from "@/lib/scripture-api";
 import { ExportOptionsModal } from "@/components/ExportOptionsModal";
 import { PaymentPromptModal } from "@/components/PaymentPromptModal";
 import { toast } from "sonner";
@@ -129,18 +130,40 @@ function generateSlidesFromData(presentation: SermonPresentation): SlideData[] {
         // Scripture slides for this point
         point.scriptures.forEach((scripture, sIndex) => {
           if (scripture.reference && scripture.text) {
-            slides.push({
-              id: `scripture-${point.id}-${sIndex}`,
-              type: 'scripture',
-              content: {
-                scripture: `"${scripture.text}"`,
-                reference: `${scripture.reference} (${presentation.data?.translation || 'KJV'})`
-              },
-              background: defaultBackground,
-              fontFamily: defaultFont,
-              textColor: defaultColor,
-              lineSpacing: defaultLineSpacing
-            });
+            const isVerseByVerse = presentation.data?.verseBreakdown === 'verse-by-verse';
+            
+            if (isVerseByVerse) {
+              // Split multi-verse passages into individual slides
+              const splitVerses = splitVerseText(scripture.text, scripture.reference);
+              splitVerses.forEach((verse, vIndex) => {
+                slides.push({
+                  id: `scripture-${point.id}-${sIndex}-${vIndex}`,
+                  type: 'scripture',
+                  content: {
+                    scripture: `"${verse.text}"`,
+                    reference: `${verse.reference} (${presentation.data?.translation || 'KJV'})`
+                  },
+                  background: defaultBackground,
+                  fontFamily: defaultFont,
+                  textColor: defaultColor,
+                  lineSpacing: defaultLineSpacing
+                });
+              });
+            } else {
+              // Full verses - single slide
+              slides.push({
+                id: `scripture-${point.id}-${sIndex}`,
+                type: 'scripture',
+                content: {
+                  scripture: `"${scripture.text}"`,
+                  reference: `${scripture.reference} (${presentation.data?.translation || 'KJV'})`
+                },
+                background: defaultBackground,
+                fontFamily: defaultFont,
+                textColor: defaultColor,
+                lineSpacing: defaultLineSpacing
+              });
+            }
           }
         });
       }

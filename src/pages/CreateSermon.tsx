@@ -11,6 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   BookOpen,
   ArrowLeft,
@@ -62,8 +63,8 @@ const translations = [
 const CreateSermon = () => {
   const navigate = useNavigate();
   const [title, setTitle] = useState("");
-  const [date, setDate] = useState("");
   const [globalTranslation, setGlobalTranslation] = useState("KJV");
+  const [verseBreakdown, setVerseBreakdown] = useState("verse-by-verse");
   const [points, setPoints] = useState<SermonPoint[]>([
     { id: "1", title: "", scriptures: [] },
   ]);
@@ -301,12 +302,13 @@ const CreateSermon = () => {
     savePresentation({
       id: presentationId,
       title: title,
-      date: date || new Date().toISOString().split('T')[0],
+      date: new Date().toISOString().split('T')[0],
       slides: slideCount,
       lastModified: 'Just now',
       data: {
         title,
-        date,
+        date: new Date().toISOString().split('T')[0],
+        verseBreakdown,
         translation: globalTranslation,
         points: points.map(p => ({
           id: p.id,
@@ -398,41 +400,52 @@ const CreateSermon = () => {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="date">Sermon Date</Label>
-                  <Input
-                    id="date"
-                    type="date"
-                    value={date}
-                    onChange={(e) => setDate(e.target.value)}
-                    className="h-12"
-                  />
+                  <Label htmlFor="translation" className="flex items-center gap-2">
+                    <Book className="w-4 h-4" />
+                    Bible Translation
+                  </Label>
+                  <Select
+                    value={globalTranslation}
+                    onValueChange={handleTranslationChange}
+                  >
+                    <SelectTrigger className="h-12">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {translations.map((t) => (
+                        <SelectItem key={t.code} value={t.code}>
+                          <span className="font-medium">{t.code}</span>
+                          <span className="text-muted-foreground ml-2">
+                            {t.name}
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
 
-              {/* Global Translation Selector */}
-              <div className="space-y-2">
-                <Label htmlFor="translation" className="flex items-center gap-2">
-                  <Book className="w-4 h-4" />
-                  Bible Translation (applies to all scriptures)
-                </Label>
-                <Select
-                  value={globalTranslation}
-                  onValueChange={handleTranslationChange}
+              {/* Verse Breakdown */}
+              <div className="space-y-3">
+                <Label>Verse Breakdown</Label>
+                <RadioGroup
+                  value={verseBreakdown}
+                  onValueChange={setVerseBreakdown}
+                  className="flex gap-6"
                 >
-                  <SelectTrigger className="w-full sm:w-80">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {translations.map((t) => (
-                      <SelectItem key={t.code} value={t.code}>
-                        <span className="font-medium">{t.code}</span>
-                        <span className="text-muted-foreground ml-2">
-                          {t.name}
-                        </span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  <div className="flex items-center gap-2">
+                    <RadioGroupItem value="verse-by-verse" id="verse-by-verse" />
+                    <Label htmlFor="verse-by-verse" className="cursor-pointer font-normal">
+                      Verse by Verse
+                    </Label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <RadioGroupItem value="full-verses" id="full-verses" />
+                    <Label htmlFor="full-verses" className="cursor-pointer font-normal">
+                      Full Verses
+                    </Label>
+                  </div>
+                </RadioGroup>
               </div>
             </div>
 

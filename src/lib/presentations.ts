@@ -10,6 +10,7 @@ export interface SermonPresentation {
     title: string;
     date: string;
     translation: string;
+    verseBreakdown?: string;
     points: Array<{
       id: string;
       title: string;
