@@ -302,12 +302,13 @@ const CreateSermon = () => {
     savePresentation({
       id: presentationId,
       title: title,
-      date: date || new Date().toISOString().split('T')[0],
+      date: new Date().toISOString().split('T')[0],
       slides: slideCount,
       lastModified: 'Just now',
       data: {
         title,
-        date,
+        date: new Date().toISOString().split('T')[0],
+        verseBreakdown,
         translation: globalTranslation,
         points: points.map(p => ({
           id: p.id,
