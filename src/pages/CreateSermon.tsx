@@ -63,8 +63,8 @@ const translations = [
 const CreateSermon = () => {
   const navigate = useNavigate();
   const [title, setTitle] = useState("");
-  const [date, setDate] = useState("");
   const [globalTranslation, setGlobalTranslation] = useState("KJV");
+  const [verseBreakdown, setVerseBreakdown] = useState("verse-by-verse");
   const [points, setPoints] = useState<SermonPoint[]>([
     { id: "1", title: "", scriptures: [] },
   ]);
