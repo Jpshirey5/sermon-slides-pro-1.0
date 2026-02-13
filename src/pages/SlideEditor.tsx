@@ -1,9 +1,9 @@
 import { useState, useCallback, useEffect, useRef } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Link, useParams, useSearchParams, useLocation, useNavigate } from "react-router-dom";
 import { motion, Reorder, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { BookOpen, ArrowLeft, Download, Play, GripVertical, Plus, Type, Palette, ChevronLeft, ChevronRight, Trash2, AlignVerticalSpaceAround, Undo2, Redo2, Copy, Check, Cloud } from "lucide-react";
+import { BookOpen, ArrowLeft, Download, Play, GripVertical, Plus, Type, Palette, ChevronLeft, ChevronRight, Trash2, AlignVerticalSpaceAround, Undo2, Redo2, Copy, Check, Cloud, BookMarked } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { BackgroundPicker } from "@/components/BackgroundPicker";
 import { exportToPowerPoint, SlideData } from "@/lib/export-pptx";
@@ -230,6 +230,9 @@ function saveEditorSlides(presentationId: string, slides: SlideData[]): void {
 
 const SlideEditor = () => {
   const { id } = useParams();
+  const location = useLocation();
+  const editorNavigate = useNavigate();
+  const isFromDashboard = (location.state as any)?.from === "dashboard" || localStorage.getItem("logged_in") === "true";
   const [searchParams, setSearchParams] = useSearchParams();
   const [slides, setSlides] = useState<SlideData[]>(defaultSlides);
   const [selectedSlide, setSelectedSlide] = useState(0);
@@ -689,9 +692,9 @@ const SlideEditor = () => {
         <div className="h-full px-4">
           <div className="flex items-center justify-between h-full">
             {/* Back */}
-            <Link to="/" className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors">
+            <Link to={isFromDashboard ? "/dashboard" : "/"} className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors">
               <ArrowLeft className="w-5 h-5" />
-              <span className="hidden sm:inline">Home</span>
+              <span className="hidden sm:inline">{isFromDashboard ? "Dashboard" : "Home"}</span>
             </Link>
 
             {/* Title + Paid Badge + Save Indicator */}
@@ -756,6 +759,11 @@ const SlideEditor = () => {
                 <Play className="w-4 h-4" />
                 <span className="hidden sm:inline">Preview</span>
               </Button>
+              {id && id !== "new" && (
+                <Button variant="ghost" size="icon" className="h-9 w-9" title="Create Study Guide" onClick={() => editorNavigate(`/manuscript?fromPresentation=${id}`)}>
+                  <BookMarked className="w-4 h-4" />
+                </Button>
+              )}
               <Button variant="hero" disabled={isExporting} onClick={handleExportButtonClick}>
                 <Download className="w-4 h-4" />
                 <span className="hidden sm:inline">

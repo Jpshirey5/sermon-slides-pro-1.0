@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -63,6 +63,8 @@ const translations = [
 
 const CreateSermon = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const isFromDashboard = location.pathname.startsWith("/dashboard");
   const [title, setTitle] = useState("");
   const [globalTranslation, setGlobalTranslation] = useState("KJV");
   const [verseBreakdown, setVerseBreakdown] = useState("verse-by-verse");
@@ -336,11 +338,13 @@ const CreateSermon = () => {
           <div className="flex items-center justify-between h-16">
             {/* Back */}
             <Link
-              to="/"
+              to={isFromDashboard ? "/dashboard" : "/"}
               className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors"
             >
               <ArrowLeft className="w-5 h-5" />
-              <span className="hidden sm:inline">Back to Home</span>
+              <span className="hidden sm:inline">
+                {isFromDashboard ? "Back to Dashboard" : "Back to Home"}
+              </span>
             </Link>
 
             {/* Logo */}
