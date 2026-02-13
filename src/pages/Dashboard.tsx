@@ -218,7 +218,7 @@ const Dashboard = () => {
                   <FileText className="w-6 h-6 text-accent-foreground" />
                 </div>
                 <h2 className="font-serif text-xl font-semibold text-foreground mb-2">
-                  Study Guide & Conference Builder
+                  Study Guide & Training Builder
                 </h2>
                 <p className="text-muted-foreground text-sm mb-6">
                   Upload a manuscript and generate multi-week study guides, training
