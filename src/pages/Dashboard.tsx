@@ -14,6 +14,7 @@ import {
   Clock,
   BookMarked,
 } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   getPresentations,
   deletePresentation,
@@ -97,212 +98,211 @@ const Dashboard = () => {
           <p className="text-muted-foreground">{userEmail}</p>
         </motion.div>
 
-        {/* Tool Cards */}
+        {/* Tabs */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.1 }}
-          className="grid sm:grid-cols-2 gap-6 mb-14"
         >
-          {/* Sermon Slide Creator */}
-          <div className="rounded-2xl border border-border bg-card p-8 flex flex-col">
-            <div className="w-12 h-12 rounded-xl gradient-hero flex items-center justify-center mb-5">
-              <Presentation className="w-6 h-6 text-primary-foreground" />
-            </div>
-            <h2 className="font-serif text-xl font-semibold text-foreground mb-2">
-              Sermon Slide Creator
-            </h2>
-            <p className="text-muted-foreground text-sm flex-1 mb-6">
-              Create sermon presentations with auto scripture lookup and export
-              to PowerPoint & ProPresenter.
-            </p>
-            <Link to="/dashboard/create">
-              <Button variant="hero" className="w-full">
-                <Plus className="w-4 h-4" />
-                Create New Presentation
-              </Button>
-            </Link>
-          </div>
+          <Tabs defaultValue="sermons" className="w-full">
+            <TabsList className="grid w-full max-w-md mx-auto grid-cols-2 mb-8">
+              <TabsTrigger value="sermons">Sermon Slide Creator</TabsTrigger>
+              <TabsTrigger value="training">Training Creator</TabsTrigger>
+            </TabsList>
 
-          {/* Manuscript Study Guide & Conference */}
-          <div className="rounded-2xl border border-border bg-card p-8 flex flex-col">
-            <div className="w-12 h-12 rounded-xl gradient-gold flex items-center justify-center mb-5">
-              <FileText className="w-6 h-6 text-accent-foreground" />
-            </div>
-            <h2 className="font-serif text-xl font-semibold text-foreground mb-2">
-              Study Guide & Conference Builder
-            </h2>
-            <p className="text-muted-foreground text-sm flex-1 mb-6">
-              Upload a manuscript and generate multi-week study guides, training
-              materials, or multi-session conference breakout agendas.
-            </p>
-            <Link to="/manuscript">
-              <Button variant="gold" className="w-full">
-                <Plus className="w-4 h-4" />
-                Get Started
-              </Button>
-            </Link>
-          </div>
-        </motion.div>
+            {/* Tab 1: Sermon Slide Creator */}
+            <TabsContent value="sermons">
+              <div className="max-w-lg mx-auto rounded-2xl border border-border bg-card p-8 flex flex-col items-center text-center mb-14">
+                <div className="w-12 h-12 rounded-xl gradient-hero flex items-center justify-center mb-5">
+                  <Presentation className="w-6 h-6 text-primary-foreground" />
+                </div>
+                <h2 className="font-serif text-xl font-semibold text-foreground mb-2">
+                  Sermon Slide Creator
+                </h2>
+                <p className="text-muted-foreground text-sm mb-6">
+                  Create sermon presentations with auto scripture lookup and export
+                  to PowerPoint & ProPresenter.
+                </p>
+                <Link to="/dashboard/create">
+                  <Button variant="hero">
+                    <Plus className="w-4 h-4" />
+                    Create New Presentation
+                  </Button>
+                </Link>
+              </div>
 
-        {/* My Presentations */}
-        <motion.section
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.2 }}
-          className="mb-14"
-        >
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="font-serif text-2xl font-semibold text-foreground">
-              My Presentations
-            </h2>
-            <Link to="/dashboard/create">
-              <Button variant="outline" size="sm">
-                <Plus className="w-4 h-4" />
-                New
-              </Button>
-            </Link>
-          </div>
+              {/* My Presentations */}
+              <section>
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="font-serif text-2xl font-semibold text-foreground">
+                    My Presentations
+                  </h2>
+                  <Link to="/dashboard/create">
+                    <Button variant="outline" size="sm">
+                      <Plus className="w-4 h-4" />
+                      New
+                    </Button>
+                  </Link>
+                </div>
 
-          {presentations.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-border bg-card/50 p-12 text-center">
-              <Presentation className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
-              <p className="text-muted-foreground">
-                No presentations yet. Create your first one!
-              </p>
-            </div>
-          ) : (
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {presentations.map((p) => (
-                <div
-                  key={p.id}
-                  className="rounded-xl border border-border bg-card p-5 hover:shadow-soft transition-shadow group"
-                >
-                  <div
-                    className="cursor-pointer"
-                    onClick={() =>
-                      navigate(`/editor/${p.id}`, {
-                        state: { from: "dashboard" },
-                      })
-                    }
-                  >
-                    <h3 className="font-serif font-semibold text-foreground mb-1 group-hover:text-primary transition-colors truncate">
-                      {p.title || "Untitled"}
-                    </h3>
-                    <div className="flex items-center gap-3 text-xs text-muted-foreground mb-3">
-                      <span className="flex items-center gap-1">
-                        <Calendar className="w-3 h-3" /> {p.date}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Layers className="w-3 h-3" /> {p.slides} slides
-                      </span>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      <Clock className="w-3 h-3 inline mr-1" />
-                      {p.lastModified}
+                {presentations.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-border bg-card/50 p-12 text-center">
+                    <Presentation className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
+                    <p className="text-muted-foreground">
+                      No presentations yet. Create your first one!
                     </p>
                   </div>
-                  <div className="flex items-center gap-2 mt-4 pt-3 border-t border-border">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-xs flex-1"
-                      onClick={() =>
-                        navigate(
-                          `/manuscript?fromPresentation=${p.id}`
-                        )
-                      }
-                    >
-                      <BookMarked className="w-3 h-3" />
-                      Study Guide
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-destructive hover:text-destructive"
-                      onClick={() => handleDeletePresentation(p.id)}
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </Button>
+                ) : (
+                  <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {presentations.map((p) => (
+                      <div
+                        key={p.id}
+                        className="rounded-xl border border-border bg-card p-5 hover:shadow-soft transition-shadow group"
+                      >
+                        <div
+                          className="cursor-pointer"
+                          onClick={() =>
+                            navigate(`/editor/${p.id}`, {
+                              state: { from: "dashboard" },
+                            })
+                          }
+                        >
+                          <h3 className="font-serif font-semibold text-foreground mb-1 group-hover:text-primary transition-colors truncate">
+                            {p.title || "Untitled"}
+                          </h3>
+                          <div className="flex items-center gap-3 text-xs text-muted-foreground mb-3">
+                            <span className="flex items-center gap-1">
+                              <Calendar className="w-3 h-3" /> {p.date}
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <Layers className="w-3 h-3" /> {p.slides} slides
+                            </span>
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            <Clock className="w-3 h-3 inline mr-1" />
+                            {p.lastModified}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2 mt-4 pt-3 border-t border-border">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-xs flex-1"
+                            onClick={() =>
+                              navigate(`/manuscript?fromPresentation=${p.id}`)
+                            }
+                          >
+                            <BookMarked className="w-3 h-3" />
+                            Study Guide
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-destructive hover:text-destructive"
+                            onClick={() => handleDeletePresentation(p.id)}
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </motion.section>
+                )}
+              </section>
+            </TabsContent>
 
-        {/* My Study Guides & Conferences */}
-        <motion.section
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.3 }}
-        >
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="font-serif text-2xl font-semibold text-foreground">
-              My Study Guides & Conferences
-            </h2>
-            <Link to="/manuscript">
-              <Button variant="outline" size="sm">
-                <Plus className="w-4 h-4" />
-                New
-              </Button>
-            </Link>
-          </div>
-
-          {studyGuides.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-border bg-card/50 p-12 text-center">
-              <FileText className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
-              <p className="text-muted-foreground">
-                No study guides or conference plans yet.
-              </p>
-            </div>
-          ) : (
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {studyGuides.map((g) => (
-                <div
-                  key={g.id}
-                  className="rounded-xl border border-border bg-card p-5 hover:shadow-soft transition-shadow"
-                >
-                  <div className="flex items-center gap-2 mb-2">
-                    <span
-                      className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-                        g.outputType === "conference"
-                          ? "bg-accent/10 text-accent-foreground"
-                          : "bg-primary/10 text-primary"
-                      }`}
-                    >
-                      {g.outputType === "conference"
-                        ? "Conference"
-                        : "Study Guide"}
-                    </span>
-                  </div>
-                  <h3 className="font-serif font-semibold text-foreground mb-1 truncate">
-                    {g.title || "Untitled"}
-                  </h3>
-                  <p className="text-xs text-muted-foreground mb-1">
-                    {g.outputType === "conference"
-                      ? `${g.sessions?.length || 0} sessions`
-                      : `${g.content?.length || 0} weeks`}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    <Clock className="w-3 h-3 inline mr-1" />
-                    {g.lastModified}
-                  </p>
-                  <div className="flex justify-end mt-3 pt-3 border-t border-border">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-destructive hover:text-destructive"
-                      onClick={() => handleDeleteStudyGuide(g.id)}
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </Button>
-                  </div>
+            {/* Tab 2: Training Creator */}
+            <TabsContent value="training">
+              <div className="max-w-lg mx-auto rounded-2xl border border-border bg-card p-8 flex flex-col items-center text-center mb-14">
+                <div className="w-12 h-12 rounded-xl gradient-gold flex items-center justify-center mb-5">
+                  <FileText className="w-6 h-6 text-accent-foreground" />
                 </div>
-              ))}
-            </div>
-          )}
-        </motion.section>
+                <h2 className="font-serif text-xl font-semibold text-foreground mb-2">
+                  Study Guide & Conference Builder
+                </h2>
+                <p className="text-muted-foreground text-sm mb-6">
+                  Upload a manuscript and generate multi-week study guides, training
+                  materials, or multi-session conference breakout agendas.
+                </p>
+                <Link to="/manuscript">
+                  <Button variant="gold">
+                    <Plus className="w-4 h-4" />
+                    Get Started
+                  </Button>
+                </Link>
+              </div>
+
+              {/* My Study Guides & Conferences */}
+              <section>
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="font-serif text-2xl font-semibold text-foreground">
+                    My Study Guides & Conferences
+                  </h2>
+                  <Link to="/manuscript">
+                    <Button variant="outline" size="sm">
+                      <Plus className="w-4 h-4" />
+                      New
+                    </Button>
+                  </Link>
+                </div>
+
+                {studyGuides.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-border bg-card/50 p-12 text-center">
+                    <FileText className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
+                    <p className="text-muted-foreground">
+                      No study guides or conference plans yet.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {studyGuides.map((g) => (
+                      <div
+                        key={g.id}
+                        className="rounded-xl border border-border bg-card p-5 hover:shadow-soft transition-shadow"
+                      >
+                        <div className="flex items-center gap-2 mb-2">
+                          <span
+                            className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                              g.outputType === "conference"
+                                ? "bg-accent/10 text-accent-foreground"
+                                : "bg-primary/10 text-primary"
+                            }`}
+                          >
+                            {g.outputType === "conference"
+                              ? "Conference"
+                              : "Study Guide"}
+                          </span>
+                        </div>
+                        <h3 className="font-serif font-semibold text-foreground mb-1 truncate">
+                          {g.title || "Untitled"}
+                        </h3>
+                        <p className="text-xs text-muted-foreground mb-1">
+                          {g.outputType === "conference"
+                            ? `${g.sessions?.length || 0} sessions`
+                            : `${g.content?.length || 0} weeks`}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          <Clock className="w-3 h-3 inline mr-1" />
+                          {g.lastModified}
+                        </p>
+                        <div className="flex justify-end mt-3 pt-3 border-t border-border">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-destructive hover:text-destructive"
+                            onClick={() => handleDeleteStudyGuide(g.id)}
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+            </TabsContent>
+          </Tabs>
+        </motion.div>
       </main>
     </div>
   );
