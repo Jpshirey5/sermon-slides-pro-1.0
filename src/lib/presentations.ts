@@ -17,6 +17,7 @@ export interface SermonPresentation {
       scriptures: Array<{
         reference: string;
         text?: string;
+        verses?: { text: string; verse: number }[];
       }>;
     }>;
   };

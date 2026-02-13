@@ -30,6 +30,7 @@ import { savePresentation } from "@/lib/presentations";
 interface Scripture {
   reference: string;
   text?: string;
+  verses?: { text: string; verse: number }[];
   isLoading?: boolean;
   error?: boolean;
   errorMessage?: string;
@@ -165,7 +166,8 @@ const CreateSermon = () => {
                       scriptures: p.scriptures.map((s, i) =>
                         i === index ? { 
                           ...s, 
-                          text: result.text, 
+                          text: result.text,
+                          verses: result.verses,
                           isLoading: false,
                           error: false,
                           errorMessage: undefined
@@ -316,6 +318,7 @@ const CreateSermon = () => {
           scriptures: p.scriptures.map(s => ({
             reference: s.reference,
             text: s.text,
+            verses: s.verses,
           })),
         })),
       },

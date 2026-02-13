@@ -7,6 +7,7 @@ export interface ScriptureResult {
   translation: string;
   error?: boolean;
   errorMessage?: string;
+  verses?: { text: string; verse: number }[];
 }
 
 // Parse scripture reference (e.g., "John 3:16" or "Genesis 1:1-5")
@@ -337,10 +338,15 @@ export async function lookupScripture(
     if (response.ok) {
       const data = await response.json();
       if (data.text) {
+        const verses = data.verses?.map((v: { text: string; verse: number }) => ({
+          text: cleanText(v.text),
+          verse: v.verse,
+        }));
         return {
           text: cleanText(data.text),
           reference: data.reference || formattedRef,
           translation: data.translation_name || translation,
+          verses,
         };
       }
     }
@@ -366,12 +372,17 @@ export async function lookupScripture(
 
     if (response.ok) {
       const data = await response.json();
-      if (Array.isArray(data) && data.length > 0) {
-        const text = data.map((v: { text: string }) => cleanText(v.text)).join(' ');
+    if (Array.isArray(data) && data.length > 0) {
+        const verses = data.map((v: { text: string; verse: number }, i: number) => ({
+          text: cleanText(v.text),
+          verse: v.verse ?? (parsed.verseStart + i),
+        }));
+        const text = verses.map((v: { text: string }) => v.text).join(' ');
         return {
           text,
           reference: formattedRef,
           translation: 'KJV',
+          verses,
         };
       }
     }

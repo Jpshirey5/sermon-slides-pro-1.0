@@ -133,9 +133,17 @@ function generateSlidesFromData(presentation: SermonPresentation): SlideData[] {
             const isVerseByVerse = presentation.data?.verseBreakdown === 'verse-by-verse';
             
             if (isVerseByVerse) {
-              // Split multi-verse passages into individual slides
-              const splitVerses = splitVerseText(scripture.text, scripture.reference);
-              splitVerses.forEach((verse, vIndex) => {
+              // Use stored verses array if available, fall back to splitVerseText
+              const verseList = scripture.verses && scripture.verses.length > 0
+                ? scripture.verses.map(v => {
+                    // Extract book + chapter from the reference (e.g., "John 3:16-18" → "John 3")
+                    const parsed = scripture.reference.match(/^(.+?\s+\d+):/);
+                    const bookChapter = parsed ? parsed[1] : scripture.reference;
+                    return { text: v.text, reference: `${bookChapter}:${v.verse}` };
+                  })
+                : splitVerseText(scripture.text, scripture.reference);
+              
+              verseList.forEach((verse, vIndex) => {
                 slides.push({
                   id: `scripture-${point.id}-${sIndex}-${vIndex}`,
                   type: 'scripture',
