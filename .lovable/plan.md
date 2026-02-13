@@ -1,63 +1,65 @@
 
-# Reorganize Sermon Details and Add Verse Breakdown with Verse-by-Verse Slide Generation
 
-## Overview
+# Fix Verse-by-Verse Splitting
 
-Three changes: (1) remove the Sermon Date field, (2) move Bible Translation up to where the date was, (3) add a "Verse Breakdown" radio group in the old Bible Translation spot, and (4) when "Verse by Verse" is selected, split multi-verse passages into individual slides in the editor.
+## The Problem
 
-## UI Changes on Create Page
+When a multi-verse passage like "John 3:1-12" is looked up, the bible-api.com API actually returns each verse individually in a `verses` array. But the current code ignores this array and only uses the combined `data.text` field. Later, `splitVerseText` tries to re-split that combined text using pattern matching, which fails because there are no verse number markers in the text.
 
-The Sermon Details card will look like this:
+## The Solution
 
-```text
-+-----------------------------------------------+
-| Sermon Details                                 |
-|                                                |
-| [Sermon Title input]  [Bible Translation v]   |
-|                                                |
-| Verse Breakdown                                |
-| (o) Verse by Verse    ( ) Full Verses          |
-+-----------------------------------------------+
+Instead of trying to split text after the fact, store the individual verses from the API response at lookup time. Then when "Verse by Verse" is selected, the verses are already cleanly separated.
+
+## Changes
+
+### 1. Update `ScriptureResult` interface (`src/lib/scripture-api.ts`)
+
+Add an optional `verses` array to the result type:
+
+```
+verses?: { text: string; verse: number }[]
 ```
 
-- **Sermon Date** is removed entirely
-- **Bible Translation** moves into the right column of the grid (where date was)
-- **Verse Breakdown** section appears below with two radio buttons side by side
+### 2. Update `lookupScripture()` (`src/lib/scripture-api.ts`)
 
-## Slide Generation Logic
+When the bible-api.com response includes a `verses` array, store it in the result:
 
-When "Verse by Verse" is selected and a passage spans multiple verses (e.g., "John 3:16-18"):
-- The scripture API already returns the full combined text
-- The app will split the text into individual verses and create one slide per verse
-- Each slide will show the verse text and its specific reference (e.g., "John 3:16", "John 3:17", "John 3:18")
+```
+verses: data.verses?.map(v => ({ text: cleanText(v.text), verse: v.verse }))
+```
 
-When "Full Verses" is selected (current behavior):
-- All verses remain combined on a single slide as they do now
+Also update the fallback scriptures: for multi-verse entries in the hardcoded `fallbackScriptures`, add pre-split verse arrays so they work offline too.
 
-## Technical Details
+### 3. Update how scripture text is stored (`src/components/ScriptureLookup.tsx`)
 
-### File: `src/pages/CreateSermon.tsx`
-1. Remove `date` state variable and its input field
-2. Move the Bible Translation `Select` into the grid's second column
-3. Add new state: `const [verseBreakdown, setVerseBreakdown] = useState("verse-by-verse")`
-4. Import `RadioGroup` and `RadioGroupItem` from `@/components/ui/radio-group`
-5. Add Verse Breakdown section with two radio options below the grid
-6. Include `verseBreakdown` in the saved presentation data
-7. Use today's date as default when saving (since date input is removed)
+Pass the `verses` array through the `onScriptureFound` callback so it gets saved with the presentation data. Update the callback signature to include optional verses data.
 
-### File: `src/lib/presentations.ts`
-- Add `verseBreakdown?: string` to the `data` interface so the setting persists
+### 4. Update `CreateSermon.tsx` data model
 
-### File: `src/pages/SlideEditor.tsx`
-- Update `generateSlidesFromData()` function (lines 80-150):
-  - When `presentation.data?.verseBreakdown === "verse-by-verse"` and a scripture has a verse range (detected via the reference containing a dash like "3:16-18"):
-    - Split the scripture text into individual verses by detecting verse boundaries (sentence endings, numbered verse markers)
-    - Create separate slide entries for each verse with individual references
-  - When `"full-verses"` (or unset for backwards compatibility): keep current single-slide behavior
+When saving scripture data for each point, include the individual `verses` array alongside the existing `text` and `reference` fields.
 
-### File: `src/lib/scripture-api.ts`
-- Add a new exported helper function `splitVerseText(text, reference)` that:
-  - Takes the combined verse text and the parsed reference
-  - Returns an array of `{ text: string, reference: string }` objects, one per verse
-  - Uses sentence/period boundaries and verse number patterns to split
-  - Falls back to keeping it as one block if splitting is unreliable
+### 5. Update slide generation (`src/pages/SlideEditor.tsx`)
+
+In the "verse-by-verse" branch of `generateSlidesFromData`, instead of calling `splitVerseText()` on the combined text, use the stored `verses` array directly. Each entry already has clean text and a verse number, so creating individual slides is straightforward:
+
+```
+scripture.verses.forEach(verse => {
+  // Create one slide per verse with reference like "John 3:16"
+})
+```
+
+Fall back to `splitVerseText()` only if `verses` data isn't available (backward compatibility with old saved sermons).
+
+## Files Modified
+
+| File | What Changes |
+|------|-------------|
+| `src/lib/scripture-api.ts` | Add `verses` field to `ScriptureResult`, populate from API response |
+| `src/components/ScriptureLookup.tsx` | Pass verses data through callback |
+| `src/pages/CreateSermon.tsx` | Store verses array in scripture data |
+| `src/pages/SlideEditor.tsx` | Use stored verses array for verse-by-verse slides |
+
+## Result
+
+When "Verse by Verse" is selected and a passage like "John 3:1-12" is used, each verse will reliably get its own slide with the correct reference, because the verses are separated at API fetch time rather than guessed later.
+
