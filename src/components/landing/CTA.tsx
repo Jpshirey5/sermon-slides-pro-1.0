@@ -59,6 +59,11 @@ const CTA = () => {
                 <ArrowRight className="w-5 h-5" />
               </Button>
             </Link>
+            <Link to="/login">
+              <Button variant="outline" size="xl" className="border-white/30 text-white hover:bg-white/10 hover:text-white">
+                Login
+              </Button>
+            </Link>
           </div>
         </motion.div>
       </div>

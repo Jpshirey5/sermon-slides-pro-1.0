@@ -53,6 +53,9 @@ const Header = () => {
             <Link to="/create">
               <Button variant="hero">Get Started</Button>
             </Link>
+            <Link to="/login">
+              <Button variant="outline">Login</Button>
+            </Link>
           </div>
 
           {/* Mobile Menu Toggle */}
@@ -103,6 +106,11 @@ const Header = () => {
                 <Link to="/create" onClick={() => setIsOpen(false)}>
                   <Button variant="hero" className="w-full">
                     Get Started
+                  </Button>
+                </Link>
+                <Link to="/login" onClick={() => setIsOpen(false)}>
+                  <Button variant="outline" className="w-full">
+                    Login
                   </Button>
                 </Link>
               </div>

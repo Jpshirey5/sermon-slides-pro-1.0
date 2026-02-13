@@ -7,6 +7,9 @@ import Index from "./pages/Index";
 import CreateSermon from "./pages/CreateSermon";
 import SlideEditor from "./pages/SlideEditor";
 import PaymentSuccess from "./pages/PaymentSuccess";
+import Login from "./pages/Login";
+import Dashboard from "./pages/Dashboard";
+import ManuscriptGenerator from "./pages/ManuscriptGenerator";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -22,6 +25,10 @@ const App = () => (
           <Route path="/create" element={<CreateSermon />} />
           <Route path="/editor/:id" element={<SlideEditor />} />
           <Route path="/payment-success" element={<PaymentSuccess />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/dashboard/create" element={<CreateSermon />} />
+          <Route path="/manuscript" element={<ManuscriptGenerator />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

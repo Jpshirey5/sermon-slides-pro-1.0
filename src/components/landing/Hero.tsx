@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Sparkles, Play } from "lucide-react";
+import { ArrowRight, Sparkles } from "lucide-react";
 import heroImage from "@/assets/hero-church.jpg";
 
 const Hero = () => {
@@ -77,10 +77,11 @@ const Hero = () => {
                 <ArrowRight className="w-5 h-5" />
               </Button>
             </Link>
-            <Button variant="outline" size="xl">
-              <Play className="w-5 h-5" />
-              Watch Demo
-            </Button>
+            <Link to="/login">
+              <Button variant="outline" size="xl">
+                Login
+              </Button>
+            </Link>
           </motion.div>
 
           {/* Trust Indicators */}
