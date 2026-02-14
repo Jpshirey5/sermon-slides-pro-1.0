@@ -1,162 +1,74 @@
 
 
-# Rewrite ProPresenter Export to Native Pro7 Protobuf Binary
+# Fix ProPresenter Export: Correct Schema Field Numbers and Data Structure
 
-## Problem
+## Root Causes Found
 
-The `.pro` file uploaded confirms that ProPresenter 7 uses **Google Protocol Buffers (protobuf) binary encoding**, not XML. Our current export writes Pro6 XML into a `.pro` file, which is why ProPresenter imports the bundle but shows nothing -- it can't parse the XML as protobuf.
+After comparing our protobuf schema against the official reverse-engineered `.proto` definitions from greyshirtguy/ProPresenter7-Proto, two clear problems explain both issues:
 
-## Solution
+### Why slides are empty
+The `Action.slide` field is assigned **field number 8** in our schema, but the real ProPresenter proto uses **field number 23**. ProPresenter reads field 23 for slide data, finds nothing there, and renders empty slides.
 
-Replace the XML generation with **native protobuf binary encoding** using the `protobufjs` library and the reverse-engineered Proto7 schema from `greyshirtguy/ProPresenter7-Proto`.
+Additionally, the real structure wraps slides in a `PresentationSlide` message (with a `base_slide` field) rather than referencing `Slide` directly. Our schema skips this wrapper entirely.
 
-The `protobufjs` library supports dynamic schema definition via its reflection API, meaning we can define the message types in JavaScript code without needing `.proto` files at build time.
+### Why the title shows "Presentation"
+The internal filename inside the ZIP is hardcoded to `Presentation.pro`. ProPresenter uses this filename as the presentation title in its library.
 
-## How It Works
+## Changes Required
 
-The `.pro` file is a serialized `rv.data.Presentation` protobuf message containing:
+### File 1: `src/services/pro7-schema.ts`
 
-- Presentation metadata (UUID, name, category)
-- Cue groups (slide groups with group UUIDs linked to cue UUIDs)
-- Cues (one per slide, each containing an Action that holds a Slide)
-- Each Slide contains Elements (text elements with RTF data, background media fills)
+**Fix Action.slide field number**: Change from field 8 to field **23** (matching the real `oneof ActionTypeData`).
 
-## What Changes
+**Add Action.type field**: The real Action has a `type` field at position 9, which must be set to `11` (ACTION_TYPE_PRESENTATION_SLIDE) for slide actions.
 
-**File modified:** `src/services/proPresenterExport.ts` only
+**Add Action.isEnabled field**: The real Action has `isEnabled` at field 6.
 
-**New dependency:** `protobufjs` (pure JS, works in browser)
+**Add PresentationSlide wrapper**: The real structure is `Action.SlideType.presentation (field 2) -> PresentationSlide.base_slide (field 1) -> Slide`. Our schema jumps straight to `Slide`, skipping the `PresentationSlide` wrapper.
 
-### 1. Add `protobufjs` dependency
+**Fix SlideType fields**: The real `SlideType` has `PresentationSlide presentation` at field **2** (not field 1), and does not have a direct `Slide` at field 2.
 
-Install `protobufjs` for encoding protobuf messages in the browser.
+**Fix Color type**: The real proto uses `float` for color channels, not `double`.
 
-### 2. Define Pro7 protobuf schema in code
+**Fix URL fields**: The real proto uses `absolute_string` (field 1) and `relative_path` (field 2) as a `oneof Storage`, not `local_path`/`external_path`.
 
-Using `protobufjs`'s reflection API (`protobuf.Type`, `protobuf.Field`), define the required message types:
+**Add Graphics.Path**: The real elements include a `path` field (field 8) with `closed` and `points`. A basic closed path is needed for ProPresenter to recognize the element shape.
 
-- `Presentation` -- top-level document
-- `Presentation.CueGroup` -- links a Group to cue UUIDs
-- `Cue` -- contains actions (one per slide)
-- `Action` -- contains a Slide
-- `Slide` -- contains Elements
-- `Slide.Element` -- wraps a `Graphics.Element`
-- `Graphics.Element` -- has bounds, fill, text, opacity, etc.
-- `Graphics.Text` -- holds RTF data bytes, vertical alignment, font attributes
-- `Graphics.Fill` -- holds media reference for background images
-- `Media` -- references background image with URL
-- `UUID`, `Color`, `Graphics.Rect`, `Graphics.Point`, `Graphics.Size`
-- `Group` -- slide group with name and color
+### File 2: `src/services/proPresenterExport.ts`
 
-### 3. Map slide data to protobuf messages
+**Fix internal filename**: Change `zip.file('Presentation.pro', buffer)` to use the sanitized presentation title as the filename.
 
-For each slide:
-- Create a `Cue` with a unique UUID and name from the slide label
-- Inside the Cue, create an `Action` of type `SLIDE` containing a `Slide`
-- The `Slide` has a text `Element` with RTF-encoded content and a background color
-- If the slide has a background image, add a `Graphics.Fill` with a `Media` reference pointing to the bundled image file
-- Group all cues into a single `Presentation.CueGroup`
+**Set Action.type**: Set to `11` (ACTION_TYPE_PRESENTATION_SLIDE) on every action.
 
-### 4. Encode and write binary
+**Set Action.isEnabled**: Set to `true` on every action.
 
-- Use `protobufjs`'s `.encode().finish()` to produce a `Uint8Array`
-- Write this binary data as `Presentation.pro` in the ZIP bundle
+**Wrap slides in PresentationSlide**: Nest `Slide` inside `{ base_slide: slideMsg }` inside `SlideType.presentation`.
 
-### 5. Update bundle structure
+**Fix media URL format**: Use `relative_path` instead of `local_path` for bundled media references.
 
-The `.probundle` ZIP will contain:
-- `Presentation.pro` -- protobuf binary (was XML before)
-- `Media/` -- background images (unchanged)
-- Remove `Info.plist` and `Manifest.plist` (not needed for Pro7 native format)
+**Add element path**: Include a basic closed rectangular path on each element so ProPresenter recognizes the element shape.
 
-### 6. RTF text encoding
+## Technical Summary of Field Number Corrections
 
-Keep the existing `encodeRTF` helper but output raw bytes instead of Base64, since protobuf stores `rtf_data` as a `bytes` field.
+```text
+CURRENT (broken)                    CORRECT (from real proto)
+---------------------------         ---------------------------
+Action.slide = field 8              Action.slide = field 23
+Action (no type field)              Action.type = field 9, value 11
+Action (no isEnabled)               Action.isEnabled = field 6
+SlideType.presentation = field 1    SlideType.presentation = field 2
+SlideType.slide = field 2           (removed - not in real proto)
+Color fields = double               Color fields = float
+URL.local_path = field 1            URL.absolute_string = field 1
+URL.external_path = field 2         URL.relative_path = field 2
+(no PresentationSlide)              PresentationSlide.base_slide = field 1
+```
 
-## What Does NOT Change
+## Files NOT Changed
 
 - `src/lib/export-pptx.ts` -- untouched
 - `src/lib/export-propresenter.ts` -- untouched
 - `src/components/ExportOptionsModal.tsx` -- untouched
 - `src/pages/SlideEditor.tsx` -- untouched
-- All UI components, data models, shared helpers -- untouched
-- The `SlideData` interface -- untouched (read-only input)
-- The `exportAsPlainText` function -- untouched
-- The `validateSlidesForExport` and `sanitizeFileName` functions -- untouched
-
-## Technical Details
-
-### Protobuf schema mapping (field numbers from reverse-engineered proto)
-
-```text
-Presentation (top-level)
-  field 2: UUID uuid
-  field 3: string name
-  field 6: string category = "Presentation"
-  field 12: repeated CueGroup cue_groups
-  field 13: repeated Cue cues
-
-Presentation.CueGroup
-  field 1: Group group
-  field 2: repeated UUID cue_identifiers
-
-Cue
-  field 1: UUID uuid
-  field 2: string name
-  field 10: repeated Action actions
-  field 12: bool isEnabled = true
-
-Action (Slide action)
-  field 1: UUID uuid
-  field 8: Action.SlideType slide  (oneof)
-
-Action.SlideType
-  field 1: Presentation presentation
-  field 2: Slide slide
-
-Slide
-  field 1: repeated Slide.Element elements
-  field 4: bool draws_background_color
-  field 5: Color background_color
-  field 6: Graphics.Size size (1920x1080)
-  field 7: UUID uuid
-
-Slide.Element
-  field 1: Graphics.Element element
-
-Graphics.Element
-  field 1: UUID uuid
-  field 2: string name
-  field 3: Graphics.Rect bounds
-  field 5: double opacity = 1.0
-  field 9: Graphics.Fill fill
-  field 13: Graphics.Text text
-
-Graphics.Text
-  field 5: bytes rtf_data
-  field 6: VerticalAlignment = MIDDLE (1)
-
-Graphics.Fill
-  field 3: Media media  (for background images)
-  field 4: bool enable = true
-
-Media
-  field 1: UUID uuid
-  field 2: URL url
-
-Group
-  field 1: UUID uuid
-  field 2: string name
-  field 3: Color color
-```
-
-### Bundle output structure
-
-```text
-SermonTitle.probundle (ZIP)
-  +-- Presentation.pro      (protobuf binary)
-  +-- Media/
-       +-- bg_001.jpg
-       +-- bg_002.jpg
-```
+- All UI, data models, shared helpers -- untouched
 
