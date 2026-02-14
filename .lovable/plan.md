@@ -1,152 +1,162 @@
 
 
-# Fix ProPresenter Export -- Valid Pro6 XML Structure
+# Rewrite ProPresenter Export to Native Pro7 Protobuf Binary
 
 ## Problem
 
-The current `generatePro7Document` function produces XML that does not match any valid ProPresenter format. ProPresenter 7 uses protobuf binary, not XML. The XML structure uses wrong container syntax, wrong attribute values, and missing required child elements. This is why the .probundle fails to import.
+The `.pro` file uploaded confirms that ProPresenter 7 uses **Google Protocol Buffers (protobuf) binary encoding**, not XML. Our current export writes Pro6 XML into a `.pro` file, which is why ProPresenter imports the bundle but shows nothing -- it can't parse the XML as protobuf.
 
 ## Solution
 
-Rewrite the XML generation in `src/services/proPresenterExport.ts` to produce valid **ProPresenter 6 XML** format, which ProPresenter 7 natively imports via its legacy support. The reference format comes from verified real `.pro6` files.
+Replace the XML generation with **native protobuf binary encoding** using the `protobufjs` library and the reverse-engineered Proto7 schema from `greyshirtguy/ProPresenter7-Proto`.
 
-## Scope -- Only `src/services/proPresenterExport.ts`
+The `protobufjs` library supports dynamic schema definition via its reflection API, meaning we can define the message types in JavaScript code without needing `.proto` files at build time.
 
-No changes to any other file. PPTX export, UI, data models, shared helpers all remain untouched.
+## How It Works
 
-## Key Structural Fixes
+The `.pro` file is a serialized `rv.data.Presentation` protobuf message containing:
 
-### 1. Document Root Attributes
+- Presentation metadata (UUID, name, category)
+- Cue groups (slide groups with group UUIDs linked to cue UUIDs)
+- Cues (one per slide, each containing an Action that holds a Slide)
+- Each Slide contains Elements (text elements with RTF data, background media fills)
 
-Current (broken):
-```text
-versionNumber="700" drawingBackgroundColor="0" CCLIDisplay="0"
-```
+## What Changes
 
-Fixed (valid Pro6):
-```text
-versionNumber="600" os="1" buildNumber="6016"
-drawingBackgroundColor="false" CCLIDisplay="false"
-```
+**File modified:** `src/services/proPresenterExport.ts` only
 
-Also adds missing attributes: `CCLIAuthor`, `CCLICopyrightYear`, `CCLISongNumber`.
+**New dependency:** `protobufjs` (pure JS, works in browser)
 
-### 2. Container Elements
+### 1. Add `protobufjs` dependency
 
-Current (broken):
-```text
-<groups containerClass="NSMutableArray">
-<slides containerClass="NSMutableArray">
-<cues containerClass="NSMutableArray">
-<displayElements containerClass="NSMutableArray">
-```
+Install `protobufjs` for encoding protobuf messages in the browser.
 
-Fixed (valid Pro6):
-```text
-<array rvXMLIvarName="groups">
-<array rvXMLIvarName="slides">
-<array rvXMLIvarName="cues"/>
-<array rvXMLIvarName="displayElements">
-```
+### 2. Define Pro7 protobuf schema in code
 
-### 3. Timeline Element
+Using `protobufjs`'s reflection API (`protobuf.Type`, `protobuf.Field`), define the required message types:
 
-Current (broken):
-```text
-<timeline duration="0" loop="0" ...>
-  <timeCues containerClass="NSMutableArray"/>
-  <mediaTracks containerClass="NSMutableArray"/>
-</timeline>
-```
+- `Presentation` -- top-level document
+- `Presentation.CueGroup` -- links a Group to cue UUIDs
+- `Cue` -- contains actions (one per slide)
+- `Action` -- contains a Slide
+- `Slide` -- contains Elements
+- `Slide.Element` -- wraps a `Graphics.Element`
+- `Graphics.Element` -- has bounds, fill, text, opacity, etc.
+- `Graphics.Text` -- holds RTF data bytes, vertical alignment, font attributes
+- `Graphics.Fill` -- holds media reference for background images
+- `Media` -- references background image with URL
+- `UUID`, `Color`, `Graphics.Rect`, `Graphics.Point`, `Graphics.Size`
+- `Group` -- slide group with name and color
 
-Fixed (valid Pro6):
-```text
-<RVTimeline timeOffset="0" duration="0" selectedMediaTrackIndex="-1"
-  loop="false" rvXMLIvarName="timeline">
-  <array rvXMLIvarName="timeCues"/>
-  <array rvXMLIvarName="mediaTracks"/>
-</RVTimeline>
-```
+### 3. Map slide data to protobuf messages
 
-### 4. Text Element Structure
+For each slide:
+- Create a `Cue` with a unique UUID and name from the slide label
+- Inside the Cue, create an `Action` of type `SLIDE` containing a `Slide`
+- The `Slide` has a text `Element` with RTF-encoded content and a background color
+- If the slide has a background image, add a `Graphics.Fill` with a `Media` reference pointing to the bundled image file
+- Group all cues into a single `Presentation.CueGroup`
 
-Current (broken) -- text stored as attribute:
-```text
-<RVTextElement RTFData="base64string" ...>
-  <_-RVRect3D-_position x="50" y="50" z="0" width="1820" height="980"/>
-  <shadow containerClass="NSMutableDictionary"/>
-  <stroke containerClass="NSMutableDictionary"/>
-</RVTextElement>
-```
+### 4. Encode and write binary
 
-Fixed (valid Pro6) -- text stored as child NSString elements:
-```text
-<RVTextElement adjustsHeightToFit="false" verticalAlignment="1"
-  revealType="0" opacity="1" ...>
-  <RVRect3D rvXMLIvarName="position">{50 50 0 1820 980}</RVRect3D>
-  <shadow rvXMLIvarName="shadow">0|0 0 0 1|{5, -5}</shadow>
-  <dictionary rvXMLIvarName="stroke">
-    <NSColor rvXMLDictionaryKey="RVShapeElementStrokeColorKey">...</NSColor>
-    <NSNumber rvXMLDictionaryKey="RVShapeElementStrokeWidthKey" hint="double">0</NSNumber>
-  </dictionary>
-  <NSString rvXMLIvarName="PlainText">base64_plain_text</NSString>
-  <NSString rvXMLIvarName="RTFData">base64_rtf</NSString>
-  <NSString rvXMLIvarName="WinFlowData">base64_flow_doc</NSString>
-  <NSString rvXMLIvarName="WinFontData">base64_font_data</NSString>
-</RVTextElement>
-```
+- Use `protobufjs`'s `.encode().finish()` to produce a `Uint8Array`
+- Write this binary data as `Presentation.pro` in the ZIP bundle
 
-### 5. Background Image Elements
+### 5. Update bundle structure
 
-Current (broken):
-```text
-<RVMediaElement source="Media/filename" ...>
-  <_-RVRect3D-_position x="0" y="0" z="0" width="1920" height="1080"/>
-</RVMediaElement>
-```
+The `.probundle` ZIP will contain:
+- `Presentation.pro` -- protobuf binary (was XML before)
+- `Media/` -- background images (unchanged)
+- Remove `Info.plist` and `Manifest.plist` (not needed for Pro7 native format)
 
-Fixed (valid Pro6):
-```text
-<RVImageElement source="Media/filename" scaleBehavior="3"
-  opacity="1" fillColor="1 1 1 1" ...>
-  <RVRect3D rvXMLIvarName="position">{0 0 0 1920 1080}</RVRect3D>
-  <shadow rvXMLIvarName="shadow">0|0 0 0 1|{5, -5}</shadow>
-  <dictionary rvXMLIvarName="stroke">...</dictionary>
-</RVImageElement>
-```
+### 6. RTF text encoding
 
-### 6. Boolean Values
+Keep the existing `encodeRTF` helper but output raw bytes instead of Base64, since protobuf stores `rtf_data` as a `bytes` field.
 
-Current: uses `"0"` and `"1"` for booleans.
-Fixed: uses `"false"` and `"true"` (Pro6 convention).
-
-### 7. Internal Filename
-
-Current: `Presentation.pro7`
-Fixed: `Presentation.pro`
-
-### 8. New Helper Functions
-
-- `encodePlainTextBase64(text)` -- Base64 encodes plain text for `PlainText` field
-- `encodeWinFlowData(text, textColor, fontSize)` -- Generates Base64-encoded FlowDocument XML for Windows compatibility
-- `encodeWinFontData()` -- Generates Base64-encoded RVFont XML for Windows font metadata
-- Updated `encodeRTF()` -- Generates RTF matching Pro6 Windows format (with `\prorft1\uc1\htmautsp\deff2` header)
-
-### 9. Slide Display Attributes
-
-Adds missing Pro6 attributes on `RVDisplaySlide`: `drawingBackgroundColor="false"`, removes `socialItemCount`.
-
-## Files Changed
-
-| File | What Changes |
-|------|-------------|
-| `src/services/proPresenterExport.ts` | Rewrite `generatePro7Document` (renamed to `generatePro6Document`), update `encodeRTF`, add `encodePlainTextBase64`/`encodeWinFlowData`/`encodeWinFontData` helpers, update `exportAsProBundle` to use `.pro` filename, update `Info.plist` and `Manifest.plist` |
-
-## Files NOT Changed
+## What Does NOT Change
 
 - `src/lib/export-pptx.ts` -- untouched
-- `src/lib/export-propresenter.ts` -- untouched (legacy)
+- `src/lib/export-propresenter.ts` -- untouched
 - `src/components/ExportOptionsModal.tsx` -- untouched
 - `src/pages/SlideEditor.tsx` -- untouched
-- All UI, data models, shared helpers -- untouched
+- All UI components, data models, shared helpers -- untouched
+- The `SlideData` interface -- untouched (read-only input)
+- The `exportAsPlainText` function -- untouched
+- The `validateSlidesForExport` and `sanitizeFileName` functions -- untouched
+
+## Technical Details
+
+### Protobuf schema mapping (field numbers from reverse-engineered proto)
+
+```text
+Presentation (top-level)
+  field 2: UUID uuid
+  field 3: string name
+  field 6: string category = "Presentation"
+  field 12: repeated CueGroup cue_groups
+  field 13: repeated Cue cues
+
+Presentation.CueGroup
+  field 1: Group group
+  field 2: repeated UUID cue_identifiers
+
+Cue
+  field 1: UUID uuid
+  field 2: string name
+  field 10: repeated Action actions
+  field 12: bool isEnabled = true
+
+Action (Slide action)
+  field 1: UUID uuid
+  field 8: Action.SlideType slide  (oneof)
+
+Action.SlideType
+  field 1: Presentation presentation
+  field 2: Slide slide
+
+Slide
+  field 1: repeated Slide.Element elements
+  field 4: bool draws_background_color
+  field 5: Color background_color
+  field 6: Graphics.Size size (1920x1080)
+  field 7: UUID uuid
+
+Slide.Element
+  field 1: Graphics.Element element
+
+Graphics.Element
+  field 1: UUID uuid
+  field 2: string name
+  field 3: Graphics.Rect bounds
+  field 5: double opacity = 1.0
+  field 9: Graphics.Fill fill
+  field 13: Graphics.Text text
+
+Graphics.Text
+  field 5: bytes rtf_data
+  field 6: VerticalAlignment = MIDDLE (1)
+
+Graphics.Fill
+  field 3: Media media  (for background images)
+  field 4: bool enable = true
+
+Media
+  field 1: UUID uuid
+  field 2: URL url
+
+Group
+  field 1: UUID uuid
+  field 2: string name
+  field 3: Color color
+```
+
+### Bundle output structure
+
+```text
+SermonTitle.probundle (ZIP)
+  +-- Presentation.pro      (protobuf binary)
+  +-- Media/
+       +-- bg_001.jpg
+       +-- bg_002.jpg
+```
 
