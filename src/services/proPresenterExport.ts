@@ -173,6 +173,18 @@ async function fetchImageAsBlob(url: string): Promise<Blob | null> {
 
 // ── Protobuf message builders ─────────────────────────
 
+function makeRectPath(w: number, h: number) {
+  return {
+    closed: true,
+    points: [
+      { point: { x: 0, y: 0 } },
+      { point: { x: w, y: 0 } },
+      { point: { x: w, y: h } },
+      { point: { x: 0, y: h } },
+    ],
+  };
+}
+
 function buildSlideMessage(slide: SlideData, index: number, mediaFilename?: string) {
   const text = getSlideText(slide);
   const bgColor = parseBackgroundColor(slide.background);
@@ -188,6 +200,7 @@ function buildSlideMessage(slide: SlideData, index: number, mediaFilename?: stri
         size: { width: 1820, height: 980 },
       },
       opacity: 1.0,
+      path: makeRectPath(1820, 980),
       text: {
         rtf_data: encodeRTFBytes(text, slide.textColor),
         vertical_alignment: 1, // MIDDLE
@@ -208,12 +221,12 @@ function buildSlideMessage(slide: SlideData, index: number, mediaFilename?: stri
           size: { width: 1920, height: 1080 },
         },
         opacity: 1.0,
+        path: makeRectPath(1920, 1080),
         fill: {
           media: {
             uuid: makeUUID(),
             url: {
-              local_path: `Media/${mediaFilename}`,
-              external_path: '',
+              relative_path: `Media/${mediaFilename}`,
             },
           },
           enable: true,
@@ -258,8 +271,12 @@ function buildPresentationMessage(
       actions: [
         {
           uuid: actionUUID,
+          isEnabled: true,
+          type: 11, // ACTION_TYPE_PRESENTATION_SLIDE
           slide: {
-            slide: slideMsg,
+            presentation: {
+              base_slide: slideMsg,
+            },
           },
         },
       ],
@@ -329,8 +346,8 @@ export async function exportAsProBundle(
   const message = Presentation.create(presentationData);
   const buffer = Presentation.encode(message).finish();
 
-  // Write binary .pro file directly in the bundle root
-  zip.file('Presentation.pro', buffer);
+  // Write binary .pro file using presentation title (ProPresenter uses filename as title)
+  zip.file(`${safeTitle}.pro`, buffer);
 
   const content = await zip.generateAsync({ type: 'blob' });
   saveAs(content, `${safeTitle}.probundle`);
