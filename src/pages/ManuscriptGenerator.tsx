@@ -1,4 +1,6 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import mammoth from "mammoth";
+import * as pdfjsLib from "pdfjs-dist";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -51,6 +53,7 @@ const ManuscriptGenerator = () => {
   // Input
   const [manuscriptText, setManuscriptText] = useState("");
   const [guideTitle, setGuideTitle] = useState("");
+  const [fileParsing, setFileParsing] = useState(false);
 
   // Mode
   const [outputType, setOutputType] = useState<"study-guide" | "conference" | null>(null);
@@ -90,24 +93,60 @@ const ManuscriptGenerator = () => {
   }, [searchParams]);
 
   // Handle file upload
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Set up pdf.js worker
+  useEffect(() => {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js`;
+  }, []);
+
+  const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (!file.name.endsWith(".txt")) {
-      toast.error("Only .txt files are supported for now.");
+
+    const ext = file.name.split('.').pop()?.toLowerCase();
+    const baseName = file.name.replace(/\.(txt|docx|pdf)$/i, '');
+
+    if (!['txt', 'docx', 'pdf'].includes(ext || '')) {
+      toast.error("Unsupported file type. Please upload a .txt, .docx, or .pdf file.");
       return;
     }
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const text = ev.target?.result as string;
+
+    try {
+      setFileParsing(true);
+      let text = '';
+
+      if (ext === 'txt') {
+        text = await file.text();
+      } else if (ext === 'docx') {
+        const arrayBuffer = await file.arrayBuffer();
+        const result = await mammoth.extractRawText({ arrayBuffer });
+        text = result.value;
+      } else if (ext === 'pdf') {
+        const arrayBuffer = await file.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        const pages: string[] = [];
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const page = await pdf.getPage(i);
+          const content = await page.getTextContent();
+          const pageText = content.items
+            .map((item: any) => ('str' in item ? item.str : ''))
+            .join(' ');
+          pages.push(pageText);
+        }
+        text = pages.join('\n\n');
+      }
+
       setManuscriptText(text);
       if (!guideTitle) {
-        setGuideTitle(file.name.replace(/\.txt$/, ""));
+        setGuideTitle(baseName);
       }
       toast.success("File loaded!");
-    };
-    reader.readAsText(file);
-  };
+    } catch (err) {
+      console.error('File parse error:', err);
+      toast.error("Failed to parse the file. Please try a different file.");
+    } finally {
+      setFileParsing(false);
+    }
+  }, [guideTitle]);
 
   const canProceedFromInput = manuscriptText.trim().length > 20 && guideTitle.trim().length > 0;
 
@@ -264,8 +303,8 @@ const ManuscriptGenerator = () => {
                   Upload Your Manuscript
                 </h1>
                 <p className="text-muted-foreground">
-                  Paste your sermon text or upload a .txt file to get started.
-                </p>
+                   Paste your sermon text or upload a file to get started.
+                 </p>
               </div>
 
               <div className="rounded-2xl border border-border bg-card p-6 space-y-5">
@@ -285,17 +324,21 @@ const ManuscriptGenerator = () => {
                   className="border-2 border-dashed border-border rounded-xl p-8 text-center cursor-pointer hover:border-primary/40 transition-colors"
                   onClick={() => fileInputRef.current?.click()}
                 >
-                  <Upload className="w-8 h-8 text-muted-foreground mx-auto mb-3" />
-                  <p className="text-muted-foreground text-sm">
-                    Click to upload a <strong>.txt</strong> file or drag & drop
-                  </p>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept=".txt"
-                    className="hidden"
-                    onChange={handleFileChange}
-                  />
+                   <Upload className="w-8 h-8 text-muted-foreground mx-auto mb-3" />
+                   {fileParsing ? (
+                     <p className="text-primary text-sm font-medium">Parsing file…</p>
+                   ) : (
+                     <p className="text-muted-foreground text-sm">
+                       Click to upload a <strong>.txt</strong>, <strong>.docx</strong>, or <strong>.pdf</strong> file
+                     </p>
+                   )}
+                   <input
+                     ref={fileInputRef}
+                     type="file"
+                     accept=".txt,.docx,.pdf,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                     className="hidden"
+                     onChange={handleFileChange}
+                   />
                 </div>
 
                 <div className="relative">
