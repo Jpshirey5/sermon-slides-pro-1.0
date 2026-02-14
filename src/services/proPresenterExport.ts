@@ -1,5 +1,6 @@
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
+import { Presentation, Cue, Action, Slide } from './pro7-schema';
 
 export interface SlideData {
   id: string;
@@ -31,7 +32,11 @@ function generateUUID(): string {
   });
 }
 
-// ── Text helpers ──────────────────────────────────────
+function makeUUID(id?: string) {
+  return { string: id ?? generateUUID() };
+}
+
+// ── RTF encoding (raw bytes for protobuf) ────────────
 
 function escapeRTF(text: string): string {
   let result = '';
@@ -48,13 +53,11 @@ function escapeRTF(text: string): string {
   return result;
 }
 
-function escapeXML(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
+function encodeRTFBytes(text: string, textColor: string = '#FFFFFF', fontSize: number = 96): Uint8Array {
+  const rgb = hexToRGB(textColor);
+  const escapedText = text ? escapeRTF(text) : '';
+  const rtf = `{\\rtf1\\ansi\\ansicpg1252\\cocoartf2639\n{\\fonttbl\\f0\\fswiss\\fcharset0 Arial;}\n{\\colortbl;\\red${rgb.r}\\green${rgb.g}\\blue${rgb.b};}\n\\pard\\tx560\\tx1120\\qc\\pardirnatural\\partightenfactor0\n\\f0\\fs${fontSize * 2}\\cf1 ${escapedText}}`;
+  return new TextEncoder().encode(rtf);
 }
 
 // ── Color helpers ─────────────────────────────────────
@@ -84,56 +87,8 @@ function parseBackgroundColor(bg: string): { r: number; g: number; b: number } {
   return { r: 92, g: 30, b: 43 };
 }
 
-// ── Base64 encoding helpers ───────────────────────────
-
-function toBase64(str: string): string {
-  try {
-    const encoder = new TextEncoder();
-    const data = encoder.encode(str);
-    let binary = '';
-    for (let i = 0; i < data.length; i++) {
-      binary += String.fromCharCode(data[i]);
-    }
-    return btoa(binary);
-  } catch {
-    return btoa(unescape(encodeURIComponent(str)));
-  }
-}
-
-/**
- * Encode RTF for Pro6 format
- */
-function encodeRTF(text: string, textColor: string = '#FFFFFF', fontSize: number = 96): string {
-  const rgb = hexToRGB(textColor);
-  const escapedText = text ? escapeRTF(text) : '';
-  const rtf = `{\\rtf1\\ansi\\ansicpg1252\\cocoartf2639\n{\\fonttbl\\f0\\fswiss\\fcharset0 Arial;}\n{\\colortbl;\\red${rgb.r}\\green${rgb.g}\\blue${rgb.b};}\n\\pard\\tx560\\tx1120\\qc\\pardirnatural\\partightenfactor0\n\\f0\\fs${fontSize * 2}\\cf1 ${escapedText}}`;
-  return toBase64(rtf);
-}
-
-/**
- * Encode plain text as Base64 for PlainText field
- */
-function encodePlainTextBase64(text: string): string {
-  return toBase64(text || '');
-}
-
-/**
- * Encode FlowDocument XML for Windows compatibility
- */
-function encodeWinFlowData(text: string, textColor: string = '#FFFFFF', fontSize: number = 96): string {
-  const rgb = hexToRGB(textColor);
-  const hexColor = `#FF${rgb.r.toString(16).padStart(2, '0').toUpperCase()}${rgb.g.toString(16).padStart(2, '0').toUpperCase()}${rgb.b.toString(16).padStart(2, '0').toUpperCase()}`;
-  const escapedText = escapeXML(text || '');
-  const flowDoc = `<FlowDocument TextAlignment="Center" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"><Paragraph><Span Foreground="${hexColor}" FontSize="${fontSize}" FontFamily="Arial">${escapedText}</Span></Paragraph></FlowDocument>`;
-  return toBase64(flowDoc);
-}
-
-/**
- * Encode RVFont XML for Windows font metadata
- */
-function encodeWinFontData(fontSize: number = 96): string {
-  const fontXml = `<RVFont xmlns:i="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://schemas.datacontract.org/2004/07/ProPresenter.Common"><Name>Arial</Name><Size>${fontSize}</Size><Bold>false</Bold><Italic>false</Italic><Underline>false</Underline></RVFont>`;
-  return toBase64(fontXml);
+function toProColor(r: number, g: number, b: number, a: number = 1) {
+  return { red: r / 255, green: g / 255, blue: b / 255, alpha: a };
 }
 
 // ── Slide text extraction ─────────────────────────────
@@ -216,129 +171,121 @@ async function fetchImageAsBlob(url: string): Promise<Blob | null> {
   }
 }
 
-// ── Pro6 XML generators ───────────────────────────────
+// ── Protobuf message builders ─────────────────────────
 
-function generateStrokeDictionary(): string {
-  return `<dictionary rvXMLIvarName="stroke">
-        <NSColor rvXMLDictionaryKey="RVShapeElementStrokeColorKey">0 0 0 1</NSColor>
-        <NSNumber rvXMLDictionaryKey="RVShapeElementStrokeWidthKey" hint="double">0</NSNumber>
-      </dictionary>`;
+function buildSlideMessage(slide: SlideData, index: number, mediaFilename?: string) {
+  const text = getSlideText(slide);
+  const bgColor = parseBackgroundColor(slide.background);
+  const slideUUID = makeUUID();
+
+  // Text element
+  const textElement = {
+    element: {
+      uuid: makeUUID(),
+      name: 'TextElement',
+      bounds: {
+        origin: { x: 50, y: 50 },
+        size: { width: 1820, height: 980 },
+      },
+      opacity: 1.0,
+      text: {
+        rtf_data: encodeRTFBytes(text, slide.textColor),
+        vertical_alignment: 1, // MIDDLE
+      },
+    },
+  };
+
+  const elements: any[] = [textElement];
+
+  // Background image element (if present)
+  if (mediaFilename) {
+    const bgElement = {
+      element: {
+        uuid: makeUUID(),
+        name: 'BackgroundImage',
+        bounds: {
+          origin: { x: 0, y: 0 },
+          size: { width: 1920, height: 1080 },
+        },
+        opacity: 1.0,
+        fill: {
+          media: {
+            uuid: makeUUID(),
+            url: {
+              local_path: `Media/${mediaFilename}`,
+              external_path: '',
+            },
+          },
+          enable: true,
+        },
+      },
+    };
+    // Background goes first so text renders on top
+    elements.unshift(bgElement);
+  }
+
+  return {
+    elements,
+    draws_background_color: true,
+    background_color: toProColor(bgColor.r, bgColor.g, bgColor.b),
+    size: { width: 1920, height: 1080 },
+    uuid: slideUUID,
+  };
 }
 
-function generateTextElement(
-  text: string,
-  textColor: string,
-  fontSize: number = 96
-): string {
-  const uuid = generateUUID();
-  const rtfData = encodeRTF(text, textColor, fontSize);
-  const plainText = encodePlainTextBase64(text);
-  const winFlowData = encodeWinFlowData(text, textColor, fontSize);
-  const winFontData = encodeWinFontData(fontSize);
-
-  return `<RVTextElement displayDelay="0" displayName="TextElement" locked="false" persistent="false" typeID="0" fromTemplate="false" bezelRadius="0" drawingFill="false" drawingShadow="true" drawingStroke="false" fillColor="0 0 0 0" rotation="0" source="" adjustsHeightToFit="false" verticalAlignment="1" revealType="0" opacity="1" UUID="${uuid}">
-      <RVRect3D rvXMLIvarName="position">{50 50 0 1820 980}</RVRect3D>
-      <shadow rvXMLIvarName="shadow">0|0 0 0 0.5|{3, -3}</shadow>
-      ${generateStrokeDictionary()}
-      <NSString rvXMLIvarName="PlainText">${plainText}</NSString>
-      <NSString rvXMLIvarName="RTFData">${rtfData}</NSString>
-      <NSString rvXMLIvarName="WinFlowData">${winFlowData}</NSString>
-      <NSString rvXMLIvarName="WinFontData">${winFontData}</NSString>
-    </RVTextElement>`;
-}
-
-function generateImageElement(mediaFilename: string): string {
-  const uuid = generateUUID();
-  return `<RVImageElement displayDelay="0" displayName="Background" locked="false" persistent="false" typeID="0" fromTemplate="false" bezelRadius="0" drawingFill="false" drawingShadow="false" drawingStroke="false" fillColor="1 1 1 1" rotation="0" source="Media/${mediaFilename}" scaleBehavior="3" flippedHorizontally="false" flippedVertically="false" naturalSize="{1920, 1080}" opacity="1" manufactureName="" manufactureURL="" UUID="${uuid}">
-      <RVRect3D rvXMLIvarName="position">{0 0 0 1920 1080}</RVRect3D>
-      <shadow rvXMLIvarName="shadow">0|0 0 0 1|{5, -5}</shadow>
-      ${generateStrokeDictionary()}
-    </RVImageElement>`;
-}
-
-function generatePro6Document(
+function buildPresentationMessage(
   presentationName: string,
   slides: SlideData[],
   mediaMap: Map<number, string>
-): string {
-  const presentationUUID = generateUUID();
-  const groupUUID = generateUUID();
-  const escapedName = escapeXML(presentationName);
+) {
+  const presentationUUID = makeUUID();
+  const groupUUID = makeUUID();
 
-  const slideElements = slides
-    .map((slide, index) => {
-      const slideUUID = generateUUID();
-      const text = getSlideText(slide);
-      const label = escapeXML(getSlideLabel(slide, index));
-      const bgColor = parseBackgroundColor(slide.background);
-      const bgR = (bgColor.r / 255).toFixed(6);
-      const bgG = (bgColor.g / 255).toFixed(6);
-      const bgB = (bgColor.b / 255).toFixed(6);
+  const cues: any[] = [];
+  const cueIdentifiers: any[] = [];
 
-      const mediaFilename = mediaMap.get(index);
-      const bgElement = mediaFilename ? generateImageElement(mediaFilename) : '';
-      const textElement = generateTextElement(text, slide.textColor);
+  slides.forEach((slide, index) => {
+    const cueUUID = makeUUID();
+    const actionUUID = makeUUID();
+    const label = getSlideLabel(slide, index);
+    const mediaFilename = mediaMap.get(index);
 
-      return `    <RVDisplaySlide backgroundColor="${bgR} ${bgG} ${bgB} 1" enabled="true" highlightColor="0 0 0 0" hotKey="" label="${label}" notes="" UUID="${slideUUID}" drawingBackgroundColor="false" chordChartPath="">
-      <array rvXMLIvarName="cues"/>
-      <array rvXMLIvarName="displayElements">
-        ${bgElement}${bgElement ? '\n        ' : ''}${textElement}
-      </array>
-    </RVDisplaySlide>`;
-    })
-    .join('\n');
+    const slideMsg = buildSlideMessage(slide, index, mediaFilename);
 
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<RVPresentationDocument height="1080" width="1920" versionNumber="600" docType="0" creatorCode="1349676880" lastDateUsed="${new Date().toISOString()}" usedCount="0" category="Presentation" resourcesDirectory="" backgroundColor="0 0 0 1" drawingBackgroundColor="false" notes="" artist="" author="" album="" CCLIDisplay="false" CCLIArtistCredits="" CCLISongTitle="${escapedName}" CCLIPublisher="" CCLICopyrightInfo="" CCLILicenseNumber="" CCLIAuthor="" CCLICopyrightYear="" CCLISongNumber="" chordChartPath="" selectedArrangementID="" UUID="${presentationUUID}" os="1" buildNumber="6016">
-  <RVTimeline timeOffset="0" duration="0" selectedMediaTrackIndex="-1" loop="false" rvXMLIvarName="timeline">
-    <array rvXMLIvarName="timeCues"/>
-    <array rvXMLIvarName="mediaTracks"/>
-  </RVTimeline>
-  <array rvXMLIvarName="bibleReference"/>
-  <RVProTransitionObject transitionType="-1" transitionDuration="1" motionEnabled="false" motionDuration="0" motionSpeed="0" rvXMLIvarName="transitionObject"/>
-  <array rvXMLIvarName="groups">
-    <RVSlideGrouping name="${escapedName}" uuid="${groupUUID}" color="0 0 0 0">
-      <array rvXMLIvarName="slides">
-${slideElements}
-      </array>
-    </RVSlideGrouping>
-  </array>
-  <array rvXMLIvarName="arrangements"/>
-</RVPresentationDocument>`;
-}
+    const cue = {
+      uuid: cueUUID,
+      name: label,
+      actions: [
+        {
+          uuid: actionUUID,
+          slide: {
+            slide: slideMsg,
+          },
+        },
+      ],
+      isEnabled: true,
+    };
 
-function generateInfoPlist(): string {
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>CFBundleIdentifier</key>
-  <string>com.renewedvision.propresenter.document</string>
-  <key>CFBundleVersion</key>
-  <string>1.0</string>
-  <key>RVBundleFormatVersion</key>
-  <integer>1</integer>
-</dict>
-</plist>`;
-}
-
-function generateManifestPlist(presentationFileName: string, mediaFiles: string[]): string {
-  let mediaEntries = '';
-  mediaFiles.forEach((filename) => {
-    mediaEntries += `    <string>Media/${filename}</string>\n`;
+    cues.push(cue);
+    cueIdentifiers.push(cueUUID);
   });
 
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>RVPresentationDocument</key>
-  <string>Documents/${presentationFileName}</string>
-  <key>RVMediaFiles</key>
-  <array>
-${mediaEntries}  </array>
-</dict>
-</plist>`;
+  return {
+    uuid: presentationUUID,
+    name: presentationName,
+    category: 'Presentation',
+    cue_groups: [
+      {
+        group: {
+          uuid: groupUUID,
+          name: presentationName,
+          color: toProColor(0, 0, 0, 1),
+        },
+        cue_identifiers: cueIdentifiers,
+      },
+    ],
+    cues,
+  };
 }
 
 // ── Public export functions ───────────────────────────
@@ -357,7 +304,6 @@ export async function exportAsProBundle(
 
   // Collect media files
   const mediaMap = new Map<number, string>();
-  const mediaFiles: string[] = [];
 
   for (let i = 0; i < slides.length; i++) {
     const slide = slides[i];
@@ -368,18 +314,23 @@ export async function exportAsProBundle(
       if (blob) {
         zip.file(`Media/${filename}`, blob);
         mediaMap.set(i, filename);
-        mediaFiles.push(filename);
       }
     }
   }
 
-  // Generate and add files
-  const presentationFileName = 'Presentation.pro';
-  const pro6Content = generatePro6Document(safeTitle, slides, mediaMap);
+  // Build protobuf message
+  const presentationData = buildPresentationMessage(safeTitle, slides, mediaMap);
 
-  zip.file('Info.plist', generateInfoPlist());
-  zip.file('Manifest.plist', generateManifestPlist(presentationFileName, mediaFiles));
-  zip.file(`Documents/${presentationFileName}`, pro6Content);
+  // Encode to binary
+  const errMsg = Presentation.verify(presentationData);
+  if (errMsg) {
+    console.warn('Protobuf verification warning:', errMsg);
+  }
+  const message = Presentation.create(presentationData);
+  const buffer = Presentation.encode(message).finish();
+
+  // Write binary .pro file directly in the bundle root
+  zip.file('Presentation.pro', buffer);
 
   const content = await zip.generateAsync({ type: 'blob' });
   saveAs(content, `${safeTitle}.probundle`);
