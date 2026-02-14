@@ -12,10 +12,10 @@ const UUID = new Type('UUID')
   .add(new Field('string', 1, 'string'));
 
 const Color = new Type('Color')
-  .add(new Field('red', 1, 'double'))
-  .add(new Field('green', 2, 'double'))
-  .add(new Field('blue', 3, 'double'))
-  .add(new Field('alpha', 4, 'double'));
+  .add(new Field('red', 1, 'float'))
+  .add(new Field('green', 2, 'float'))
+  .add(new Field('blue', 3, 'float'))
+  .add(new Field('alpha', 4, 'float'));
 
 const GraphicsPoint = new Type('Point')
   .add(new Field('x', 1, 'double'))
@@ -32,8 +32,8 @@ const GraphicsRect = new Type('Rect')
 // ── URL wrapper ──────────────────────────────────────
 
 const URL = new Type('URL')
-  .add(new Field('local_path', 1, 'string'))
-  .add(new Field('external_path', 2, 'string'));
+  .add(new Field('absolute_string', 1, 'string'))
+  .add(new Field('relative_path', 2, 'string'));
 
 // ── Media ────────────────────────────────────────────
 
@@ -58,16 +58,25 @@ const GraphicsFill = new Type('Fill')
   .add(new Field('media', 3, 'Media'))
   .add(new Field('enable', 4, 'bool'));
 
+// ── Graphics.Path ────────────────────────────────────
+
+const BezierPoint = new Type('BezierPoint')
+  .add(new Field('point', 1, 'Point'));
+
+const GraphicsPath = new Type('Path')
+  .add(new Field('closed', 1, 'bool'))
+  .add(new Field('points', 2, 'BezierPoint', 'repeated'));
+
 const GraphicsElement = new Type('Element')
   .add(new Field('uuid', 1, 'UUID'))
   .add(new Field('name', 2, 'string'))
   .add(new Field('bounds', 3, 'Rect'))
   .add(new Field('opacity', 5, 'double'))
+  .add(new Field('path', 8, 'Path'))
   .add(new Field('fill', 9, 'Fill'))
   .add(new Field('text', 13, 'Text'));
 
 // ── Namespace: Graphics ──────────────────────────────
-// Nest shared geometry types under a Graphics namespace so references resolve.
 
 const Graphics = new Type('Graphics')
   .add(GraphicsPoint)
@@ -75,6 +84,8 @@ const Graphics = new Type('Graphics')
   .add(GraphicsRect)
   .add(GraphicsText)
   .add(GraphicsFill)
+  .add(GraphicsPath)
+  .add(BezierPoint)
   .add(GraphicsElement)
   .add(Media)
   .add(URL);
@@ -92,16 +103,23 @@ const Slide = new Type('Slide')
   .add(new Field('uuid', 7, 'UUID'))
   .add(SlideElement);
 
+// ── PresentationSlide (wrapper around Slide) ─────────
+
+const PresentationSlide = new Type('PresentationSlide')
+  .add(new Field('base_slide', 1, 'Slide'));
+
 // ── Action ───────────────────────────────────────────
 
 const ActionSlideType = new Type('SlideType')
-  .add(new Field('presentation', 1, 'Presentation'))
-  .add(new Field('slide', 2, 'Slide'));
+  .add(new Field('presentation', 2, 'PresentationSlide'));
 
 const Action = new Type('Action')
   .add(new Field('uuid', 1, 'UUID'))
-  .add(new Field('slide', 8, 'SlideType'))
-  .add(ActionSlideType);
+  .add(new Field('isEnabled', 6, 'bool'))
+  .add(new Field('type', 9, 'int32'))
+  .add(new Field('slide', 23, 'SlideType'))
+  .add(ActionSlideType)
+  .add(PresentationSlide);
 
 // ── Cue ──────────────────────────────────────────────
 
@@ -142,6 +160,7 @@ const root = new Root()
   .add(Color)
   .add(Graphics)
   .add(Slide)
+  .add(PresentationSlide)
   .add(Action)
   .add(Cue)
   .add(Presentation);
@@ -149,4 +168,4 @@ const root = new Root()
 // Resolve all type references
 root.resolveAll();
 
-export { root, Presentation, Cue, Action, Slide, GraphicsElement, GraphicsText, GraphicsFill, Media, UUID, Color, GraphicsSize, GraphicsRect, Group, CueGroup, SlideElement };
+export { root, Presentation, Cue, Action, Slide, GraphicsElement, GraphicsText, GraphicsFill, Media, UUID, Color, GraphicsSize, GraphicsRect, Group, CueGroup, SlideElement, PresentationSlide, GraphicsPath, BezierPoint };
