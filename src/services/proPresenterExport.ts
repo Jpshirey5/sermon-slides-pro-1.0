@@ -1,6 +1,6 @@
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
-import { Presentation, Cue, Action, Slide } from './pro7-schema';
+import { Presentation } from './pro7-schema';
 
 export interface SlideData {
   id: string;
@@ -182,15 +182,30 @@ function makeRectPath(w: number, h: number) {
       { point: { x: w, y: h } },
       { point: { x: 0, y: h } },
     ],
+    shape: { type: 1 }, // RECTANGLE
   };
 }
 
-function buildSlideMessage(slide: SlideData, index: number, mediaFilename?: string) {
+function makeTextAttributes(fontName: string = 'Arial', fontSize: number = 48) {
+  return [{
+    font: {
+      name: fontName,
+      size: fontSize,
+      bold: false,
+      family: fontName,
+    },
+    paragraph_style: {
+      alignment: 2, // CENTER
+    },
+  }];
+}
+
+function buildSlideMessage(slide: SlideData, _index: number, mediaFilename?: string) {
   const text = getSlideText(slide);
   const bgColor = parseBackgroundColor(slide.background);
   const slideUUID = makeUUID();
 
-  // Text element
+  // Text element with attributes
   const textElement = {
     element: {
       uuid: makeUUID(),
@@ -202,6 +217,7 @@ function buildSlideMessage(slide: SlideData, index: number, mediaFilename?: stri
       opacity: 1.0,
       path: makeRectPath(1820, 980),
       text: {
+        attributes: makeTextAttributes('Arial', 48),
         rtf_data: encodeRTFBytes(text, slide.textColor),
         vertical_alignment: 1, // MIDDLE
       },
@@ -288,6 +304,13 @@ function buildPresentationMessage(
   });
 
   return {
+    application_info: {
+      platform: 1, // MACOS
+      version: {
+        major_version: 7,
+        minor_version: 16,
+      },
+    },
     uuid: presentationUUID,
     name: presentationName,
     category: 'Presentation',
@@ -346,7 +369,9 @@ export async function exportAsProBundle(
   const message = Presentation.create(presentationData);
   const buffer = Presentation.encode(message).finish();
 
-  // Write binary .pro file using presentation title (ProPresenter uses filename as title)
+  console.log(`[ProPresenter Export] Encoded ${buffer.length} bytes for "${safeTitle}"`);
+
+  // Write binary .pro file using presentation title
   zip.file(`${safeTitle}.pro`, buffer);
 
   const content = await zip.generateAsync({ type: 'blob' });

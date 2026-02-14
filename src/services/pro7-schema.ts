@@ -17,6 +17,25 @@ const Color = new Type('Color')
   .add(new Field('blue', 3, 'float'))
   .add(new Field('alpha', 4, 'float'));
 
+// ── Version & ApplicationInfo ────────────────────────
+
+const Version = new Type('Version')
+  .add(new Field('major_version', 1, 'uint32'))
+  .add(new Field('minor_version', 2, 'uint32'));
+
+const PlatformEnum = new Enum('Platform', {
+  UNDEFINED: 0,
+  MACOS: 1,
+  WINDOWS: 2,
+});
+
+const ApplicationInfo = new Type('ApplicationInfo')
+  .add(PlatformEnum)
+  .add(new Field('platform', 1, 'int32'))
+  .add(new Field('version', 2, 'Version'));
+
+// ── Graphics sub-types ──────────────────────────────
+
 const GraphicsPoint = new Type('Point')
   .add(new Field('x', 1, 'double'))
   .add(new Field('y', 2, 'double'));
@@ -41,7 +60,7 @@ const Media = new Type('Media')
   .add(new Field('uuid', 1, 'UUID'))
   .add(new Field('url', 2, 'URL'));
 
-// ── Graphics sub-messages ────────────────────────────
+// ── Graphics.Text with Attributes ───────────────────
 
 const VerticalAlignment = new Enum('VerticalAlignment', {
   TOP: 0,
@@ -49,23 +68,70 @@ const VerticalAlignment = new Enum('VerticalAlignment', {
   BOTTOM: 2,
 });
 
+const AlignmentEnum = new Enum('Alignment', {
+  LEFT: 0,
+  RIGHT: 1,
+  CENTER: 2,
+  JUSTIFIED: 3,
+});
+
+const Font = new Type('Font')
+  .add(new Field('name', 1, 'string'))
+  .add(new Field('size', 2, 'double'))
+  .add(new Field('bold', 8, 'bool'))
+  .add(new Field('family', 9, 'string'));
+
+const Paragraph = new Type('Paragraph')
+  .add(AlignmentEnum)
+  .add(new Field('alignment', 1, 'int32'));
+
+const Attributes = new Type('Attributes')
+  .add(new Field('font', 1, 'Font'))
+  .add(new Field('paragraph_style', 6, 'Paragraph'))
+  .add(Font)
+  .add(Paragraph);
+
 const GraphicsText = new Type('Text')
   .add(VerticalAlignment)
+  .add(new Field('attributes', 3, 'Attributes', 'repeated'))
   .add(new Field('rtf_data', 5, 'bytes'))
-  .add(new Field('vertical_alignment', 6, 'int32'));
+  .add(new Field('vertical_alignment', 6, 'int32'))
+  .add(Attributes);
+
+// ── Graphics.Fill ───────────────────────────────────
 
 const GraphicsFill = new Type('Fill')
   .add(new Field('media', 3, 'Media'))
   .add(new Field('enable', 4, 'bool'));
 
-// ── Graphics.Path ────────────────────────────────────
+// ── Graphics.Path with Shape ────────────────────────
+
+const ShapeTypeEnum = new Enum('Type', {
+  UNKNOWN: 0,
+  RECTANGLE: 1,
+  ELLIPSE: 2,
+  ISOSCELES_TRIANGLE: 3,
+  RIGHT_TRIANGLE: 4,
+  DIAMOND: 5,
+  ARROW_RIGHT: 6,
+  CHEVRON_RIGHT: 7,
+  STAR_5: 8,
+});
+
+const Shape = new Type('Shape')
+  .add(ShapeTypeEnum)
+  .add(new Field('type', 1, 'int32'));
 
 const BezierPoint = new Type('BezierPoint')
   .add(new Field('point', 1, 'Point'));
 
 const GraphicsPath = new Type('Path')
   .add(new Field('closed', 1, 'bool'))
-  .add(new Field('points', 2, 'BezierPoint', 'repeated'));
+  .add(new Field('points', 2, 'BezierPoint', 'repeated'))
+  .add(new Field('shape', 3, 'Shape'))
+  .add(Shape);
+
+// ── Graphics.Element ────────────────────────────────
 
 const GraphicsElement = new Type('Element')
   .add(new Field('uuid', 1, 'UUID'))
@@ -104,6 +170,7 @@ const Slide = new Type('Slide')
   .add(SlideElement);
 
 // ── PresentationSlide (wrapper around Slide) ─────────
+// IMPORTANT: Only added to root, NOT to Action, to avoid parent conflict
 
 const PresentationSlide = new Type('PresentationSlide')
   .add(new Field('base_slide', 1, 'Slide'));
@@ -118,8 +185,8 @@ const Action = new Type('Action')
   .add(new Field('isEnabled', 6, 'bool'))
   .add(new Field('type', 9, 'int32'))
   .add(new Field('slide', 23, 'SlideType'))
-  .add(ActionSlideType)
-  .add(PresentationSlide);
+  .add(ActionSlideType);
+// NOTE: PresentationSlide is NOT nested here — it resolves via root
 
 // ── Cue ──────────────────────────────────────────────
 
@@ -145,6 +212,7 @@ const CueGroup = new Type('CueGroup')
 // ── Presentation (top-level) ─────────────────────────
 
 const Presentation = new Type('Presentation')
+  .add(new Field('application_info', 1, 'ApplicationInfo'))
   .add(new Field('uuid', 2, 'UUID'))
   .add(new Field('name', 3, 'string'))
   .add(new Field('category', 6, 'string'))
@@ -158,6 +226,8 @@ const Presentation = new Type('Presentation')
 const root = new Root()
   .add(UUID)
   .add(Color)
+  .add(Version)
+  .add(ApplicationInfo)
   .add(Graphics)
   .add(Slide)
   .add(PresentationSlide)
@@ -168,4 +238,11 @@ const root = new Root()
 // Resolve all type references
 root.resolveAll();
 
-export { root, Presentation, Cue, Action, Slide, GraphicsElement, GraphicsText, GraphicsFill, Media, UUID, Color, GraphicsSize, GraphicsRect, Group, CueGroup, SlideElement, PresentationSlide, GraphicsPath, BezierPoint };
+export {
+  root, Presentation, Cue, Action, Slide,
+  GraphicsElement, GraphicsText, GraphicsFill,
+  Media, UUID, Color, GraphicsSize, GraphicsRect,
+  Group, CueGroup, SlideElement, PresentationSlide,
+  GraphicsPath, BezierPoint, ApplicationInfo, Version,
+  Attributes, Font, Paragraph, Shape,
+};
