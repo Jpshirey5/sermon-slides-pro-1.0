@@ -13,6 +13,7 @@ import {
   Layers,
   Clock,
   BookMarked,
+  User,
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -26,25 +27,21 @@ import {
   type StudyGuide,
 } from "@/lib/study-guides";
 import { toast } from "sonner";
+import { useAuth } from "@/contexts/AuthContext";
 
 const Dashboard = () => {
   const navigate = useNavigate();
+  const { user, profile, signOut } = useAuth();
   const [presentations, setPresentations] = useState<SermonPresentation[]>([]);
   const [studyGuides, setStudyGuides] = useState<StudyGuide[]>([]);
 
   useEffect(() => {
-    // Check if logged in
-    if (localStorage.getItem("logged_in") !== "true") {
-      navigate("/login");
-      return;
-    }
     setPresentations(getPresentations());
     setStudyGuides(getStudyGuides());
-  }, [navigate]);
+  }, []);
 
-  const handleLogout = () => {
-    localStorage.removeItem("logged_in");
-    localStorage.removeItem("user_email");
+  const handleLogout = async () => {
+    await signOut();
     navigate("/");
   };
 
@@ -60,7 +57,7 @@ const Dashboard = () => {
     toast.success("Study guide deleted");
   };
 
-  const userEmail = localStorage.getItem("user_email") || "User";
+  const displayName = profile?.full_name || user?.email || "User";
 
   return (
     <div className="min-h-screen bg-background">
@@ -76,10 +73,18 @@ const Dashboard = () => {
                 SermonSlides
               </span>
             </div>
-            <Button variant="ghost" onClick={handleLogout}>
-              <LogOut className="w-4 h-4" />
-              <span className="hidden sm:inline">Log Out</span>
-            </Button>
+            <div className="flex items-center gap-2">
+              <Link to="/account">
+                <Button variant="ghost" size="sm">
+                  <User className="w-4 h-4" />
+                  <span className="hidden sm:inline">Account</span>
+                </Button>
+              </Link>
+              <Button variant="ghost" size="sm" onClick={handleLogout}>
+                <LogOut className="w-4 h-4" />
+                <span className="hidden sm:inline">Log Out</span>
+              </Button>
+            </div>
           </div>
         </div>
       </header>
@@ -95,7 +100,7 @@ const Dashboard = () => {
           <h1 className="font-serif text-3xl font-bold text-foreground mb-1">
             Welcome back
           </h1>
-          <p className="text-muted-foreground">{userEmail}</p>
+          <p className="text-muted-foreground">{displayName}</p>
         </motion.div>
 
         {/* Tabs */}
@@ -131,7 +136,6 @@ const Dashboard = () => {
                 </Link>
               </div>
 
-              {/* My Presentations */}
               <section>
                 <div className="flex items-center justify-between mb-6">
                   <h2 className="font-serif text-2xl font-semibold text-foreground">
@@ -155,52 +159,23 @@ const Dashboard = () => {
                 ) : (
                   <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
                     {presentations.map((p) => (
-                      <div
-                        key={p.id}
-                        className="rounded-xl border border-border bg-card p-5 hover:shadow-soft transition-shadow group"
-                      >
-                        <div
-                          className="cursor-pointer"
-                          onClick={() =>
-                            navigate(`/editor/${p.id}`, {
-                              state: { from: "dashboard" },
-                            })
-                          }
-                        >
+                      <div key={p.id} className="rounded-xl border border-border bg-card p-5 hover:shadow-soft transition-shadow group">
+                        <div className="cursor-pointer" onClick={() => navigate(`/editor/${p.id}`, { state: { from: "dashboard" } })}>
                           <h3 className="font-serif font-semibold text-foreground mb-1 group-hover:text-primary transition-colors truncate">
                             {p.title || "Untitled"}
                           </h3>
                           <div className="flex items-center gap-3 text-xs text-muted-foreground mb-3">
-                            <span className="flex items-center gap-1">
-                              <Calendar className="w-3 h-3" /> {p.date}
-                            </span>
-                            <span className="flex items-center gap-1">
-                              <Layers className="w-3 h-3" /> {p.slides} slides
-                            </span>
+                            <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> {p.date}</span>
+                            <span className="flex items-center gap-1"><Layers className="w-3 h-3" /> {p.slides} slides</span>
                           </div>
-                          <p className="text-xs text-muted-foreground">
-                            <Clock className="w-3 h-3 inline mr-1" />
-                            {p.lastModified}
-                          </p>
+                          <p className="text-xs text-muted-foreground"><Clock className="w-3 h-3 inline mr-1" />{p.lastModified}</p>
                         </div>
                         <div className="flex items-center gap-2 mt-4 pt-3 border-t border-border">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-xs flex-1"
-                            onClick={() =>
-                              navigate(`/manuscript?fromPresentation=${p.id}`)
-                            }
-                          >
+                          <Button variant="ghost" size="sm" className="text-xs flex-1" onClick={() => navigate(`/manuscript?fromPresentation=${p.id}`)}>
                             <BookMarked className="w-3 h-3" />
                             Study Guide
                           </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-destructive hover:text-destructive"
-                            onClick={() => handleDeletePresentation(p.id)}
-                          >
+                          <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => handleDeletePresentation(p.id)}>
                             <Trash2 className="w-3 h-3" />
                           </Button>
                         </div>
@@ -232,7 +207,6 @@ const Dashboard = () => {
                 </Link>
               </div>
 
-              {/* My Study Guides & Conferences */}
               <section>
                 <div className="flex items-center justify-between mb-6">
                   <h2 className="font-serif text-2xl font-semibold text-foreground">
@@ -256,42 +230,19 @@ const Dashboard = () => {
                 ) : (
                   <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
                     {studyGuides.map((g) => (
-                      <div
-                        key={g.id}
-                        className="rounded-xl border border-border bg-card p-5 hover:shadow-soft transition-shadow"
-                      >
+                      <div key={g.id} className="rounded-xl border border-border bg-card p-5 hover:shadow-soft transition-shadow">
                         <div className="flex items-center gap-2 mb-2">
-                          <span
-                            className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-                              g.outputType === "conference"
-                                ? "bg-accent/10 text-accent-foreground"
-                                : "bg-primary/10 text-primary"
-                            }`}
-                          >
-                            {g.outputType === "conference"
-                              ? "Conference"
-                              : "Study Guide"}
+                          <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${g.outputType === "conference" ? "bg-accent/10 text-accent-foreground" : "bg-primary/10 text-primary"}`}>
+                            {g.outputType === "conference" ? "Conference" : "Study Guide"}
                           </span>
                         </div>
-                        <h3 className="font-serif font-semibold text-foreground mb-1 truncate">
-                          {g.title || "Untitled"}
-                        </h3>
+                        <h3 className="font-serif font-semibold text-foreground mb-1 truncate">{g.title || "Untitled"}</h3>
                         <p className="text-xs text-muted-foreground mb-1">
-                          {g.outputType === "conference"
-                            ? `${g.sessions?.length || 0} sessions`
-                            : `${g.content?.length || 0} weeks`}
+                          {g.outputType === "conference" ? `${g.sessions?.length || 0} sessions` : `${g.content?.length || 0} weeks`}
                         </p>
-                        <p className="text-xs text-muted-foreground">
-                          <Clock className="w-3 h-3 inline mr-1" />
-                          {g.lastModified}
-                        </p>
+                        <p className="text-xs text-muted-foreground"><Clock className="w-3 h-3 inline mr-1" />{g.lastModified}</p>
                         <div className="flex justify-end mt-3 pt-3 border-t border-border">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-destructive hover:text-destructive"
-                            onClick={() => handleDeleteStudyGuide(g.id)}
-                          >
+                          <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => handleDeleteStudyGuide(g.id)}>
                             <Trash2 className="w-3 h-3" />
                           </Button>
                         </div>

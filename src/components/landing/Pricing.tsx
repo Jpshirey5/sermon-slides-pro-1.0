@@ -1,13 +1,46 @@
+import { useState } from "react";
 import { motion } from "framer-motion";
 import { Check, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 const Pricing = () => {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
+
+  const handleProClick = async () => {
+    if (!user) {
+      navigate("/signup");
+      return;
+    }
+
+    setCheckoutLoading(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) { toast.error("Please log in again."); return; }
+
+      const { data, error } = await supabase.functions.invoke("create-checkout", {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      if (error || !data?.url) {
+        toast.error("Could not start checkout.");
+      } else {
+        window.open(data.url, "_blank");
+      }
+    } catch {
+      toast.error("An error occurred.");
+    } finally {
+      setCheckoutLoading(false);
+    }
+  };
+
   return (
     <section id="pricing" className="py-24 bg-background">
       <div className="container mx-auto px-4">
-        {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
@@ -23,7 +56,6 @@ const Pricing = () => {
           </p>
         </motion.div>
 
-        {/* Pricing Cards */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
@@ -37,25 +69,14 @@ const Pricing = () => {
               <div className="w-14 h-14 rounded-2xl bg-secondary flex items-center justify-center mb-6">
                 <Zap className="w-7 h-7 text-foreground" />
               </div>
-              <h3 className="font-serif text-2xl font-semibold text-foreground mb-2">
-                Pay Per Export
-              </h3>
-              <p className="text-muted-foreground mb-6">
-                One-time payment per presentation
-              </p>
+              <h3 className="font-serif text-2xl font-semibold text-foreground mb-2">Pay Per Export</h3>
+              <p className="text-muted-foreground mb-6">One-time payment per presentation</p>
               <div className="flex items-baseline gap-1 mb-8">
                 <span className="text-5xl font-bold text-foreground">$9</span>
                 <span className="text-muted-foreground">/export</span>
               </div>
               <ul className="space-y-4 mb-8">
-                {[
-                  "Create unlimited slides for free",
-                  "Full editor access",
-                  "Auto scripture lookup",
-                  "Export to PowerPoint (.pptx)",
-                  "Export to ProPresenter 6 & 7",
-                  "No account required",
-                ].map((feature, i) => (
+                {["Create unlimited slides for free", "Full editor access", "Auto scripture lookup", "Export to PowerPoint (.pptx)", "Export to ProPresenter 6 & 7", "No account required"].map((feature, i) => (
                   <li key={i} className="flex items-start gap-3">
                     <div className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
                       <Check className="w-3 h-3 text-primary" />
@@ -65,41 +86,26 @@ const Pricing = () => {
                 ))}
               </ul>
               <Link to="/create">
-                <Button variant="outline" className="w-full" size="lg">
-                  Get Started Free
-                </Button>
+                <Button variant="outline" className="w-full" size="lg">Get Started Free</Button>
               </Link>
             </div>
           </div>
 
           {/* Monthly Subscription */}
           <div className="relative rounded-3xl bg-card border-2 border-primary overflow-hidden shadow-elevated">
-            <div className="absolute top-0 right-0 bg-primary text-primary-foreground text-xs font-semibold px-4 py-1 rounded-bl-xl">
-              Best Value
-            </div>
+            <div className="absolute top-0 right-0 bg-primary text-primary-foreground text-xs font-semibold px-4 py-1 rounded-bl-xl">Best Value</div>
             <div className="p-8">
               <div className="w-14 h-14 rounded-2xl gradient-hero flex items-center justify-center mb-6 shadow-glow">
                 <Zap className="w-7 h-7 text-primary-foreground" />
               </div>
-              <h3 className="font-serif text-2xl font-semibold text-foreground mb-2">
-                Pro Monthly
-              </h3>
-              <p className="text-muted-foreground mb-6">
-                Unlimited access for your ministry
-              </p>
+              <h3 className="font-serif text-2xl font-semibold text-foreground mb-2">Pro Monthly</h3>
+              <p className="text-muted-foreground mb-6">Unlimited access for your ministry</p>
               <div className="flex items-baseline gap-1 mb-8">
-                <span className="text-5xl font-bold text-foreground">$29</span>
+                <span className="text-5xl font-bold text-foreground">$30</span>
                 <span className="text-muted-foreground">/month</span>
               </div>
               <ul className="space-y-4 mb-8">
-                {[
-                  "Everything in Pay Per Export",
-                  "Unlimited exports",
-                  "Personal dashboard",
-                  "Saved presentations",
-                  "Manuscript Study Guide Generator",
-                  "Conference & Training Builder",
-                ].map((feature, i) => (
+                {["Everything in Pay Per Export", "Unlimited exports", "Personal dashboard", "Saved presentations", "Manuscript Study Guide Generator", "Conference & Training Builder"].map((feature, i) => (
                   <li key={i} className="flex items-start gap-3">
                     <div className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
                       <Check className="w-3 h-3 text-primary" />
@@ -108,11 +114,9 @@ const Pricing = () => {
                   </li>
                 ))}
               </ul>
-              <Link to="/login">
-                <Button variant="hero" className="w-full" size="lg">
-                  Start Free Trial
-                </Button>
-              </Link>
+              <Button variant="hero" className="w-full" size="lg" onClick={handleProClick} disabled={checkoutLoading}>
+                {checkoutLoading ? "Starting Checkout..." : "Start Free Trial"}
+              </Button>
             </div>
           </div>
         </motion.div>

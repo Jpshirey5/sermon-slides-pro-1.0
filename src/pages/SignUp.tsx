@@ -8,28 +8,47 @@ import { BookOpen, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
-const Login = () => {
+const SignUp = () => {
   const navigate = useNavigate();
+  const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !password) {
-      toast.error("Please enter your email and password.");
+    if (!fullName || !email || !password || !confirmPassword) {
+      toast.error("Please fill in all fields.");
+      return;
+    }
+    if (password !== confirmPassword) {
+      toast.error("Passwords do not match.");
+      return;
+    }
+    if (password.length < 6) {
+      toast.error("Password must be at least 6 characters.");
       return;
     }
 
     setLoading(true);
     try {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: { full_name: fullName },
+          emailRedirectTo: window.location.origin,
+        },
+      });
+
       if (error) {
         toast.error(error.message);
       } else {
-        navigate("/dashboard");
+        toast.success("Account created! Check your email to confirm, then log in.");
+        navigate("/login");
       }
-    } catch {
+    } catch (err) {
       toast.error("An unexpected error occurred.");
     } finally {
       setLoading(false);
@@ -63,11 +82,15 @@ const Login = () => {
               <div className="w-14 h-14 rounded-2xl gradient-hero flex items-center justify-center mx-auto mb-4">
                 <BookOpen className="w-7 h-7 text-primary-foreground" />
               </div>
-              <h1 className="font-serif text-2xl font-bold text-foreground mb-2">Welcome Back</h1>
-              <p className="text-muted-foreground">Sign in to access your dashboard</p>
+              <h1 className="font-serif text-2xl font-bold text-foreground mb-2">Create Account</h1>
+              <p className="text-muted-foreground">Sign up to get started with SermonSlides</p>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-5">
+              <div className="space-y-2">
+                <Label htmlFor="fullName">Full Name</Label>
+                <Input id="fullName" type="text" placeholder="John Smith" value={fullName} onChange={(e) => setFullName(e.target.value)} className="h-12" required />
+              </div>
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
                 <Input id="email" type="email" placeholder="you@church.org" value={email} onChange={(e) => setEmail(e.target.value)} className="h-12" required />
@@ -76,18 +99,19 @@ const Login = () => {
                 <Label htmlFor="password">Password</Label>
                 <Input id="password" type="password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} className="h-12" required />
               </div>
+              <div className="space-y-2">
+                <Label htmlFor="confirmPassword">Confirm Password</Label>
+                <Input id="confirmPassword" type="password" placeholder="••••••••" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="h-12" required />
+              </div>
 
               <Button variant="hero" className="w-full" size="lg" type="submit" disabled={loading}>
-                {loading ? "Logging in..." : "Log In"}
+                {loading ? "Creating Account..." : "Sign Up"}
               </Button>
             </form>
 
-            <div className="mt-6 text-center space-y-2">
-              <Link to="/signup" className="text-sm text-primary hover:underline block">
-                Don't have an account? Sign up
-              </Link>
-              <Link to="/forgot-password" className="text-sm text-muted-foreground hover:text-foreground block">
-                Forgot password?
+            <div className="mt-6 text-center">
+              <Link to="/login" className="text-sm text-primary hover:underline">
+                Already have an account? Log in
               </Link>
             </div>
           </div>
@@ -97,4 +121,4 @@ const Login = () => {
   );
 };
 
-export default Login;
+export default SignUp;
