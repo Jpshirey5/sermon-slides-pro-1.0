@@ -128,12 +128,20 @@ const Dashboard = () => {
                   Create sermon presentations with auto scripture lookup and export
                   to PowerPoint & ProPresenter.
                 </p>
-                <Link to="/dashboard/create">
-                  <Button variant="hero">
-                    <Plus className="w-4 h-4" />
-                    Create New Presentation
-                  </Button>
-                </Link>
+                <div className="flex flex-col gap-3 w-full sm:w-auto">
+                  <Link to="/dashboard/create">
+                    <Button variant="hero" className="w-full">
+                      <Plus className="w-4 h-4" />
+                      Create New Presentation
+                    </Button>
+                  </Link>
+                  <Link to="/dashboard/outline-upload">
+                    <Button variant="outline" className="w-full">
+                      <FileText className="w-4 h-4" />
+                      Create through Sermon Outline
+                    </Button>
+                  </Link>
+                </div>
               </div>
 
               <section>
