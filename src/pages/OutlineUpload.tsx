@@ -8,10 +8,11 @@ import { toast } from "sonner";
 
 const ACCEPTED_TYPES = [
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/msword",
   "application/pdf",
   "text/plain",
 ];
-const ACCEPTED_EXTENSIONS = [".docx", ".pdf", ".txt"];
+const ACCEPTED_EXTENSIONS = [".docx", ".doc", ".pdf", ".txt"];
 
 const OutlineUpload = () => {
   const navigate = useNavigate();
@@ -21,8 +22,8 @@ const OutlineUpload = () => {
 
   const processFile = useCallback(async (file: File) => {
     const ext = file.name.split(".").pop()?.toLowerCase();
-    if (!ext || !["docx", "pdf", "txt"].includes(ext)) {
-      toast.error("Unsupported file type. Please upload a .docx, .txt, or .pdf file.");
+    if (!ext || !["docx", "doc", "pdf", "txt"].includes(ext)) {
+      toast.error("Unsupported file type. Please upload a .docx, .doc, .txt, or .pdf file.");
       return;
     }
 
@@ -126,11 +127,12 @@ const OutlineUpload = () => {
                   Drag & drop your sermon outline here
                 </p>
                 <p className="text-muted-foreground text-sm">
-                  or click to browse — supports .docx, .txt, .pdf
+                  or click to browse — supports .docx, .doc, .txt, .pdf
                 </p>
               </div>
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <FileText className="w-3 h-3" /> DOCX
+                <FileText className="w-3 h-3 ml-2" /> DOC
                 <FileText className="w-3 h-3 ml-2" /> TXT
                 <FileText className="w-3 h-3 ml-2" /> PDF
               </div>

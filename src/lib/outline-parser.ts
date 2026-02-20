@@ -160,6 +160,7 @@ export async function parseOutlineFile(file: File): Promise<SermonPresentation> 
   let content: string;
   switch (ext) {
     case "docx":
+    case "doc":
       content = await extractDocx(file);
       break;
     case "pdf":
