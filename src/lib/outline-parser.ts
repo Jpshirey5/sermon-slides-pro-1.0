@@ -87,6 +87,25 @@ function parseContent(content: string): { title: string; points: SermonPresentat
     sections.push(currentSection);
   }
 
+  // Fallback: if no slide markers were found, split on blank-line groups
+  if (sections.length === 0 && remainingLines.length > 0) {
+    let block: string[] = [];
+    for (const line of remainingLines) {
+      const plain = line.replace(/<[^>]*>/g, "").trim();
+      if (!plain) {
+        if (block.length > 0) {
+          sections.push(block);
+          block = [];
+        }
+      } else {
+        block.push(line);
+      }
+    }
+    if (block.length > 0) {
+      sections.push(block);
+    }
+  }
+
   // Helper: detect note lines
   const isNoteLine = (line: string): boolean =>
     /^\s*notes?\s*:/i.test(line.replace(/<[^>]*>/g, ""));
@@ -134,22 +153,66 @@ async function extractDocx(file: File): Promise<string> {
     .replace(/<br\s*\/?>/gi, "\n");
 }
 
-// Extract text from PDF using pdfjs-dist
+// Extract text from PDF using pdfjs-dist — detect line breaks and slide boundaries via y-coordinates
 async function extractPdf(file: File): Promise<string> {
   const arrayBuffer = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-  const lines: string[] = [];
+  const allLines: string[] = [];
 
   for (let i = 1; i <= pdf.numPages; i++) {
     const page = await pdf.getPage(i);
     const textContent = await page.getTextContent();
-    const pageText = textContent.items
-      .map((item: any) => item.str)
-      .join(" ");
-    lines.push(pageText);
+
+    // Filter to items with actual text
+    const items = (textContent.items as any[])
+      .filter((item) => item.str && item.str.trim())
+      .map((item) => ({
+        str: item.str.trim(),
+        y: Math.round(item.transform[5]), // y-coordinate (PDF: bottom-up)
+        height: item.height || item.transform[3] || 12,
+      }));
+
+    if (items.length === 0) continue;
+
+    // Sort by y descending (top of page first)
+    items.sort((a, b) => b.y - a.y);
+
+    // Group into lines by similar y-coordinate
+    const lines: { y: number; height: number; text: string }[] = [];
+    let cur = { y: items[0].y, height: items[0].height, parts: [items[0].str] };
+
+    for (let j = 1; j < items.length; j++) {
+      const item = items[j];
+      if (Math.abs(cur.y - item.y) < cur.height * 0.6) {
+        // Same line
+        cur.parts.push(item.str);
+      } else {
+        lines.push({ y: cur.y, height: cur.height, text: cur.parts.join(" ") });
+        cur = { y: item.y, height: item.height, parts: [item.str] };
+      }
+    }
+    lines.push({ y: cur.y, height: cur.height, text: cur.parts.join(" ") });
+
+    // Detect large y-gaps between lines as slide boundaries
+    for (let j = 0; j < lines.length; j++) {
+      if (j > 0) {
+        const gap = lines[j - 1].y - lines[j].y;
+        const avgHeight = (lines[j - 1].height + lines[j].height) / 2;
+        if (gap > avgHeight * 2.5) {
+          // Large gap → slide boundary
+          allLines.push("#### SLIDE ####");
+        }
+      }
+      allLines.push(lines[j].text);
+    }
+
+    // Page break → slide boundary
+    if (i < pdf.numPages) {
+      allLines.push("#### SLIDE ####");
+    }
   }
 
-  return lines.join("\n");
+  return allLines.join("\n");
 }
 
 // Extract text from TXT
