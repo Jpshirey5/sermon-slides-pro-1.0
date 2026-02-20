@@ -135,12 +135,6 @@ const Dashboard = () => {
                       Create New Presentation
                     </Button>
                   </Link>
-                  <Link to="/dashboard/outline-upload">
-                    <Button variant="outline" className="w-full">
-                      <FileText className="w-4 h-4" />
-                      Create through Sermon Outline
-                    </Button>
-                  </Link>
                 </div>
               </div>
 

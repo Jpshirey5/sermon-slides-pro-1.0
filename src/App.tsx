@@ -16,7 +16,7 @@ import ResetPassword from "./pages/ResetPassword";
 import Dashboard from "./pages/Dashboard";
 import Account from "./pages/Account";
 import ManuscriptGenerator from "./pages/ManuscriptGenerator";
-import OutlineUpload from "./pages/OutlineUpload";
+
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -39,7 +39,7 @@ const App = () => (
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/dashboard/create" element={<ProtectedRoute><CreateSermon /></ProtectedRoute>} />
-            <Route path="/dashboard/outline-upload" element={<ProtectedRoute><OutlineUpload /></ProtectedRoute>} />
+            
             <Route path="/manuscript" element={<ProtectedRoute><ManuscriptGenerator /></ProtectedRoute>} />
             <Route path="/account" element={<ProtectedRoute><Account /></ProtectedRoute>} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
