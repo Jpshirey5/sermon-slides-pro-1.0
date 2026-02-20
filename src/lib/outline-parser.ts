@@ -65,54 +65,58 @@ function parseContent(content: string): { title: string; points: SermonPresentat
   const rawLines = content.split(/\n/);
   const { title, remainingLines } = extractTitle(rawLines);
 
-  // Split into slide sections
+  // Split into slide sections — ignore everything before the first slide marker
   const sections: string[][] = [];
   let currentSection: string[] = [];
+  let foundFirstSlide = false;
 
   for (const line of remainingLines) {
-    if (isSlideMarker(line.replace(/<[^>]*>/g, ""))) {
+    const stripped = line.replace(/<[^>]*>/g, "").trim();
+    if (isSlideMarker(stripped)) {
+      foundFirstSlide = true;
       if (currentSection.length > 0) {
         sections.push(currentSection);
       }
       currentSection = [];
-    } else {
+    } else if (foundFirstSlide) {
       currentSection.push(line);
     }
+    // else: discard pre-slide content
   }
   if (currentSection.length > 0) {
     sections.push(currentSection);
   }
 
+  // Helper: detect note lines
+  const isNoteLine = (line: string): boolean =>
+    /^\s*notes?\s*:/i.test(line.replace(/<[^>]*>/g, ""));
+
   // Convert sections to points
   const points = sections.map((section, idx) => {
-    const fullText = section.join("\n").trim();
-    if (!fullText) return null;
+    // Filter out empty lines and note lines
+    const filteredLines = section.filter((l) => {
+      const plain = l.replace(/<[^>]*>/g, "").trim();
+      return plain && !isNoteLine(l);
+    });
 
-    const scriptureRefs = findScriptureReferences(fullText);
-    const hasScripture = scriptureRefs.length > 0;
+    if (filteredLines.length === 0) return null;
 
-    // Use first line as point title, rest as content
-    const nonEmptyLines = section.filter((l) => l.trim());
-    const pointTitle = nonEmptyLines[0]?.replace(/<[^>]*>/g, "").trim() || `Slide ${idx + 1}`;
+    const contentText = filteredLines
+      .map((l) => l.replace(/<[^>]*>/g, "").trim())
+      .join(" ");
+
+    const scriptureRefs = findScriptureReferences(contentText);
+    const pointTitle = filteredLines[0]?.replace(/<[^>]*>/g, "").trim() || `Slide ${idx + 1}`;
 
     const scriptures = scriptureRefs.map((ref) => ({
       reference: ref,
-      text: fullText,
+      text: contentText,
     }));
-
-    // If no scripture, treat entire content as a sermon point
-    if (!hasScripture) {
-      return {
-        id: String(Date.now() + idx),
-        title: pointTitle,
-        scriptures: [] as { reference: string; text?: string }[],
-      };
-    }
 
     return {
       id: String(Date.now() + idx),
       title: pointTitle,
-      scriptures,
+      scriptures: scriptures.length > 0 ? scriptures : ([] as { reference: string; text?: string }[]),
     };
   }).filter(Boolean) as SermonPresentation["data"]["points"];
 
