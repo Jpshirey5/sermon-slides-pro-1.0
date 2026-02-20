@@ -110,33 +110,82 @@ function parseContent(content: string): { title: string; points: SermonPresentat
   const isNoteLine = (line: string): boolean =>
     /^\s*notes?\s*:/i.test(line.replace(/<[^>]*>/g, ""));
 
-  // Convert sections to points
+  // Helper: strip HTML tags
+  const stripHtml = (s: string) => s.replace(/<[^>]*>/g, "").trim();
+
+  // Convert sections to points using block-based processing
   const points = sections.map((section, idx) => {
-    // Filter out empty lines and note lines
-    const filteredLines = section.filter((l) => {
-      const plain = l.replace(/<[^>]*>/g, "").trim();
-      return plain && !isNoteLine(l);
-    });
+    // 1. Block-based note filtering: truncate at first note line
+    const noteIndex = section.findIndex((l) => isNoteLine(l));
+    const contentLines = (noteIndex >= 0 ? section.slice(0, noteIndex) : section)
+      .filter((l) => stripHtml(l) !== "");
 
-    if (filteredLines.length === 0) return null;
+    if (contentLines.length === 0) return null;
 
-    const contentText = filteredLines
-      .map((l) => l.replace(/<[^>]*>/g, "").trim())
-      .join(" ");
-
+    const contentText = contentLines.map((l) => stripHtml(l)).join(" ");
     const scriptureRefs = findScriptureReferences(contentText);
-    const pointTitle = filteredLines[0]?.replace(/<[^>]*>/g, "").trim() || `Slide ${idx + 1}`;
 
-    const scriptures = scriptureRefs.map((ref) => ({
-      reference: ref,
-      text: contentText,
-    }));
+    // 2. Classify the section: scripture-only, point-only, or mixed
+    if (scriptureRefs.length > 0) {
+      // Extract quoted verse text if present
+      const quoteMatch = contentText.match(/[\u201C""]([^"\u201D\u201C]+)[\u201D""]/);
+      const verseText = quoteMatch ? quoteMatch[1] : contentText;
 
-    return {
-      id: String(Date.now() + idx),
-      title: pointTitle,
-      scriptures: scriptures.length > 0 ? scriptures : ([] as { reference: string; text?: string }[]),
-    };
+      // Check if the entire block is scripture content (no separate heading)
+      // A section is "scripture-only" if removing the reference and quotes leaves little/no text
+      const withoutRefs = scriptureRefs.reduce((t, ref) => t.replace(ref, ""), contentText);
+      const withoutQuotes = withoutRefs.replace(/[\u201C""][^"\u201D\u201C]*[\u201D""]/g, "").trim();
+      const remainingWords = withoutQuotes.replace(/[^a-zA-Z0-9\s]/g, "").trim().split(/\s+/).filter(Boolean);
+
+      if (remainingWords.length <= 3) {
+        // Scripture-only section: set title to "" so SlideEditor only creates scripture slide
+        return {
+          id: String(Date.now() + idx),
+          title: "",
+          scriptures: scriptureRefs.map((ref) => ({
+            reference: ref,
+            text: verseText,
+          })),
+        };
+      } else {
+        // Mixed: first line is the heading, scripture is separate
+        const headingLine = stripHtml(contentLines[0]);
+        // Check if the heading itself IS the scripture ref
+        const headingIsRef = scriptureRefs.some((ref) =>
+          headingLine.replace(/[^a-zA-Z0-9\s:]/g, "").trim().toLowerCase() ===
+          ref.replace(/[^a-zA-Z0-9\s:]/g, "").trim().toLowerCase()
+        );
+
+        if (headingIsRef) {
+          // The heading is just a scripture reference — treat as scripture-only
+          return {
+            id: String(Date.now() + idx),
+            title: "",
+            scriptures: scriptureRefs.map((ref) => ({
+              reference: ref,
+              text: verseText,
+            })),
+          };
+        }
+
+        return {
+          id: String(Date.now() + idx),
+          title: headingLine,
+          scriptures: scriptureRefs.map((ref) => ({
+            reference: ref,
+            text: verseText,
+          })),
+        };
+      }
+    } else {
+      // No scripture — point-only slide
+      const pointTitle = stripHtml(contentLines[0]) || `Slide ${idx + 1}`;
+      return {
+        id: String(Date.now() + idx),
+        title: pointTitle,
+        scriptures: [] as { reference: string; text?: string }[],
+      };
+    }
   }).filter(Boolean) as SermonPresentation["data"]["points"];
 
   return { title, points };
