@@ -640,16 +640,23 @@ const SlideEditor = () => {
     toast.success("Slide added");
   };
 
-  // Delete current slide
+  // Delete selected slide(s)
   const handleDeleteSlide = () => {
     if (slides.length <= 1) {
       toast.error("Cannot delete the only slide");
       return;
     }
-    const newSlides = slides.filter((_, index) => index !== selectedSlide);
+    const indicesToDelete = selectedSlides.size > 1 ? selectedSlides : new Set([selectedSlide]);
+    const newSlides = slides.filter((_, index) => !indicesToDelete.has(index));
+    if (newSlides.length === 0) {
+      toast.error("Cannot delete all slides");
+      return;
+    }
     setSlides(newSlides);
-    setSelectedSlide(Math.min(selectedSlide, newSlides.length - 1));
-    toast.success("Slide deleted");
+    const newIndex = Math.min(Math.min(...indicesToDelete), newSlides.length - 1);
+    setSelectedSlide(newIndex);
+    setSelectedSlides(new Set([newIndex]));
+    toast.success(indicesToDelete.size > 1 ? `${indicesToDelete.size} slides deleted` : "Slide deleted");
   };
   
   // Duplicate current slide
