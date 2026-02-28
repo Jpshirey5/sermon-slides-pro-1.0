@@ -238,6 +238,7 @@ const SlideEditor = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [slides, setSlides] = useState<SlideData[]>(defaultSlides);
   const [selectedSlide, setSelectedSlide] = useState(0);
+  const [selectedSlides, setSelectedSlides] = useState<Set<number>>(new Set([0]));
   const [isPreviewMode, setIsPreviewMode] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [presentationTitle, setPresentationTitle] = useState("New Presentation");
@@ -427,25 +428,75 @@ const SlideEditor = () => {
   }, [handleUndo, handleRedo]);
   
   const handleReorder = useCallback((newOrder: SlideData[]) => {
-    setSlides(newOrder);
-    setIsDragging(false);
-    setDragOverIndex(null);
-    // Update selected slide index if needed
-    const currentId = currentSlide.id;
-    const newIndex = newOrder.findIndex(s => s.id === currentId);
-    if (newIndex !== -1) {
-      setSelectedSlide(newIndex);
+    // If multiple slides are selected and we're dragging, move them as a group
+    if (selectedSlides.size > 1 && isDragging) {
+      // Find which slide was being dragged (the primary selected)
+      const draggedSlide = slides[selectedSlide];
+      const draggedNewIndex = newOrder.findIndex(s => s.id === draggedSlide.id);
+      
+      // Get all selected slide objects in their original order
+      const selectedSlideObjects = slides.filter((_, i) => selectedSlides.has(i));
+      const unselectedSlides = newOrder.filter(s => !selectedSlides.has(slides.findIndex(os => os.id === s.id)));
+      
+      // Insert selected slides at the dragged position
+      const insertIndex = unselectedSlides.findIndex(s => s.id === newOrder[draggedNewIndex]?.id);
+      const finalOrder = [...unselectedSlides];
+      const realInsert = insertIndex >= 0 ? insertIndex : unselectedSlides.length;
+      finalOrder.splice(realInsert, 0, ...selectedSlideObjects);
+      
+      setSlides(finalOrder);
+      
+      // Update selection indices
+      const newSelectedSet = new Set<number>();
+      selectedSlideObjects.forEach(s => {
+        const newIdx = finalOrder.findIndex(fs => fs.id === s.id);
+        if (newIdx !== -1) newSelectedSet.add(newIdx);
+      });
+      setSelectedSlides(newSelectedSet);
+      setSelectedSlide(finalOrder.findIndex(s => s.id === draggedSlide.id));
+    } else {
+      setSlides(newOrder);
+      const currentId = currentSlide.id;
+      const newIndex = newOrder.findIndex(s => s.id === currentId);
+      if (newIndex !== -1) {
+        setSelectedSlide(newIndex);
+        setSelectedSlides(new Set([newIndex]));
+      }
     }
-  }, [currentSlide.id]);
-
-  const handleDragStart = useCallback(() => {
-    setIsDragging(true);
-  }, []);
-
-  const handleDragEnd = useCallback(() => {
     setIsDragging(false);
     setDragOverIndex(null);
-  }, []);
+  }, [currentSlide.id, selectedSlides, selectedSlide, slides, isDragging]);
+
+  const handleSlideClick = useCallback((index: number, e: React.MouseEvent) => {
+    if (e.metaKey || e.ctrlKey) {
+      // Toggle individual slide in selection
+      const newSet = new Set(selectedSlides);
+      if (newSet.has(index)) {
+        if (newSet.size > 1) {
+          newSet.delete(index);
+          if (selectedSlide === index) {
+            setSelectedSlide([...newSet][0]);
+          }
+        }
+      } else {
+        newSet.add(index);
+      }
+      setSelectedSlides(newSet);
+      setSelectedSlide(index);
+    } else if (e.shiftKey) {
+      // Range select from last selected to clicked
+      const start = Math.min(selectedSlide, index);
+      const end = Math.max(selectedSlide, index);
+      const newSet = new Set<number>();
+      for (let i = start; i <= end; i++) newSet.add(i);
+      setSelectedSlides(newSet);
+      setSelectedSlide(index);
+    } else {
+      // Single select
+      setSelectedSlide(index);
+      setSelectedSlides(new Set([index]));
+    }
+  }, [selectedSlide, selectedSlides]);
   // Handle export button click - check subscription and unlock status
   const handleExportButtonClick = () => {
     if (subscription.subscribed) {
