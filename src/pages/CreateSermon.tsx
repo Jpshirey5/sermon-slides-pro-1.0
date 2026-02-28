@@ -683,15 +683,6 @@ const CreateSermon = () => {
                               </div>
                             ))}
 
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => addScripture(point.id)}
-                            >
-                              <Plus className="w-4 h-4" />
-                              Add Scripture
-                            </Button>
                           </div>
                         </div>
                       </>

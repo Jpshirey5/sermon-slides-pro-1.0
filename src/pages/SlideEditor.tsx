@@ -3,7 +3,7 @@ import { Link, useParams, useSearchParams, useLocation, useNavigate } from "reac
 import { motion, Reorder, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { BookOpen, ArrowLeft, Download, Play, GripVertical, Plus, Type, Palette, ChevronLeft, ChevronRight, Trash2, AlignVerticalSpaceAround, Undo2, Redo2, Copy, Check, Cloud, BookMarked } from "lucide-react";
+import { BookOpen, ArrowLeft, Download, Play, GripVertical, Plus, Type, Palette, ChevronLeft, ChevronRight, Trash2, AlignVerticalSpaceAround, Undo2, Redo2, Copy, Check, Cloud, BookMarked, Pencil } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { BackgroundPicker } from "@/components/BackgroundPicker";
 import { exportToPowerPoint, SlideData } from "@/lib/export-pptx";
@@ -13,6 +13,7 @@ import { ExportOptionsModal } from "@/components/ExportOptionsModal";
 import { PaymentPromptModal } from "@/components/PaymentPromptModal";
 import { toast } from "sonner";
 import { getPresentation, getPresentations, SermonPresentation } from "@/lib/presentations";
+import { useAuth } from "@/contexts/AuthContext";
 // Storage key for editor-specific slide data
 const EDITOR_STORAGE_KEY = 'sermon-editor-slides';
 
@@ -111,18 +112,16 @@ function generateSlidesFromData(presentation: SermonPresentation): SlideData[] {
 
   // Generate slides for each point
   if (presentation.data?.points) {
-    let pointNumber = 0;
     presentation.data.points.forEach((point) => {
       const isVerseType = point.type === 'verse';
       
       if (!isVerseType && point.title) {
-        pointNumber++;
         // Point slide
         slides.push({
           id: `point-${point.id}`,
           type: 'point',
           content: {
-            title: `${pointNumber}. ${point.title}`,
+            title: point.title,
             subtitle: ''
           },
           background: defaultBackground,
@@ -235,7 +234,7 @@ const SlideEditor = () => {
   const { id } = useParams();
   const location = useLocation();
   const editorNavigate = useNavigate();
-  const isFromDashboard = (location.state as any)?.from === "dashboard" || localStorage.getItem("logged_in") === "true";
+  const { subscription } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [slides, setSlides] = useState<SlideData[]>(defaultSlides);
   const [selectedSlide, setSelectedSlide] = useState(0);
@@ -447,23 +446,28 @@ const SlideEditor = () => {
     setIsDragging(false);
     setDragOverIndex(null);
   }, []);
-  // Handle export button click - check if unlocked first
+  // Handle export button click - check subscription and unlock status
   const handleExportButtonClick = () => {
-    // Check localStorage for unlock status
+    if (subscription.subscribed) {
+      // Pro user — show export options immediately
+      setShowExportModal(true);
+      return;
+    }
+    
+    // Check localStorage for per-sermon unlock status
     const isUnlocked = id && id !== "new" 
       ? localStorage.getItem(`export_unlocked:${id}`) === "true"
       : false;
       
-    if (!isUnlocked) {
+    if (isUnlocked) {
+      setShowExportModal(true);
+    } else {
       if (!id || id === "new") {
         toast.error("Please save your presentation first");
         return;
       }
       // Show payment modal
       setShowPaymentModal(true);
-    } else {
-      // Show export options modal
-      setShowExportModal(true);
     }
   };
   
@@ -683,7 +687,7 @@ const SlideEditor = () => {
               <p className="text-lg md:text-xl opacity-70 mt-auto w-full text-right" style={{
             color: currentSlide.textColor
           }}>
-                — {currentSlide.content.reference}
+                {currentSlide.content.reference}
               </p>
             </div>}
         </div>
@@ -695,9 +699,9 @@ const SlideEditor = () => {
         <div className="h-full px-4">
           <div className="flex items-center justify-between h-full">
             {/* Back */}
-            <Link to={isFromDashboard ? "/dashboard" : "/"} className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors">
+            <Link to="/dashboard" className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors">
               <ArrowLeft className="w-5 h-5" />
-              <span className="hidden sm:inline">{isFromDashboard ? "Dashboard" : "Home"}</span>
+              <span className="hidden sm:inline">Dashboard</span>
             </Link>
 
             {/* Title + Paid Badge + Save Indicator */}
@@ -758,6 +762,19 @@ const SlideEditor = () => {
                 </Button>
               </div>
               
+              {id && id !== "new" && (
+                <Button variant="outline" onClick={() => {
+                  const presentation = getPresentation(id);
+                  if (presentation?.data) {
+                    // Clear saved editor slides so they regenerate fresh
+                    localStorage.removeItem(`${EDITOR_STORAGE_KEY}-${id}`);
+                    editorNavigate('/dashboard/create', { state: { editData: presentation.data, editId: id } });
+                  }
+                }} title="Edit sermon form">
+                  <Pencil className="w-4 h-4" />
+                  <span className="hidden sm:inline">Edit</span>
+                </Button>
+              )}
               <Button variant="outline" onClick={() => setIsPreviewMode(true)}>
                 <Play className="w-4 h-4" />
                 <span className="hidden sm:inline">Preview</span>
@@ -1002,7 +1019,7 @@ const SlideEditor = () => {
                 }} placeholder="Enter scripture text..." />
                     <input type="text" value={currentSlide.content.reference || ""} onChange={e => handleContentChange('reference', e.target.value)} className="text-xs md:text-sm opacity-70 bg-transparent border-none outline-none text-right w-full focus:ring-2 focus:ring-white/30 rounded-lg px-2 py-1" style={{
                   color: currentSlide.textColor
-                }} placeholder="— Reference" />
+                }} placeholder="Reference" />
                   </>}
                 {currentSlide.type === "blank" && <p className="text-muted-foreground text-sm">Blank Slide</p>}
               </div>
