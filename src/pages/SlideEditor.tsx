@@ -497,6 +497,15 @@ const SlideEditor = () => {
       setSelectedSlides(new Set([index]));
     }
   }, [selectedSlide, selectedSlides]);
+
+  const handleDragStart = useCallback(() => {
+    setIsDragging(true);
+  }, []);
+
+  const handleDragEnd = useCallback(() => {
+    setIsDragging(false);
+    setDragOverIndex(null);
+  }, []);
   // Handle export button click - check subscription and unlock status
   const handleExportButtonClick = () => {
     if (subscription.subscribed) {
