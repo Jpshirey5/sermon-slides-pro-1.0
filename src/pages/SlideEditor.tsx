@@ -673,19 +673,19 @@ const SlideEditor = () => {
                 {currentSlide.content.subtitle}
               </p>
             </>}
-          {currentSlide.type === "scripture" && <>
+          {currentSlide.type === "scripture" && <div className="flex flex-col flex-1 w-full items-center">
               <p className="text-2xl md:text-4xl italic mb-8 leading-relaxed" style={{
             fontFamily: currentSlide.fontFamily,
             color: currentSlide.textColor
           }}>
                 {currentSlide.content.scripture}
               </p>
-              <p className="text-lg md:text-xl opacity-70" style={{
+              <p className="text-lg md:text-xl opacity-70 mt-auto w-full text-right" style={{
             color: currentSlide.textColor
           }}>
                 — {currentSlide.content.reference}
               </p>
-            </>}
+            </div>}
         </div>
       </div>;
   }
@@ -1000,7 +1000,7 @@ const SlideEditor = () => {
                   lineHeight: currentSlide.lineSpacing || 1.5,
                   marginBottom: `${(currentSlide.lineSpacing || 1.5) * 0.5}rem`
                 }} placeholder="Enter scripture text..." />
-                    <input type="text" value={currentSlide.content.reference || ""} onChange={e => handleContentChange('reference', e.target.value)} className="text-xs md:text-sm opacity-70 bg-transparent border-none outline-none text-center w-full focus:ring-2 focus:ring-white/30 rounded-lg px-2 py-1" style={{
+                    <input type="text" value={currentSlide.content.reference || ""} onChange={e => handleContentChange('reference', e.target.value)} className="text-xs md:text-sm opacity-70 bg-transparent border-none outline-none text-right w-full focus:ring-2 focus:ring-white/30 rounded-lg px-2 py-1" style={{
                   color: currentSlide.textColor
                 }} placeholder="— Reference" />
                   </>}
