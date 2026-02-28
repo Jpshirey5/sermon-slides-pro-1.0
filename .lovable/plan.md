@@ -1,36 +1,31 @@
 
-# Align Scripture Reference to Bottom-Right of Slide
 
-## What Changes
+# Remove "Create through Sermon Outline" Feature
 
-Move the scripture reference (e.g., "— James 3:1 (ESV)") from centered to the bottom-right corner of the verse slide, in all three rendering contexts.
+## What Will Be Removed
 
-## File: `src/pages/SlideEditor.tsx`
+1. **Dashboard button** -- The "Create through Sermon Outline" button and its `<Link>` wrapper in `src/pages/Dashboard.tsx` (lines 138-143)
+2. **Route** -- The `/dashboard/outline-upload` route in `src/App.tsx` (line 42) and its import (line 19)
+3. **Page component** -- Delete `src/pages/OutlineUpload.tsx`
+4. **Parser library** -- Delete `src/lib/outline-parser.ts`
 
-### 1. Preview mode (lines 676-688)
-- Wrap the scripture content in a flex column with `flex-1` so the verse text stays centered
-- Position the reference line with `text-right self-end` so it sits at the bottom-right
-- Add `mt-auto` to push the reference down, and `w-full` so `text-right` works across the full width
+## What Will NOT Be Touched
 
-### 2. Edit mode (lines 996-1006)
-- Same layout adjustment: the scripture textarea stays centered, the reference input gets `text-right` alignment instead of `text-center`
-- Keep the input full-width but align text to the right
+- All other dashboard functionality (Sermon Slide Creator card, Training Creator tab, presentations list, study guides list)
+- All other routes and pages
+- No other components, libraries, or styles
 
-### 3. Export files (no changes needed)
-- PowerPoint and ProPresenter exports already have their own positioning logic and are separate from the on-screen rendering
+## Technical Details
 
-## Visual Result
+### `src/pages/Dashboard.tsx`
+- Remove lines 138-143 (the `<Link to="/dashboard/outline-upload">` block containing the "Create through Sermon Outline" button)
+- No other changes to this file
 
-Before:
-```
-    "Let not many of you be teachers..."
-         — James 3:1 (ESV)
-```
+### `src/App.tsx`
+- Remove the `import OutlineUpload` line (line 19)
+- Remove the `<Route path="/dashboard/outline-upload" ...>` line (line 42)
 
-After:
-```
-    "Let not many of you be teachers..."
-                        — James 3:1 (ESV)
-```
+### Deleted Files
+- `src/pages/OutlineUpload.tsx`
+- `src/lib/outline-parser.ts`
 
-The reference will be right-aligned at the bottom of the slide content area.
