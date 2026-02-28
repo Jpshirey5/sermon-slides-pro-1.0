@@ -111,14 +111,18 @@ function generateSlidesFromData(presentation: SermonPresentation): SlideData[] {
 
   // Generate slides for each point
   if (presentation.data?.points) {
-    presentation.data.points.forEach((point, index) => {
-      if (point.title) {
+    let pointNumber = 0;
+    presentation.data.points.forEach((point) => {
+      const isVerseType = point.type === 'verse';
+      
+      if (!isVerseType && point.title) {
+        pointNumber++;
         // Point slide
         slides.push({
           id: `point-${point.id}`,
           type: 'point',
           content: {
-            title: `${index + 1}. ${point.title}`,
+            title: `${pointNumber}. ${point.title}`,
             subtitle: ''
           },
           background: defaultBackground,
@@ -126,17 +130,17 @@ function generateSlidesFromData(presentation: SermonPresentation): SlideData[] {
           textColor: defaultColor,
           lineSpacing: defaultLineSpacing
         });
+      }
 
-        // Scripture slides for this point
+      // Scripture slides (for both point and verse types)
+      if (isVerseType || point.title) {
         point.scriptures.forEach((scripture, sIndex) => {
           if (scripture.reference && scripture.text) {
             const isVerseByVerse = presentation.data?.verseBreakdown === 'verse-by-verse';
             
             if (isVerseByVerse) {
-              // Use stored verses array if available, fall back to splitVerseText
               const verseList = scripture.verses && scripture.verses.length > 0
                 ? scripture.verses.map(v => {
-                    // Extract book + chapter from the reference (e.g., "John 3:16-18" → "John 3")
                     const parsed = scripture.reference.match(/^(.+?\s+\d+):/);
                     const bookChapter = parsed ? parsed[1] : scripture.reference;
                     return { text: v.text, reference: `${bookChapter}:${v.verse}` };
@@ -158,7 +162,6 @@ function generateSlidesFromData(presentation: SermonPresentation): SlideData[] {
                 });
               });
             } else {
-              // Full verses - single slide
               slides.push({
                 id: `scripture-${point.id}-${sIndex}`,
                 type: 'scripture',
