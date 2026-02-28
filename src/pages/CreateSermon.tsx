@@ -66,13 +66,28 @@ const CreateSermon = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const isFromDashboard = location.pathname.startsWith("/dashboard");
-  const [title, setTitle] = useState("");
-  const [globalTranslation, setGlobalTranslation] = useState("KJV");
-  const [verseBreakdown, setVerseBreakdown] = useState("verse-by-verse");
-  const [points, setPoints] = useState<SermonPoint[]>([
-    { id: "1", type: "point", title: "", scriptures: [] },
-  ]);
-  const [expandedPoints, setExpandedPoints] = useState<string[]>(["1"]);
+  const editData = (location.state as any)?.editData;
+  const editId = (location.state as any)?.editId;
+  const [title, setTitle] = useState(editData?.title || "");
+  const [globalTranslation, setGlobalTranslation] = useState(editData?.translation || "KJV");
+  const [verseBreakdown, setVerseBreakdown] = useState(editData?.verseBreakdown || "verse-by-verse");
+  const [points, setPoints] = useState<SermonPoint[]>(
+    editData?.points
+      ? editData.points.map((p: any) => ({
+          id: p.id,
+          type: p.type || 'point',
+          title: p.title,
+          scriptures: p.scriptures.map((s: any) => ({
+            reference: s.reference,
+            text: s.text,
+            verses: s.verses,
+          })),
+        }))
+      : [{ id: "1", type: "point", title: "", scriptures: [] }]
+  );
+  const [expandedPoints, setExpandedPoints] = useState<string[]>(
+    editData?.points ? editData.points.map((p: any) => p.id) : ["1"]
+  );
   
   // Track pending lookups with debounce
   const lookupTimeouts = useRef<Record<string, NodeJS.Timeout>>({});
@@ -293,8 +308,8 @@ const CreateSermon = () => {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Generate unique ID for this presentation
-    const presentationId = String(Date.now());
+    // Use editId if re-editing, otherwise generate new ID
+    const presentationId = editId || String(Date.now());
     
     // Calculate slide count
     let slideCount = 1; // Title slide
