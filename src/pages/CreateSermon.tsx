@@ -38,6 +38,7 @@ interface Scripture {
 
 interface SermonPoint {
   id: string;
+  type: 'point' | 'verse';
   title: string;
   scriptures: Scripture[];
 }
@@ -69,7 +70,7 @@ const CreateSermon = () => {
   const [globalTranslation, setGlobalTranslation] = useState("KJV");
   const [verseBreakdown, setVerseBreakdown] = useState("verse-by-verse");
   const [points, setPoints] = useState<SermonPoint[]>([
-    { id: "1", title: "", scriptures: [] },
+    { id: "1", type: "point", title: "", scriptures: [] },
   ]);
   const [expandedPoints, setExpandedPoints] = useState<string[]>(["1"]);
   
@@ -78,7 +79,13 @@ const CreateSermon = () => {
 
   const addPoint = () => {
     const newId = String(Date.now());
-    setPoints([...points, { id: newId, title: "", scriptures: [] }]);
+    setPoints([...points, { id: newId, type: "point", title: "", scriptures: [] }]);
+    setExpandedPoints([...expandedPoints, newId]);
+  };
+
+  const addVerse = () => {
+    const newId = String(Date.now());
+    setPoints([...points, { id: newId, type: "verse", title: "", scriptures: [{ reference: "" }] }]);
     setExpandedPoints([...expandedPoints, newId]);
   };
 
@@ -292,11 +299,17 @@ const CreateSermon = () => {
     // Calculate slide count
     let slideCount = 1; // Title slide
     points.forEach(point => {
-      if (point.title) {
+      if (point.type === 'verse') {
+        point.scriptures.forEach(s => {
+          if (s.reference && s.text) {
+            slideCount++;
+          }
+        });
+      } else if (point.title) {
         slideCount++; // Point slide
         point.scriptures.forEach(s => {
           if (s.reference && s.text) {
-            slideCount++; // Scripture slide
+            slideCount++;
           }
         });
       }
@@ -316,6 +329,7 @@ const CreateSermon = () => {
         translation: globalTranslation,
         points: points.map(p => ({
           id: p.id,
+          type: p.type,
           title: p.title,
           scriptures: p.scriptures.map(s => ({
             reference: s.reference,
