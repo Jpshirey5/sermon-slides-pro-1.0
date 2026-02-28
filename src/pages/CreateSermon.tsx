@@ -703,8 +703,9 @@ const CreateSermon = () => {
                       </>
                     )}
                   </div>
-                </motion.div>
+                </Reorder.Item>
               ))}
+              </Reorder.Group>
 
               {/* Add Point Button at Bottom */}
               <div className="flex justify-center gap-4 pt-2">
