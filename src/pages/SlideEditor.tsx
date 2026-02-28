@@ -894,8 +894,10 @@ const SlideEditor = () => {
                   key={slide.id} 
                   value={slide} 
                   className={`group relative cursor-grab active:cursor-grabbing rounded-md overflow-hidden border-2 transition-all ${
-                    selectedSlide === index 
-                      ? "border-primary shadow-elevated" 
+                    selectedSlides.has(index)
+                      ? selectedSlide === index
+                        ? "border-primary shadow-elevated" 
+                        : "border-primary/60 shadow-sm bg-primary/5"
                       : "border-border hover:border-primary/50"
                   }`} 
                   initial={false} 
@@ -927,7 +929,7 @@ const SlideEditor = () => {
                   )}
                   
                   <div 
-                    onClick={() => setSelectedSlide(index)} 
+                    onClick={(e) => handleSlideClick(index, e)} 
                     className="w-full"
                     onMouseEnter={() => isDragging && setDragOverIndex(index)}
                     onMouseLeave={() => isDragging && dragOverIndex === index && setDragOverIndex(null)}
@@ -939,7 +941,7 @@ const SlideEditor = () => {
                           {index + 1}
                         </span>
                       </div>
-                      {selectedSlide === index && slides.length > 1 && (
+                      {selectedSlides.has(index) && slides.length > 1 && (
                         <button 
                           onClick={e => {
                             e.stopPropagation();
