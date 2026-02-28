@@ -13,6 +13,7 @@ export interface SermonPresentation {
     verseBreakdown?: string;
     points: Array<{
       id: string;
+      type?: 'point' | 'verse';
       title: string;
       scriptures: Array<{
         reference: string;
