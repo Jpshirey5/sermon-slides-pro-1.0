@@ -1,31 +1,36 @@
 
+# Align Scripture Reference to Bottom-Right of Slide
 
-# Remove "Create through Sermon Outline" Feature
+## What Changes
 
-## What Will Be Removed
+Move the scripture reference (e.g., "— James 3:1 (ESV)") from centered to the bottom-right corner of the verse slide, in all three rendering contexts.
 
-1. **Dashboard button** -- The "Create through Sermon Outline" button and its `<Link>` wrapper in `src/pages/Dashboard.tsx` (lines 138-143)
-2. **Route** -- The `/dashboard/outline-upload` route in `src/App.tsx` (line 42) and its import (line 19)
-3. **Page component** -- Delete `src/pages/OutlineUpload.tsx`
-4. **Parser library** -- Delete `src/lib/outline-parser.ts`
+## File: `src/pages/SlideEditor.tsx`
 
-## What Will NOT Be Touched
+### 1. Preview mode (lines 676-688)
+- Wrap the scripture content in a flex column with `flex-1` so the verse text stays centered
+- Position the reference line with `text-right self-end` so it sits at the bottom-right
+- Add `mt-auto` to push the reference down, and `w-full` so `text-right` works across the full width
 
-- All other dashboard functionality (Sermon Slide Creator card, Training Creator tab, presentations list, study guides list)
-- All other routes and pages
-- No other components, libraries, or styles
+### 2. Edit mode (lines 996-1006)
+- Same layout adjustment: the scripture textarea stays centered, the reference input gets `text-right` alignment instead of `text-center`
+- Keep the input full-width but align text to the right
 
-## Technical Details
+### 3. Export files (no changes needed)
+- PowerPoint and ProPresenter exports already have their own positioning logic and are separate from the on-screen rendering
 
-### `src/pages/Dashboard.tsx`
-- Remove lines 138-143 (the `<Link to="/dashboard/outline-upload">` block containing the "Create through Sermon Outline" button)
-- No other changes to this file
+## Visual Result
 
-### `src/App.tsx`
-- Remove the `import OutlineUpload` line (line 19)
-- Remove the `<Route path="/dashboard/outline-upload" ...>` line (line 42)
+Before:
+```
+    "Let not many of you be teachers..."
+         — James 3:1 (ESV)
+```
 
-### Deleted Files
-- `src/pages/OutlineUpload.tsx`
-- `src/lib/outline-parser.ts`
+After:
+```
+    "Let not many of you be teachers..."
+                        — James 3:1 (ESV)
+```
 
+The reference will be right-aligned at the bottom of the slide content area.
