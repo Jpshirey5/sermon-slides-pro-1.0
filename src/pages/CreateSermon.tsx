@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
-import { motion } from "framer-motion";
+import { motion, Reorder } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -491,11 +491,11 @@ const CreateSermon = () => {
                 Sermon Points
               </h2>
 
+              <Reorder.Group axis="y" values={points} onReorder={setPoints} className="space-y-4">
               {points.map((point, pointIndex) => (
-                <motion.div
+                <Reorder.Item
                   key={point.id}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
+                  value={point}
                   className="p-6 rounded-2xl bg-card border border-border"
                 >
                 {/* Point Header */}
@@ -619,8 +619,8 @@ const CreateSermon = () => {
                     ) : (
                       /* Verse-only layout */
                       <>
-                        <div className="flex items-center gap-2 text-muted-foreground">
-                          <Book className="w-5 h-5" />
+                        <div className="flex items-center gap-2 text-muted-foreground cursor-grab">
+                          <GripVertical className="w-5 h-5" />
                           <span className="font-semibold text-foreground">Verse</span>
                         </div>
 
@@ -703,8 +703,9 @@ const CreateSermon = () => {
                       </>
                     )}
                   </div>
-                </motion.div>
+                </Reorder.Item>
               ))}
+              </Reorder.Group>
 
               {/* Add Point Button at Bottom */}
               <div className="flex justify-center gap-4 pt-2">
