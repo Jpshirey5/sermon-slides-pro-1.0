@@ -375,7 +375,7 @@ const CreateSermon = () => {
             <Button
               variant="hero"
               onClick={handleSubmit}
-              disabled={!title || points.every((p) => !p.title)}
+              disabled={!title || points.every((p) => p.type === 'point' ? !p.title : !p.scriptures.some(s => s.reference.trim()))}
             >
               <Wand2 className="w-4 h-4" />
               <span className="hidden sm:inline">Generate Slides</span>
@@ -483,130 +483,232 @@ const CreateSermon = () => {
                   animate={{ opacity: 1, y: 0 }}
                   className="p-6 rounded-2xl bg-card border border-border"
                 >
-                  {/* Point Header */}
+                {/* Point Header */}
                   <div className="flex items-start gap-4">
-                    <div className="flex items-center gap-2 text-muted-foreground cursor-grab">
-                      <GripVertical className="w-5 h-5" />
-                      <span className="font-semibold text-foreground">
-                        {pointIndex + 1}.
-                      </span>
-                    </div>
+                    {point.type === 'point' ? (
+                      <>
+                        <div className="flex items-center gap-2 text-muted-foreground cursor-grab">
+                          <GripVertical className="w-5 h-5" />
+                          <span className="font-semibold text-foreground">
+                            {points.filter((p, i) => i <= pointIndex && p.type === 'point').length}.
+                          </span>
+                        </div>
 
-                    <div className="flex-1 space-y-4">
-                      <div className="flex items-center gap-4">
-                        <Input
-                          type="text"
-                          placeholder="Enter sermon point title..."
-                          value={point.title}
-                          onChange={(e) => updatePoint(point.id, e.target.value)}
-                          className="h-12 flex-1"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => toggleExpanded(point.id)}
-                          className="p-2 text-muted-foreground hover:text-foreground"
-                        >
-                          {expandedPoints.includes(point.id) ? (
-                            <ChevronUp className="w-5 h-5" />
-                          ) : (
-                            <ChevronDown className="w-5 h-5" />
-                          )}
-                        </button>
-                        {points.length > 1 && (
-                          <button
-                            type="button"
-                            onClick={() => removePoint(point.id)}
-                            className="p-2 text-muted-foreground hover:text-destructive"
-                          >
-                            <Trash2 className="w-5 h-5" />
-                          </button>
-                        )}
-                      </div>
-
-                      {/* Scriptures */}
-                      {expandedPoints.includes(point.id) && (
-                        <div className="pl-4 border-l-2 border-border space-y-4">
-                          <p className="text-sm text-muted-foreground">
-                            Supporting Scriptures (optional) — verses auto-populate using {globalTranslation}
-                          </p>
-
-                          {point.scriptures.map((scripture, scriptureIndex) => (
-                            <div
-                              key={scriptureIndex}
-                              className="space-y-2"
+                        <div className="flex-1 space-y-4">
+                          <div className="flex items-center gap-4">
+                            <Input
+                              type="text"
+                              placeholder="Enter sermon point title..."
+                              value={point.title}
+                              onChange={(e) => updatePoint(point.id, e.target.value)}
+                              className="h-12 flex-1"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => toggleExpanded(point.id)}
+                              className="p-2 text-muted-foreground hover:text-foreground"
                             >
-                              <div className="flex items-center gap-3">
-                                <div className="relative flex-1">
-                                  <Input
-                                    type="text"
-                                    placeholder="e.g., John 3:16"
-                                    value={scripture.reference}
-                                    onChange={(e) =>
-                                      updateScripture(
-                                        point.id,
-                                        scriptureIndex,
-                                        e.target.value
-                                      )
-                                    }
-                                    className="pr-10"
-                                  />
-                                  {scripture.isLoading && (
-                                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                                      <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                              {expandedPoints.includes(point.id) ? (
+                                <ChevronUp className="w-5 h-5" />
+                              ) : (
+                                <ChevronDown className="w-5 h-5" />
+                              )}
+                            </button>
+                            {points.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => removePoint(point.id)}
+                                className="p-2 text-muted-foreground hover:text-destructive"
+                              >
+                                <Trash2 className="w-5 h-5" />
+                              </button>
+                            )}
+                          </div>
+
+                          {/* Scriptures */}
+                          {expandedPoints.includes(point.id) && (
+                            <div className="pl-4 border-l-2 border-border space-y-4">
+                              <p className="text-sm text-muted-foreground">
+                                Supporting Scriptures (optional) — verses auto-populate using {globalTranslation}
+                              </p>
+
+                              {point.scriptures.map((scripture, scriptureIndex) => (
+                                <div
+                                  key={scriptureIndex}
+                                  className="space-y-2"
+                                >
+                                  <div className="flex items-center gap-3">
+                                    <div className="relative flex-1">
+                                      <Input
+                                        type="text"
+                                        placeholder="e.g., John 3:16"
+                                        value={scripture.reference}
+                                        onChange={(e) =>
+                                          updateScripture(
+                                            point.id,
+                                            scriptureIndex,
+                                            e.target.value
+                                          )
+                                        }
+                                        className="pr-10"
+                                      />
+                                      {scripture.isLoading && (
+                                        <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                                          <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                                        </div>
+                                      )}
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        removeScripture(point.id, scriptureIndex)
+                                      }
+                                      className="p-2 text-muted-foreground hover:text-destructive"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  </div>
+                                  {scripture.error && scripture.errorMessage && (
+                                    <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/30">
+                                      <p className="text-sm text-destructive">
+                                        {scripture.errorMessage}
+                                      </p>
+                                    </div>
+                                  )}
+                                  {scripture.text && !scripture.error && (
+                                    <div className="p-3 rounded-lg bg-muted/50 border border-border">
+                                      <p className="text-sm text-muted-foreground italic">
+                                        "{scripture.text}"
+                                      </p>
+                                      <p className="text-xs text-muted-foreground mt-1">
+                                        — {scripture.reference} ({globalTranslation})
+                                      </p>
                                     </div>
                                   )}
                                 </div>
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    removeScripture(point.id, scriptureIndex)
-                                  }
-                                  className="p-2 text-muted-foreground hover:text-destructive"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
-                              </div>
-                              {scripture.error && scripture.errorMessage && (
-                                <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/30">
-                                  <p className="text-sm text-destructive">
-                                    {scripture.errorMessage}
-                                  </p>
-                                </div>
-                              )}
-                              {scripture.text && !scripture.error && (
-                                <div className="p-3 rounded-lg bg-muted/50 border border-border">
-                                  <p className="text-sm text-muted-foreground italic">
-                                    "{scripture.text}"
-                                  </p>
-                                  <p className="text-xs text-muted-foreground mt-1">
-                                    — {scripture.reference} ({globalTranslation})
-                                  </p>
-                                </div>
-                              )}
-                            </div>
-                          ))}
+                              ))}
 
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => addScripture(point.id)}
-                          >
-                            <Plus className="w-4 h-4" />
-                            Add Scripture
-                          </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => addScripture(point.id)}
+                              >
+                                <Plus className="w-4 h-4" />
+                                Add Scripture
+                              </Button>
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
+                      </>
+                    ) : (
+                      /* Verse-only layout */
+                      <>
+                        <div className="flex items-center gap-2 text-muted-foreground">
+                          <Book className="w-5 h-5" />
+                          <span className="font-semibold text-foreground">Verse</span>
+                        </div>
+
+                        <div className="flex-1 space-y-4">
+                          <div className="flex items-center justify-end">
+                            {points.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => removePoint(point.id)}
+                                className="p-2 text-muted-foreground hover:text-destructive"
+                              >
+                                <Trash2 className="w-5 h-5" />
+                              </button>
+                            )}
+                          </div>
+
+                          <div className="pl-4 border-l-2 border-border space-y-4">
+                            <p className="text-sm text-muted-foreground">
+                              Scripture — verses auto-populate using {globalTranslation}
+                            </p>
+
+                            {point.scriptures.map((scripture, scriptureIndex) => (
+                              <div
+                                key={scriptureIndex}
+                                className="space-y-2"
+                              >
+                                <div className="flex items-center gap-3">
+                                  <div className="relative flex-1">
+                                    <Input
+                                      type="text"
+                                      placeholder="e.g., John 3:16"
+                                      value={scripture.reference}
+                                      onChange={(e) =>
+                                        updateScripture(
+                                          point.id,
+                                          scriptureIndex,
+                                          e.target.value
+                                        )
+                                      }
+                                      className="pr-10"
+                                    />
+                                    {scripture.isLoading && (
+                                      <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                                        <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                                      </div>
+                                    )}
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      removeScripture(point.id, scriptureIndex)
+                                    }
+                                    className="p-2 text-muted-foreground hover:text-destructive"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </div>
+                                {scripture.error && scripture.errorMessage && (
+                                  <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/30">
+                                    <p className="text-sm text-destructive">
+                                      {scripture.errorMessage}
+                                    </p>
+                                  </div>
+                                )}
+                                {scripture.text && !scripture.error && (
+                                  <div className="p-3 rounded-lg bg-muted/50 border border-border">
+                                    <p className="text-sm text-muted-foreground italic">
+                                      "{scripture.text}"
+                                    </p>
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                      — {scripture.reference} ({globalTranslation})
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => addScripture(point.id)}
+                            >
+                              <Plus className="w-4 h-4" />
+                              Add Scripture
+                            </Button>
+                          </div>
+                        </div>
+                      </>
+                    )}
                   </div>
                 </motion.div>
               ))}
 
               {/* Add Point Button at Bottom */}
-              <div className="flex justify-center pt-2">
-                <Button type="button" variant="outline" onClick={addPoint} className="w-full max-w-md">
+              <div className="flex justify-center gap-4 pt-2">
+                <Button type="button" variant="outline" onClick={addPoint} className="flex-1 max-w-xs">
                   <Plus className="w-4 h-4" />
-                  Add Another Sermon Point
+                  Add Sermon Point
+                </Button>
+                <Button type="button" variant="outline" onClick={addVerse} className="flex-1 max-w-xs">
+                  <Book className="w-4 h-4" />
+                  Add Verse
                 </Button>
               </div>
             </div>
@@ -622,7 +724,7 @@ const CreateSermon = () => {
                 type="submit"
                 variant="hero"
                 size="lg"
-                disabled={!title || points.every((p) => !p.title)}
+                disabled={!title || points.every((p) => p.type === 'point' ? !p.title : !p.scriptures.some(s => s.reference.trim()))}
               >
                 <Wand2 className="w-5 h-5" />
                 Generate Slides
