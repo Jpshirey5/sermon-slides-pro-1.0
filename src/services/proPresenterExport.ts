@@ -206,80 +206,25 @@ function buildSlideMessage(slide: SlideData, _index: number, mediaFilename?: str
 
   const elements: any[] = [];
 
-  if (slide.type === 'scripture') {
-    // Split scripture into two text elements: centered verse + right-aligned reference
-    const verseText = slide.content.scripture || '';
-    const referenceText = slide.content.reference || '';
-
-    const verseElement = {
-      element: {
-        uuid: makeUUID(),
-        name: 'TextElement',
-        bounds: {
-          origin: { x: 50, y: 50 },
-          size: { width: 1820, height: 800 },
-        },
-        opacity: 1.0,
-        path: makeRectPath(1820, 800),
-        text: {
-          attributes: makeTextAttributes('Arial', 48),
-          rtf_data: encodeRTFBytes(verseText, slide.textColor),
-          vertical_alignment: 1, // MIDDLE
-        },
+  const text = getSlideText(slide);
+  const textElement = {
+    element: {
+      uuid: makeUUID(),
+      name: 'TextElement',
+      bounds: {
+        origin: { x: 50, y: 50 },
+        size: { width: 1820, height: 980 },
       },
-    };
-
-    const referenceElement = {
-      element: {
-        uuid: makeUUID(),
-        name: 'ReferenceElement',
-        bounds: {
-          origin: { x: 50, y: 850 },
-          size: { width: 1820, height: 180 },
-        },
-        opacity: 1.0,
-        path: makeRectPath(1820, 180),
-        text: {
-          attributes: [{
-            font: {
-              name: 'Arial',
-              size: 36,
-              bold: false,
-              family: 'Arial',
-            },
-            paragraph_style: {
-              alignment: 1, // RIGHT
-            },
-          }],
-          rtf_data: encodeRTFBytes(referenceText, slide.textColor, 36),
-          vertical_alignment: 0, // TOP
-        },
+      opacity: 1.0,
+      path: makeRectPath(1820, 980),
+      text: {
+        attributes: makeTextAttributes('Arial', 48),
+        rtf_data: encodeRTFBytes(text, slide.textColor),
+        vertical_alignment: 1, // MIDDLE
       },
-    };
-
-    elements.push(verseElement, referenceElement);
-  } else {
-    // Non-scripture slides: single centered text element
-    const text = getSlideText(slide);
-    const textElement = {
-      element: {
-        uuid: makeUUID(),
-        name: 'TextElement',
-        bounds: {
-          origin: { x: 50, y: 50 },
-          size: { width: 1820, height: 980 },
-        },
-        opacity: 1.0,
-        path: makeRectPath(1820, 980),
-        text: {
-          attributes: makeTextAttributes('Arial', 48),
-          rtf_data: encodeRTFBytes(text, slide.textColor),
-          vertical_alignment: 1, // MIDDLE
-        },
-      },
-    };
-    elements.push(textElement);
-  }
+    },
+  };
+  elements.push(textElement);
 
   // Background image element (if present)
   if (mediaFilename) {
