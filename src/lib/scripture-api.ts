@@ -1,5 +1,5 @@
-// Scripture API using Bible.API.Bible (https://scripture.api.bible)
-// Free tier with API key
+// Scripture API - uses bible-api.com (primary) and bolls.life (fallback)
+// Ensures translation accuracy by passing user-selected translation to APIs
 
 export interface ScriptureResult {
   text: string;
@@ -8,19 +8,22 @@ export interface ScriptureResult {
   error?: boolean;
   errorMessage?: string;
   verses?: { text: string; verse: number }[];
+  /** When true, the returned text is from a substitute translation */
+  substituted?: boolean;
+  /** The translation actually used when substituted */
+  actualTranslation?: string;
 }
 
-// Parse scripture reference (e.g., "John 3:16" or "Genesis 1:1-5")
+// ── Reference parsing ──────────────────────────────────────────────
+
 export function parseScriptureReference(reference: string): {
   book: string;
   chapter: number;
   verseStart: number;
   verseEnd?: number;
 } | null {
-  // Match patterns like "John 3:16", "1 John 1:9", "Genesis 1:1-5"
   const match = reference.match(/^(\d?\s*[A-Za-z]+)\s+(\d+):(\d+)(?:-(\d+))?$/i);
   if (!match) return null;
-  
   return {
     book: match[1].trim(),
     chapter: parseInt(match[2]),
@@ -29,7 +32,8 @@ export function parseScriptureReference(reference: string): {
   };
 }
 
-// Bible book name mappings for API compatibility
+// ── Book code mappings ─────────────────────────────────────────────
+
 const bookMappings: Record<string, string> = {
   'genesis': 'GEN', 'gen': 'GEN',
   'exodus': 'EXO', 'exo': 'EXO', 'ex': 'EXO',
@@ -99,181 +103,97 @@ const bookMappings: Record<string, string> = {
   'revelation': 'REV', 'rev': 'REV', 'revelations': 'REV',
 };
 
-// Complete translation to Bible ID mappings for API.Bible
-// Free translations available without API key restrictions
-const translationBibleIds: Record<string, string> = {
-  // Free English translations
-  'KJV': 'de4e12af7f28f599-02',
-  'ASV': '06125adad2d5898a-01',
-  'WEB': '9879dbb7cfe39e4d-04',
-  'BBE': '65eec8e0b60e656b-01',
-  'DARBY': '478f6a31d80ce67f-01',
-  'YLT': 'f72b840c855f362c-04',
-  // Map common translations to free alternatives
-  'NIV': '9879dbb7cfe39e4d-04', // WEB as fallback
-  'ESV': '9879dbb7cfe39e4d-04', // WEB as fallback
-  'NKJV': 'de4e12af7f28f599-02', // KJV as fallback
-  'NASB': '06125adad2d5898a-01', // ASV as fallback
-  'NLT': '9879dbb7cfe39e4d-04', // WEB as fallback
-  'CSB': '9879dbb7cfe39e4d-04', // WEB as fallback
-  'MSG': '9879dbb7cfe39e4d-04', // WEB as fallback
-  'AMP': '9879dbb7cfe39e4d-04', // WEB as fallback
-  // Spanish
-  'RVR1960': 'b32b9d1b64b4ef29-01', // Reina Valera
-  'NVI': 'b32b9d1b64b4ef29-01', // Fallback to RV
-  // French
-  'LSG': '5e51f89e89947acb-01', // Louis Segond
-  // German
-  'LUT': 'f492a38d0e52db0f-01', // Luther
-  // Portuguese
-  'ALMEIDA': 'bba9f40f0b60dc83-01', // Almeida
-};
-
 function getBookCode(book: string): string | null {
   const normalized = book.toLowerCase().trim();
   return bookMappings[normalized] || null;
 }
 
-// Clean HTML tags from API response
-function cleanText(html: string): string {
-  return html
-    .replace(/<[^>]*>/g, '') // Remove HTML tags
-    .replace(/\s+/g, ' ') // Normalize whitespace
-    .replace(/^\s+|\s+$/g, '') // Trim
-    .replace(/\[\d+\]/g, '') // Remove verse numbers in brackets
-    .replace(/¶/g, ''); // Remove paragraph markers
-}
+// ── Translation availability maps ──────────────────────────────────
 
-// Comprehensive fallback scriptures for common verses
-const fallbackScriptures: Record<string, Record<string, string>> = {
-  'JHN.3.16': {
-    'KJV': 'For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life.',
-    'WEB': 'For God so loved the world, that he gave his one and only Son, that whoever believes in him should not perish, but have eternal life.',
-    'default': 'For God so loved the world that he gave his one and only Son, that whoever believes in him shall not perish but have eternal life.',
-  },
-  'JHN.3.16-17': {
-    'KJV': 'For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life. For God sent not his Son into the world to condemn the world; but that the world through him might be saved.',
-    'default': 'For God so loved the world that he gave his one and only Son, that whoever believes in him shall not perish but have eternal life. For God did not send his Son into the world to condemn the world, but to save the world through him.',
-  },
-  'MAT.17.20': {
-    'KJV': 'And Jesus said unto them, Because of your unbelief: for verily I say unto you, If ye have faith as a grain of mustard seed, ye shall say unto this mountain, Remove hence to yonder place; and it shall remove; and nothing shall be impossible unto you.',
-    'default': 'For truly I tell you, if you have faith the size of a mustard seed, you will say to this mountain, \'Move from here to there,\' and it will move. Nothing will be impossible for you.',
-  },
-  'ROM.8.28': {
-    'KJV': 'And we know that all things work together for good to them that love God, to them who are the called according to his purpose.',
-    'default': 'And we know that in all things God works for the good of those who love him, who have been called according to his purpose.',
-  },
-  'PHP.4.13': {
-    'KJV': 'I can do all things through Christ which strengtheneth me.',
-    'default': 'I can do all things through Christ who strengthens me.',
-  },
-  'JER.29.11': {
-    'KJV': 'For I know the thoughts that I think toward you, saith the LORD, thoughts of peace, and not of evil, to give you an expected end.',
-    'default': 'For I know the plans I have for you," declares the LORD, "plans to prosper you and not to harm you, plans to give you hope and a future.',
-  },
-  'PRO.3.5': {
-    'KJV': 'Trust in the LORD with all thine heart; and lean not unto thine own understanding.',
-    'default': 'Trust in the LORD with all your heart and lean not on your own understanding.',
-  },
-  'PRO.3.5-6': {
-    'KJV': 'Trust in the LORD with all thine heart; and lean not unto thine own understanding. In all thy ways acknowledge him, and he shall direct thy paths.',
-    'default': 'Trust in the LORD with all your heart and lean not on your own understanding; in all your ways submit to him, and he will make your paths straight.',
-  },
-  'ISA.40.31': {
-    'KJV': 'But they that wait upon the LORD shall renew their strength; they shall mount up with wings as eagles; they shall run, and not be weary; and they shall walk, and not faint.',
-    'default': 'But those who hope in the LORD will renew their strength. They will soar on wings like eagles; they will run and not grow weary, they will walk and not be faint.',
-  },
-  '1JN.4.18': {
-    'KJV': 'There is no fear in love; but perfect love casteth out fear: because fear hath torment. He that feareth is not made perfect in love.',
-    'default': 'There is no fear in love. But perfect love drives out fear, because fear has to do with punishment. The one who fears is not made perfect in love.',
-  },
-  'PSA.23.1': {
-    'KJV': 'The LORD is my shepherd; I shall not want.',
-    'default': 'The LORD is my shepherd, I lack nothing.',
-  },
-  'PSA.23.1-6': {
-    'KJV': 'The LORD is my shepherd; I shall not want. He maketh me to lie down in green pastures: he leadeth me beside the still waters. He restoreth my soul: he leadeth me in the paths of righteousness for his name\'s sake. Yea, though I walk through the valley of the shadow of death, I will fear no evil: for thou art with me; thy rod and thy staff they comfort me. Thou preparest a table before me in the presence of mine enemies: thou anointest my head with oil; my cup runneth over. Surely goodness and mercy shall follow me all the days of my life: and I will dwell in the house of the LORD for ever.',
-    'default': 'The LORD is my shepherd, I lack nothing. He makes me lie down in green pastures, he leads me beside quiet waters, he refreshes my soul. He guides me along the right paths for his name\'s sake. Even though I walk through the darkest valley, I will fear no evil, for you are with me; your rod and your staff, they comfort me. You prepare a table before me in the presence of my enemies. You anoint my head with oil; my cup overflows. Surely your goodness and love will follow me all the days of my life, and I will dwell in the house of the LORD forever.',
-  },
-  'GAL.5.22': {
-    'KJV': 'But the fruit of the Spirit is love, joy, peace, longsuffering, gentleness, goodness, faith,',
-    'default': 'But the fruit of the Spirit is love, joy, peace, forbearance, kindness, goodness, faithfulness,',
-  },
-  'GAL.5.22-23': {
-    'KJV': 'But the fruit of the Spirit is love, joy, peace, longsuffering, gentleness, goodness, faith, Meekness, temperance: against such there is no law.',
-    'default': 'But the fruit of the Spirit is love, joy, peace, forbearance, kindness, goodness, faithfulness, gentleness and self-control. Against such things there is no law.',
-  },
-  'HEB.11.1': {
-    'KJV': 'Now faith is the substance of things hoped for, the evidence of things not seen.',
-    'default': 'Now faith is confidence in what we hope for and assurance about what we do not see.',
-  },
-  'JAS.1.2-4': {
-    'KJV': 'My brethren, count it all joy when ye fall into divers temptations; Knowing this, that the trying of your faith worketh patience. But let patience have her perfect work, that ye may be perfect and entire, wanting nothing.',
-    'default': 'Consider it pure joy, my brothers and sisters, whenever you face trials of many kinds, because you know that the testing of your faith produces perseverance. Let perseverance finish its work so that you may be mature and complete, not lacking anything.',
-  },
-  '2TI.1.7': {
-    'KJV': 'For God hath not given us the spirit of fear; but of power, and of love, and of a sound mind.',
-    'default': 'For the Spirit God gave us does not make us timid, but gives us power, love and self-discipline.',
-  },
-  'JOS.1.9': {
-    'KJV': 'Have not I commanded thee? Be strong and of a good courage; be not afraid, neither be thou dismayed: for the LORD thy God is with thee whithersoever thou goest.',
-    'default': 'Have I not commanded you? Be strong and courageous. Do not be afraid; do not be discouraged, for the LORD your God will be with you wherever you go.',
-  },
-  'EPH.2.8-9': {
-    'KJV': 'For by grace are ye saved through faith; and that not of yourselves: it is the gift of God: Not of works, lest any man should boast.',
-    'default': 'For it is by grace you have been saved, through faith—and this is not from yourselves, it is the gift of God—not by works, so that no one can boast.',
-  },
-  'ROM.12.2': {
-    'KJV': 'And be not conformed to this world: but be ye transformed by the renewing of your mind, that ye may prove what is that good, and acceptable, and perfect, will of God.',
-    'default': 'Do not conform to the pattern of this world, but be transformed by the renewing of your mind. Then you will be able to test and approve what God\'s will is—his good, pleasing and perfect will.',
-  },
-  'MAT.28.19-20': {
-    'KJV': 'Go ye therefore, and teach all nations, baptizing them in the name of the Father, and of the Son, and of the Holy Ghost: Teaching them to observe all things whatsoever I have commanded you: and, lo, I am with you always, even unto the end of the world. Amen.',
-    'default': 'Therefore go and make disciples of all nations, baptizing them in the name of the Father and of the Son and of the Holy Spirit, and teaching them to obey everything I have commanded you. And surely I am with you always, to the very end of the age.',
-  },
-  'JHN.14.6': {
-    'KJV': 'Jesus saith unto him, I am the way, the truth, and the life: no man cometh unto the Father, but by me.',
-    'default': 'Jesus answered, "I am the way and the truth and the life. No one comes to the Father except through me."',
-  },
-  'ROM.10.9': {
-    'KJV': 'That if thou shalt confess with thy mouth the Lord Jesus, and shalt believe in thine heart that God hath raised him from the dead, thou shalt be saved.',
-    'default': 'If you declare with your mouth, "Jesus is Lord," and believe in your heart that God raised him from the dead, you will be saved.',
-  },
+/** Translations available on bible-api.com (lowercase codes) */
+const bibleApiTranslations: Record<string, string> = {
+  'KJV': 'kjv',
+  'WEB': 'web',
+  'ASV': 'asv',
+  'BBE': 'bbe',
+  'DARBY': 'darby',
+  'YLT': 'ylt',
 };
 
-function getFallbackVerse(bookCode: string, chapter: number, verseStart: number, verseEnd: number | undefined, translation: string): string | null {
-  const key = verseEnd 
+/** Translations available on bolls.life */
+const bollsLifeTranslations: Record<string, string> = {
+  'KJV': 'KJV',
+  'ASV': 'ASV',
+  'WEB': 'WEB',
+  'YLT': 'YLT',
+  'BBE': 'BBE',
+  'DARBY': 'DARBY',
+};
+
+/** Licensed translations not freely available from any API */
+const licensedTranslations = new Set([
+  'ESV', 'NIV', 'NKJV', 'NLT', 'NASB', 'CSB', 'MSG', 'AMP',
+]);
+
+function isTranslationAvailable(translation: string): boolean {
+  return !licensedTranslations.has(translation);
+}
+
+// ── Text cleaning ──────────────────────────────────────────────────
+
+function cleanText(html: string): string {
+  return html
+    .replace(/<[^>]*>/g, '')
+    .replace(/\s+/g, ' ')
+    .replace(/^\s+|\s+$/g, '')
+    .replace(/\[\d+\]/g, '')
+    .replace(/¶/g, '');
+}
+
+// ── Fallback scriptures (KJV only – labeled honestly) ──────────────
+
+const fallbackScriptures: Record<string, string> = {
+  'JHN.3.16': 'For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life.',
+  'JHN.3.16-17': 'For God so loved the world, that he gave his only begotten Son, that whosoever believeth in him should not perish, but have everlasting life. For God sent not his Son into the world to condemn the world; but that the world through him might be saved.',
+  'MAT.17.20': 'And Jesus said unto them, Because of your unbelief: for verily I say unto you, If ye have faith as a grain of mustard seed, ye shall say unto this mountain, Remove hence to yonder place; and it shall remove; and nothing shall be impossible unto you.',
+  'ROM.8.28': 'And we know that all things work together for good to them that love God, to them who are the called according to his purpose.',
+  'PHP.4.13': 'I can do all things through Christ which strengtheneth me.',
+  'JER.29.11': 'For I know the thoughts that I think toward you, saith the LORD, thoughts of peace, and not of evil, to give you an expected end.',
+  'PRO.3.5': 'Trust in the LORD with all thine heart; and lean not unto thine own understanding.',
+  'PRO.3.5-6': 'Trust in the LORD with all thine heart; and lean not unto thine own understanding. In all thy ways acknowledge him, and he shall direct thy paths.',
+  'ISA.40.31': 'But they that wait upon the LORD shall renew their strength; they shall mount up with wings as eagles; they shall run, and not be weary; and they shall walk, and not faint.',
+  '1JN.4.18': 'There is no fear in love; but perfect love casteth out fear: because fear hath torment. He that feareth is not made perfect in love.',
+  'PSA.23.1': 'The LORD is my shepherd; I shall not want.',
+  'PSA.23.1-6': 'The LORD is my shepherd; I shall not want. He maketh me to lie down in green pastures: he leadeth me beside the still waters. He restoreth my soul: he leadeth me in the paths of righteousness for his name\'s sake. Yea, though I walk through the valley of the shadow of death, I will fear no evil: for thou art with me; thy rod and thy staff they comfort me. Thou preparest a table before me in the presence of mine enemies: thou anointest my head with oil; my cup runneth over. Surely goodness and mercy shall follow me all the days of my life: and I will dwell in the house of the LORD for ever.',
+  'GAL.5.22': 'But the fruit of the Spirit is love, joy, peace, longsuffering, gentleness, goodness, faith,',
+  'GAL.5.22-23': 'But the fruit of the Spirit is love, joy, peace, longsuffering, gentleness, goodness, faith, Meekness, temperance: against such there is no law.',
+  'HEB.11.1': 'Now faith is the substance of things hoped for, the evidence of things not seen.',
+  'JAS.1.2-4': 'My brethren, count it all joy when ye fall into divers temptations; Knowing this, that the trying of your faith worketh patience. But let patience have her perfect work, that ye may be perfect and entire, wanting nothing.',
+  '2TI.1.7': 'For God hath not given us the spirit of fear; but of power, and of love, and of a sound mind.',
+  'JOS.1.9': 'Have not I commanded thee? Be strong and of a good courage; be not afraid, neither be thou dismayed: for the LORD thy God is with thee whithersoever thou goest.',
+  'EPH.2.8-9': 'For by grace are ye saved through faith; and that not of yourselves: it is the gift of God: Not of works, lest any man should boast.',
+  'ROM.12.2': 'And be not conformed to this world: but be ye transformed by the renewing of your mind, that ye may prove what is that good, and acceptable, and perfect, will of God.',
+  'MAT.28.19-20': 'Go ye therefore, and teach all nations, baptizing them in the name of the Father, and of the Son, and of the Holy Ghost: Teaching them to observe all things whatsoever I have commanded you: and, lo, I am with you always, even unto the end of the world. Amen.',
+  'JHN.14.6': 'Jesus saith unto him, I am the way, the truth, and the life: no man cometh unto the Father, but by me.',
+  'ROM.10.9': 'That if thou shalt confess with thy mouth the Lord Jesus, and shalt believe in thine heart that God hath raised him from the dead, thou shalt be saved.',
+};
+
+function getFallbackVerse(bookCode: string, chapter: number, verseStart: number, verseEnd: number | undefined): string | null {
+  const key = verseEnd
     ? `${bookCode}.${chapter}.${verseStart}-${verseEnd}`
     : `${bookCode}.${chapter}.${verseStart}`;
-  
-  // Try exact match first
-  let verses = fallbackScriptures[key];
-  if (verses) {
-    return verses[translation] || verses['WEB'] || verses['default'] || null;
-  }
-  
-  // If looking for a single verse, try without range
-  if (!verseEnd) {
-    const singleKey = `${bookCode}.${chapter}.${verseStart}`;
-    verses = fallbackScriptures[singleKey];
-    if (verses) {
-      return verses[translation] || verses['WEB'] || verses['default'] || null;
-    }
-  }
-  
-  return null;
+  return fallbackScriptures[key] || null;
 }
+
+// ── Main lookup function ───────────────────────────────────────────
 
 export async function lookupScripture(
   reference: string,
   translation: string = 'KJV'
 ): Promise<ScriptureResult | null> {
-  // Validate reference format early
   if (!reference || reference.trim().length < 3) {
     return {
-      text: '',
-      reference: reference,
-      translation,
+      text: '', reference, translation,
       error: true,
       errorMessage: 'Please enter a valid scripture reference (e.g., John 3:16)',
     };
@@ -282,9 +202,7 @@ export async function lookupScripture(
   const parsed = parseScriptureReference(reference);
   if (!parsed) {
     return {
-      text: '',
-      reference: reference,
-      translation,
+      text: '', reference, translation,
       error: true,
       errorMessage: `Invalid format: "${reference}". Use format like "John 3:16" or "Genesis 1:1-5"`,
     };
@@ -293,104 +211,117 @@ export async function lookupScripture(
   const bookCode = getBookCode(parsed.book);
   if (!bookCode) {
     return {
-      text: '',
-      reference: reference,
-      translation,
+      text: '', reference, translation,
       error: true,
       errorMessage: `Unknown book: "${parsed.book}". Please check the spelling.`,
     };
   }
 
-  // Format the reference nicely
-  const formattedRef = parsed.verseEnd 
+  const formattedRef = parsed.verseEnd
     ? `${parsed.book} ${parsed.chapter}:${parsed.verseStart}-${parsed.verseEnd}`
     : `${parsed.book} ${parsed.chapter}:${parsed.verseStart}`;
 
-  // First try fallback for common verses (faster, no API needed)
-  const fallbackText = getFallbackVerse(bookCode, parsed.chapter, parsed.verseStart, parsed.verseEnd, translation);
-  if (fallbackText) {
-    return {
-      text: fallbackText,
-      reference: formattedRef,
-      translation,
-    };
-  }
+  // Determine if the requested translation is available
+  const translationUnavailable = licensedTranslations.has(translation);
+  // The actual translation we'll try to fetch
+  const effectiveTranslation = translationUnavailable ? 'KJV' : translation;
 
-  // Try API.Bible for free translations
-  const bibleId = translationBibleIds[translation] || translationBibleIds['WEB'];
-  
-  try {
-    const verseId = parsed.verseEnd 
-      ? `${bookCode}.${parsed.chapter}.${parsed.verseStart}-${bookCode}.${parsed.chapter}.${parsed.verseEnd}`
-      : `${bookCode}.${parsed.chapter}.${parsed.verseStart}`;
-    
-    // Use the API.Bible endpoint
-    const response = await fetch(
-      `https://bible-api.com/${encodeURIComponent(reference)}`,
-      {
-        method: 'GET',
-        headers: {
-          'Accept': 'application/json',
-        },
+  // ── KJV-only hardcoded fallback (only used for KJV) ──
+  if (effectiveTranslation === 'KJV') {
+    const fallbackText = getFallbackVerse(bookCode, parsed.chapter, parsed.verseStart, parsed.verseEnd);
+    if (fallbackText) {
+      const result: ScriptureResult = {
+        text: fallbackText,
+        reference: formattedRef,
+        translation: 'KJV',
+      };
+      if (translationUnavailable) {
+        result.substituted = true;
+        result.actualTranslation = 'KJV';
+        result.translation = 'KJV';
+        result.errorMessage = `The ${translation} translation is not available for auto-lookup. Text shown is from KJV. You can manually edit the verse text in the slide editor.`;
       }
-    );
-
-    if (response.ok) {
-      const data = await response.json();
-      if (data.text) {
-        const verses = data.verses?.map((v: { text: string; verse: number }) => ({
-          text: cleanText(v.text),
-          verse: v.verse,
-        }));
-        return {
-          text: cleanText(data.text),
-          reference: data.reference || formattedRef,
-          translation: data.translation_name || translation,
-          verses,
-        };
-      }
+      return result;
     }
-  } catch (error) {
-    console.log('Primary API failed, trying fallback...');
   }
 
-  // Try bolls.life API as secondary fallback
-  try {
-    const verseQuery = parsed.verseEnd 
-      ? `${parsed.verseStart}-${parsed.verseEnd}`
-      : `${parsed.verseStart}`;
-    
-    const response = await fetch(
-      `https://bolls.life/get-text/KJV/${bookCode}/${parsed.chapter}/${verseQuery}/`,
-      {
+  // ── Try bible-api.com with the correct translation ──
+  const bibleApiCode = bibleApiTranslations[effectiveTranslation];
+  if (bibleApiCode) {
+    try {
+      const url = `https://bible-api.com/${encodeURIComponent(reference)}?translation=${bibleApiCode}`;
+      const response = await fetch(url, {
         method: 'GET',
-        headers: {
-          'Accept': 'application/json',
-        },
-      }
-    );
+        headers: { 'Accept': 'application/json' },
+      });
 
-    if (response.ok) {
-      const data = await response.json();
-    if (Array.isArray(data) && data.length > 0) {
-        const verses = data.map((v: { text: string; verse: number }, i: number) => ({
-          text: cleanText(v.text),
-          verse: v.verse ?? (parsed.verseStart + i),
-        }));
-        const text = verses.map((v: { text: string }) => v.text).join(' ');
-        return {
-          text,
-          reference: formattedRef,
-          translation: 'KJV',
-          verses,
-        };
+      if (response.ok) {
+        const data = await response.json();
+        if (data.text) {
+          const verses = data.verses?.map((v: { text: string; verse: number }) => ({
+            text: cleanText(v.text),
+            verse: v.verse,
+          }));
+          const result: ScriptureResult = {
+            text: cleanText(data.text),
+            reference: data.reference || formattedRef,
+            translation: effectiveTranslation, // Always use our known code, not API label
+            verses,
+          };
+          if (translationUnavailable) {
+            result.substituted = true;
+            result.actualTranslation = effectiveTranslation;
+            result.errorMessage = `The ${translation} translation is not available for auto-lookup. Text shown is from ${effectiveTranslation}. You can manually edit the verse text in the slide editor.`;
+          }
+          return result;
+        }
       }
+    } catch (error) {
+      console.log('bible-api.com failed, trying fallback...');
     }
-  } catch (error) {
-    console.log('Secondary API failed...');
   }
 
-  // Return error for verse not found
+  // ── Try bolls.life with the correct translation ──
+  const bollsCode = bollsLifeTranslations[effectiveTranslation];
+  if (bollsCode) {
+    try {
+      const verseQuery = parsed.verseEnd
+        ? `${parsed.verseStart}-${parsed.verseEnd}`
+        : `${parsed.verseStart}`;
+
+      const response = await fetch(
+        `https://bolls.life/get-text/${bollsCode}/${bookCode}/${parsed.chapter}/${verseQuery}/`,
+        { method: 'GET', headers: { 'Accept': 'application/json' } },
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        if (Array.isArray(data) && data.length > 0) {
+          const verses = data.map((v: { text: string; verse: number }, i: number) => ({
+            text: cleanText(v.text),
+            verse: v.verse ?? (parsed.verseStart + i),
+          }));
+          const text = verses.map((v: { text: string }) => v.text).join(' ');
+          const result: ScriptureResult = {
+            text,
+            reference: formattedRef,
+            translation: effectiveTranslation,
+            verses,
+          };
+          if (translationUnavailable) {
+            result.substituted = true;
+            result.actualTranslation = effectiveTranslation;
+            result.errorMessage = `The ${translation} translation is not available for auto-lookup. Text shown is from ${effectiveTranslation}. You can manually edit the verse text in the slide editor.`;
+          }
+          return result;
+        }
+      }
+    } catch (error) {
+      console.log('bolls.life failed...');
+    }
+  }
+
+  // ── Nothing worked ──
   return {
     text: '',
     reference: formattedRef,
@@ -400,39 +331,36 @@ export async function lookupScripture(
   };
 }
 
-// Split multi-verse text into individual verses
-// Returns an array of { text, reference } for each verse
+// ── Verse splitting utility ────────────────────────────────────────
+
 export function splitVerseText(
   text: string,
   reference: string
 ): { text: string; reference: string }[] {
   const parsed = parseScriptureReference(reference);
   if (!parsed || !parsed.verseEnd) {
-    // Single verse or unparseable — return as-is
     return [{ text, reference }];
   }
 
   const { book, chapter, verseStart, verseEnd } = parsed;
   const totalVerses = verseEnd - verseStart + 1;
 
-  // Strategy 1: Split by numbered verse markers like "16 ...", "17 ..."
+  // Strategy 1: Split by numbered verse markers
   const numberPattern = new RegExp(
     `(?:^|\\s)(${Array.from({ length: totalVerses }, (_, i) => verseStart + i).join('|')})\\s`,
     'g'
   );
   const markers: { verse: number; pos: number }[] = [];
   let m: RegExpExecArray | null;
-  const searchText = ' ' + text; // pad so first verse can match
+  const searchText = ' ' + text;
   while ((m = numberPattern.exec(searchText)) !== null) {
     const verseNum = parseInt(m[1]);
     if (verseNum >= verseStart && verseNum <= verseEnd) {
-      markers.push({ verse: verseNum, pos: m.index + m[0].indexOf(m[1]) - 1 }); // adjust for padding
+      markers.push({ verse: verseNum, pos: m.index + m[0].indexOf(m[1]) - 1 });
     }
   }
 
-  // If we found markers for most verses, use them
   if (markers.length >= totalVerses * 0.6) {
-    // Deduplicate and sort
     const uniqueMarkers = markers
       .filter((m, i, arr) => i === 0 || m.verse !== arr[i - 1].verse)
       .sort((a, b) => a.pos - b.pos);
@@ -452,7 +380,7 @@ export function splitVerseText(
     if (results.length > 0) return results;
   }
 
-  // Strategy 2: Split by sentences and distribute evenly
+  // Strategy 2: Split by sentences
   const sentences = text.split(/(?<=[.!?])\s+/).filter(s => s.trim());
   if (sentences.length >= totalVerses) {
     const results: { text: string; reference: string }[] = [];
@@ -469,34 +397,19 @@ export function splitVerseText(
     if (results.length > 0) return results;
   }
 
-  // Fallback: return as single block
   return [{ text, reference }];
 }
 
-// Search for scripture by keywords (simplified version)
+// ── Search suggestions ─────────────────────────────────────────────
+
 export function searchScripture(query: string): string[] {
   const suggestions = [
-    'John 3:16',
-    'Romans 8:28',
-    'Philippians 4:13',
-    'Jeremiah 29:11',
-    'Proverbs 3:5-6',
-    'Isaiah 40:31',
-    'Psalm 23:1-6',
-    'Matthew 17:20',
-    '1 John 4:18',
-    'Galatians 5:22-23',
-    'Hebrews 11:1',
-    'James 1:2-4',
-    '2 Timothy 1:7',
-    'Joshua 1:9',
-    'Ephesians 2:8-9',
-    'Romans 12:2',
-    'Matthew 28:19-20',
-    'John 14:6',
-    'Romans 10:9',
+    'John 3:16', 'Romans 8:28', 'Philippians 4:13', 'Jeremiah 29:11',
+    'Proverbs 3:5-6', 'Isaiah 40:31', 'Psalm 23:1-6', 'Matthew 17:20',
+    '1 John 4:18', 'Galatians 5:22-23', 'Hebrews 11:1', 'James 1:2-4',
+    '2 Timothy 1:7', 'Joshua 1:9', 'Ephesians 2:8-9', 'Romans 12:2',
+    'Matthew 28:19-20', 'John 14:6', 'Romans 10:9',
   ];
-
   const lowerQuery = query.toLowerCase();
   return suggestions.filter(s => s.toLowerCase().includes(lowerQuery));
 }
