@@ -128,6 +128,11 @@ export function ScriptureLookup({
             <p className="text-sm font-medium text-foreground mb-1">
               {result.reference} ({result.translation})
             </p>
+            {result.substituted && result.errorMessage && (
+              <p className="text-xs text-amber-600 dark:text-amber-400 mb-2">
+                ⚠ {result.errorMessage}
+              </p>
+            )}
             <p className="text-sm text-muted-foreground italic leading-relaxed">
               "{result.text}"
             </p>
@@ -228,6 +233,11 @@ export function ScriptureLookupButton({
               <p className="text-sm font-medium text-foreground mb-1">
                 {result.reference} ({result.translation})
               </p>
+              {result.substituted && result.errorMessage && (
+                <p className="text-xs text-amber-600 dark:text-amber-400 mb-2">
+                  ⚠ {result.errorMessage}
+                </p>
+              )}
               <p className="text-sm text-muted-foreground italic leading-relaxed max-h-32 overflow-y-auto">
                 "{result.text}"
               </p>
