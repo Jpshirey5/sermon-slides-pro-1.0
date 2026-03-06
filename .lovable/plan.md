@@ -1,31 +1,33 @@
 
 
-# Remove "Create through Sermon Outline" Feature
+# Plan: Send Invite Emails via Resend
 
-## What Will Be Removed
+## Summary
 
-1. **Dashboard button** -- The "Create through Sermon Outline" button and its `<Link>` wrapper in `src/pages/Dashboard.tsx` (lines 138-143)
-2. **Route** -- The `/dashboard/outline-upload` route in `src/App.tsx` (line 42) and its import (line 19)
-3. **Page component** -- Delete `src/pages/OutlineUpload.tsx`
-4. **Parser library** -- Delete `src/lib/outline-parser.ts`
+Rewrite the `send-invite` edge function to actually send an email using Resend, and update `Account.tsx` to call the edge function instead of copying a link to clipboard.
 
-## What Will NOT Be Touched
+## Prerequisites
 
-- All other dashboard functionality (Sermon Slide Creator card, Training Creator tab, presentations list, study guides list)
-- All other routes and pages
-- No other components, libraries, or styles
+You'll need a **Resend API key** and a **verified sender domain** in Resend. The `RESEND_API_KEY` secret is not currently configured — I'll request it during implementation.
 
-## Technical Details
+## Changes
 
-### `src/pages/Dashboard.tsx`
-- Remove lines 138-143 (the `<Link to="/dashboard/outline-upload">` block containing the "Create through Sermon Outline" button)
-- No other changes to this file
+### 1. Add `RESEND_API_KEY` secret
+- Use the secrets tool to request the API key from you
 
-### `src/App.tsx`
-- Remove the `import OutlineUpload` line (line 19)
-- Remove the `<Route path="/dashboard/outline-upload" ...>` line (line 42)
+### 2. Rewrite `supabase/functions/send-invite/index.ts`
+- Import Resend (`npm:resend@6`)
+- After receiving `{ email, token, org_name, invited_by_name }`, construct the signup link and send an HTML email via `resend.emails.send()`
+- Email contains a branded message: "You've been invited to join {org_name} on SermonSlides" with a signup button linking to `/signup?invite={token}`
+- Return success/error to the frontend
 
-### Deleted Files
-- `src/pages/OutlineUpload.tsx`
-- `src/lib/outline-parser.ts`
+### 3. Update `src/pages/Account.tsx` `handleInvite`
+- After inserting the invite into `account_invites`, call `supabase.functions.invoke("send-invite", ...)` with the token, email, org name, and inviter name
+- Remove the clipboard copy logic
+- Show `toast.success("Invite sent to {email}!")` on success
+
+| File | Change |
+|------|--------|
+| `supabase/functions/send-invite/index.ts` | Send email via Resend instead of returning link |
+| `src/pages/Account.tsx` | Call edge function after creating invite, remove clipboard logic |
 
