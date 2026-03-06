@@ -25,6 +25,7 @@ interface AuthContextType {
   profile: Profile | null;
   loading: boolean;
   subscription: SubscriptionInfo;
+  accountId: string | null;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
   checkSubscription: () => Promise<void>;
@@ -43,6 +44,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [accountId, setAccountId] = useState<string | null>(null);
   const [subscription, setSubscription] = useState<SubscriptionInfo>({
     subscribed: false,
     product_id: null,
@@ -58,6 +60,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     if (data) {
       setProfile(data as unknown as Profile);
     }
+  };
+
+  const fetchAccountId = async (userId: string) => {
+    const { data } = await supabase.rpc('get_user_account_id', { _user_id: userId });
+    setAccountId(data || null);
   };
 
   const checkSubscription = async () => {
@@ -84,6 +91,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const refreshProfile = async () => {
     if (user) {
       await fetchProfile(user.id);
+      await fetchAccountId(user.id);
       await checkSubscription();
     }
   };
@@ -93,40 +101,42 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setUser(null);
     setSession(null);
     setProfile(null);
+    setAccountId(null);
     setSubscription({ subscribed: false, product_id: null, subscription_end: null });
   };
 
   useEffect(() => {
-    // Set up auth listener BEFORE getSession
     const { data: { subscription: authSub } } = supabase.auth.onAuthStateChange(
       async (event, newSession) => {
         setSession(newSession);
         setUser(newSession?.user ?? null);
 
         if (newSession?.user) {
-          // Use setTimeout to avoid Supabase deadlock
           setTimeout(() => {
             fetchProfile(newSession.user.id);
+            fetchAccountId(newSession.user.id);
             checkSubscription();
           }, 0);
         } else {
           setProfile(null);
+          setAccountId(null);
           setSubscription({ subscribed: false, product_id: null, subscription_end: null });
         }
 
         if (event === "SIGNED_OUT") {
           setProfile(null);
+          setAccountId(null);
         }
         setLoading(false);
       }
     );
 
-    // Then get initial session
     supabase.auth.getSession().then(({ data: { session: initialSession } }) => {
       setSession(initialSession);
       setUser(initialSession?.user ?? null);
       if (initialSession?.user) {
         fetchProfile(initialSession.user.id);
+        fetchAccountId(initialSession.user.id);
         checkSubscription();
       }
       setLoading(false);
@@ -135,7 +145,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return () => authSub.unsubscribe();
   }, []);
 
-  // Auto-refresh subscription every 60 seconds
   useEffect(() => {
     if (!user) return;
     const interval = setInterval(checkSubscription, 60000);
@@ -144,7 +153,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   return (
     <AuthContext.Provider
-      value={{ user, session, profile, loading, subscription, signOut, refreshProfile, checkSubscription }}
+      value={{ user, session, profile, loading, subscription, accountId, signOut, refreshProfile, checkSubscription }}
     >
       {children}
     </AuthContext.Provider>
