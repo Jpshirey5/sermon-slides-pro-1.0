@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,18 +8,69 @@ import { BookOpen, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
+const US_STATES = [
+  "Alabama","Alaska","Arizona","Arkansas","California","Colorado","Connecticut","Delaware","Florida","Georgia",
+  "Hawaii","Idaho","Illinois","Indiana","Iowa","Kansas","Kentucky","Louisiana","Maine","Maryland",
+  "Massachusetts","Michigan","Minnesota","Mississippi","Missouri","Montana","Nebraska","Nevada","New Hampshire","New Jersey",
+  "New Mexico","New York","North Carolina","North Dakota","Ohio","Oklahoma","Oregon","Pennsylvania","Rhode Island","South Carolina",
+  "South Dakota","Tennessee","Texas","Utah","Vermont","Virginia","Washington","West Virginia","Wisconsin","Wyoming"
+];
+
 const SignUp = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const inviteToken = searchParams.get("invite");
+
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [orgName, setOrgName] = useState("");
+  const [city, setCity] = useState("");
+  const [state, setState] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // Invite state
+  const [inviteValid, setInviteValid] = useState(false);
+  const [inviteOrgName, setInviteOrgName] = useState("");
+  const [inviteLoading, setInviteLoading] = useState(!!inviteToken);
+
+  useEffect(() => {
+    if (!inviteToken) return;
+
+    const lookupInvite = async () => {
+      setInviteLoading(true);
+      const { data, error } = await supabase.rpc("get_invite_by_token", { _token: inviteToken });
+      if (error || !data || data.length === 0) {
+        toast.error("Invalid or expired invite link.");
+        setInviteLoading(false);
+        return;
+      }
+      const invite = data[0];
+      // Get org name from accounts
+      const { data: accountData } = await supabase
+        .from("accounts_public")
+        .select("name")
+        .eq("id", invite.account_id)
+        .single();
+      
+      setInviteValid(true);
+      setInviteOrgName(accountData?.name || "Organization");
+      setEmail(invite.email);
+      setInviteLoading(false);
+    };
+
+    lookupInvite();
+  }, [inviteToken]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!fullName || !email || !password || !confirmPassword) {
       toast.error("Please fill in all fields.");
+      return;
+    }
+    if (!inviteValid && (!orgName || !city || !state)) {
+      toast.error("Please fill in your organization details.");
       return;
     }
     if (password !== confirmPassword) {
@@ -33,11 +84,20 @@ const SignUp = () => {
 
     setLoading(true);
     try {
+      const metadata: Record<string, string> = { full_name: fullName };
+      if (inviteValid && inviteToken) {
+        metadata.invite_token = inviteToken;
+      } else {
+        metadata.org_name = orgName;
+        metadata.org_city = city;
+        metadata.org_state = state;
+      }
+
       const { error } = await supabase.auth.signUp({
         email,
         password,
         options: {
-          data: { full_name: fullName },
+          data: metadata,
           emailRedirectTo: window.location.origin,
         },
       });
@@ -48,12 +108,20 @@ const SignUp = () => {
         toast.success("Account created! Check your email to confirm, then log in.");
         navigate("/login");
       }
-    } catch (err) {
+    } catch {
       toast.error("An unexpected error occurred.");
     } finally {
       setLoading(false);
     }
   };
+
+  if (inviteLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <p className="text-muted-foreground">Verifying invite...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -75,7 +143,7 @@ const SignUp = () => {
         </div>
       </header>
 
-      <main className="flex-1 flex items-center justify-center px-4">
+      <main className="flex-1 flex items-center justify-center px-4 py-8">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }} className="w-full max-w-md">
           <div className="rounded-2xl bg-card border border-border p-8 shadow-elevated">
             <div className="text-center mb-8">
@@ -83,7 +151,11 @@ const SignUp = () => {
                 <BookOpen className="w-7 h-7 text-primary-foreground" />
               </div>
               <h1 className="font-serif text-2xl font-bold text-foreground mb-2">Create Account</h1>
-              <p className="text-muted-foreground">Sign up to get started with SermonSlides</p>
+              <p className="text-muted-foreground">
+                {inviteValid
+                  ? `You've been invited to join ${inviteOrgName}`
+                  : "Sign up to get started with SermonSlides"}
+              </p>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-5">
@@ -93,8 +165,47 @@ const SignUp = () => {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
-                <Input id="email" type="email" placeholder="you@church.org" value={email} onChange={(e) => setEmail(e.target.value)} className="h-12" required />
+                <Input id="email" type="email" placeholder="you@church.org" value={email} onChange={(e) => setEmail(e.target.value)} className="h-12" required disabled={inviteValid} />
               </div>
+
+              {/* Organization fields — only show if NOT joining via invite */}
+              {!inviteValid && (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="orgName">Organization / Church Name</Label>
+                    <Input id="orgName" type="text" placeholder="First Baptist Church" value={orgName} onChange={(e) => setOrgName(e.target.value)} className="h-12" required />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <Label htmlFor="city">City</Label>
+                      <Input id="city" type="text" placeholder="Dallas" value={city} onChange={(e) => setCity(e.target.value)} className="h-12" required />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="state">State</Label>
+                      <select
+                        id="state"
+                        value={state}
+                        onChange={(e) => setState(e.target.value)}
+                        className="h-12 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        required
+                      >
+                        <option value="">Select...</option>
+                        {US_STATES.map(s => (
+                          <option key={s} value={s}>{s}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {inviteValid && (
+                <div className="rounded-lg bg-primary/5 border border-primary/20 p-3">
+                  <p className="text-sm text-foreground font-medium">Organization: {inviteOrgName}</p>
+                  <p className="text-xs text-muted-foreground mt-1">You'll be added as a member of this organization.</p>
+                </div>
+              )}
+
               <div className="space-y-2">
                 <Label htmlFor="password">Password</Label>
                 <Input id="password" type="password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} className="h-12" required />

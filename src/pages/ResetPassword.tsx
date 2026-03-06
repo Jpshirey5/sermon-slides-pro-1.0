@@ -13,23 +13,59 @@ const ResetPassword = () => {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [isRecovery, setIsRecovery] = useState(false);
+  const [ready, setReady] = useState(false);
+  const [checking, setChecking] = useState(true);
 
   useEffect(() => {
-    // Check for recovery token in URL hash
-    const hash = window.location.hash;
-    if (hash.includes("type=recovery")) {
-      setIsRecovery(true);
-    }
+    const handleRecovery = async () => {
+      // Parse hash fragment for recovery tokens
+      const hash = window.location.hash.substring(1);
+      const params = new URLSearchParams(hash);
+      const accessToken = params.get("access_token");
+      const refreshToken = params.get("refresh_token");
+      const type = params.get("type");
 
-    // Listen for PASSWORD_RECOVERY event
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === "PASSWORD_RECOVERY") {
-        setIsRecovery(true);
+      if (type === "recovery" && accessToken && refreshToken) {
+        // Set the session from the recovery tokens
+        const { error } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken,
+        });
+
+        if (error) {
+          console.error("Failed to set recovery session:", error);
+          toast.error("Invalid or expired reset link.");
+          setChecking(false);
+          return;
+        }
+
+        // Clear the hash from the URL
+        window.history.replaceState(null, "", window.location.pathname);
+        setReady(true);
+        setChecking(false);
+        return;
       }
-    });
 
-    return () => subscription.unsubscribe();
+      // Also listen for PASSWORD_RECOVERY event (in case Supabase handles it)
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+        if (event === "PASSWORD_RECOVERY") {
+          setReady(true);
+          setChecking(false);
+        }
+      });
+
+      // If no hash params, check if there's already a session (user might have been redirected)
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        setReady(true);
+      }
+      
+      setChecking(false);
+
+      return () => subscription.unsubscribe();
+    };
+
+    handleRecovery();
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -53,7 +89,15 @@ const ResetPassword = () => {
     }
   };
 
-  if (!isRecovery) {
+  if (checking) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <p className="text-muted-foreground">Verifying reset link...</p>
+      </div>
+    );
+  }
+
+  if (!ready) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
