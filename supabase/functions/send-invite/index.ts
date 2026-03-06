@@ -39,7 +39,7 @@ serve(async (req) => {
     const inviterDisplay = invited_by_name || "A team member";
 
     const { error } = await resend.emails.send({
-      from: "SermonSlides <noreply@sermonslides.com>",
+      from: "SermonSlides <onboarding@resend.dev>",
       to: email,
       subject: `You've been invited to join ${orgDisplay} on SermonSlides`,
       html: `
