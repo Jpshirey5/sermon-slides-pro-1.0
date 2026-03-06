@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { lookupScripture } from "@/lib/scripture-api";
 import { savePresentation } from "@/lib/presentations";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface Scripture {
   reference: string;
@@ -64,6 +65,8 @@ const translations = [
 
 const CreateSermon = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const { user } = useAuth();
   const location = useLocation();
   const isFromDashboard = location.pathname.startsWith("/dashboard");
   const editData = (location.state as any)?.editData;
@@ -305,11 +308,11 @@ const CreateSermon = () => {
     );
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     // Use editId if re-editing, otherwise generate new ID
-    const presentationId = editId || String(Date.now());
+    const presentationId = editId || crypto.randomUUID();
     
     // Calculate slide count
     let slideCount = 1; // Title slide
@@ -330,8 +333,8 @@ const CreateSermon = () => {
       }
     });
     
-    // Save presentation data
-    savePresentation({
+    // Save presentation data to Supabase
+    const savedId = await savePresentation({
       id: presentationId,
       title: title,
       date: new Date().toISOString().split('T')[0],
@@ -355,8 +358,12 @@ const CreateSermon = () => {
       },
     });
     
-    // Navigate to editor with the new presentation ID
-    navigate(`/editor/${presentationId}`);
+    if (savedId) {
+      navigate(`/editor/${savedId}`);
+    } else {
+      const { toast } = await import("sonner");
+      toast.error("Failed to save presentation. Please try again.");
+    }
   };
 
   return (
