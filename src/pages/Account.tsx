@@ -155,19 +155,20 @@ const Account = () => {
         return;
       }
 
-      // Show the shareable signup link (no ghost user created)
-      const signupLink = `${window.location.origin}/signup?invite=${invite.token}`;
-      toast.success("Invite created! Share this link:", {
-        description: signupLink,
-        duration: 20000,
+      // Send invite email via edge function
+      const { error: sendError } = await supabase.functions.invoke("send-invite", {
+        body: {
+          email: inviteEmail,
+          token: invite.token,
+          org_name: orgName,
+          invited_by_name: profile?.full_name || "A team member",
+        },
       });
 
-      // Copy to clipboard
-      try {
-        await navigator.clipboard.writeText(signupLink);
-        toast.info("Link copied to clipboard!");
-      } catch {
-        // Clipboard may not be available
+      if (sendError) {
+        toast.error("Invite created but failed to send email. Please try again.");
+      } else {
+        toast.success(`Invite sent to ${inviteEmail}!`);
       }
 
       setInviteEmail("");
