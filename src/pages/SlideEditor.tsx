@@ -12,10 +12,8 @@ import { splitVerseText } from "@/lib/scripture-api";
 import { ExportOptionsModal } from "@/components/ExportOptionsModal";
 import { PaymentPromptModal } from "@/components/PaymentPromptModal";
 import { toast } from "sonner";
-import { getPresentation, getPresentations, SermonPresentation } from "@/lib/presentations";
+import { getPresentation, SermonPresentation, saveEditorSlides as saveEditorSlidesToDb, getEditorSlides as getEditorSlidesFromDb } from "@/lib/presentations";
 import { useAuth } from "@/contexts/AuthContext";
-// Storage key for editor-specific slide data
-const EDITOR_STORAGE_KEY = 'sermon-editor-slides';
 
 // Microsoft Word standard fonts - alphabetically ordered
 const fonts = ["Arial", "Arial Black", "Book Antiqua", "Calibri", "Cambria", "Candara", "Century Gothic", "Comic Sans MS", "Consolas", "Constantia", "Corbel", "Courier New", "Franklin Gothic Medium", "Garamond", "Georgia", "Gill Sans MT", "Impact", "Lucida Console", "Lucida Sans Unicode", "Palatino Linotype", "Segoe UI", "Tahoma", "Times New Roman", "Trebuchet MS", "Verdana"];
@@ -203,32 +201,7 @@ const defaultSlides: SlideData[] = [{
 
 const MAX_HISTORY = 50;
 
-// Get saved editor slides from localStorage
-function getEditorSlides(presentationId: string): SlideData[] | null {
-  const stored = localStorage.getItem(`${EDITOR_STORAGE_KEY}-${presentationId}`);
-  if (stored) {
-    try {
-      return JSON.parse(stored);
-    } catch {
-      return null;
-    }
-  }
-  return null;
-}
-
-// Save editor slides to localStorage
-function saveEditorSlides(presentationId: string, slides: SlideData[]): void {
-  localStorage.setItem(`${EDITOR_STORAGE_KEY}-${presentationId}`, JSON.stringify(slides));
-  
-  // Also update the presentation's slide count and lastModified in the main presentations list
-  const presentations = getPresentations();
-  const presentationIndex = presentations.findIndex(p => p.id === presentationId);
-  if (presentationIndex >= 0) {
-    presentations[presentationIndex].slides = slides.length;
-    presentations[presentationIndex].lastModified = 'just now';
-    localStorage.setItem('sermon-presentations', JSON.stringify(presentations));
-  }
-}
+// These are now async wrappers using the Supabase-backed functions from presentations.ts
 
 const SlideEditor = () => {
   const { id } = useParams();
@@ -292,34 +265,37 @@ const SlideEditor = () => {
 
   // Load presentation data - check for saved editor slides first
   useEffect(() => {
-    if (id && id !== "new") {
-      // First, try to load saved editor slides
-      const savedEditorSlides = getEditorSlides(id);
-      if (savedEditorSlides && savedEditorSlides.length > 0) {
-        setSlides(savedEditorSlides);
-        setHistory([savedEditorSlides]);
-        setHistoryIndex(0);
-        
-        // Get title from presentation
-        const presentation = getPresentation(id);
-        if (presentation) {
-          setPresentationTitle(presentation.title);
-        }
-      } else {
-        // No saved editor slides, generate from presentation data
-        const presentation = getPresentation(id);
-        if (presentation) {
-          setPresentationTitle(presentation.title);
-          const generatedSlides = generateSlidesFromData(presentation);
-          if (generatedSlides.length > 0) {
-            setSlides(generatedSlides);
-            setHistory([generatedSlides]);
-            setHistoryIndex(0);
+    const loadData = async () => {
+      if (id && id !== "new") {
+        // First, try to load saved editor slides from Supabase
+        const savedEditorSlides = await getEditorSlidesFromDb(id);
+        if (savedEditorSlides && savedEditorSlides.length > 0 && savedEditorSlides[0]?.id) {
+          setSlides(savedEditorSlides);
+          setHistory([savedEditorSlides]);
+          setHistoryIndex(0);
+          
+          // Get title from presentation
+          const presentation = await getPresentation(id);
+          if (presentation) {
+            setPresentationTitle(presentation.title);
+          }
+        } else {
+          // No saved editor slides, generate from presentation data
+          const presentation = await getPresentation(id);
+          if (presentation) {
+            setPresentationTitle(presentation.title);
+            const generatedSlides = generateSlidesFromData(presentation);
+            if (generatedSlides.length > 0) {
+              setSlides(generatedSlides);
+              setHistory([generatedSlides]);
+              setHistoryIndex(0);
+            }
           }
         }
       }
-    }
-    isInitialLoadRef.current = false;
+      isInitialLoadRef.current = false;
+    };
+    loadData();
   }, [id]);
   const currentSlide = slides[selectedSlide];
   
@@ -335,9 +311,9 @@ const SlideEditor = () => {
       }
       
       // Debounce save
-      saveTimeoutRef.current = setTimeout(() => {
+      saveTimeoutRef.current = setTimeout(async () => {
         try {
-          saveEditorSlides(id, slides);
+          await saveEditorSlidesToDb(id, slides);
           setSaveStatus('saved');
           
           // Reset to idle after 2 seconds
@@ -830,11 +806,9 @@ const SlideEditor = () => {
               </div>
               
               {id && id !== "new" && (
-                <Button variant="outline" onClick={() => {
-                  const presentation = getPresentation(id);
+                <Button variant="outline" onClick={async () => {
+                  const presentation = await getPresentation(id);
                   if (presentation?.data) {
-                    // Clear saved editor slides so they regenerate fresh
-                    localStorage.removeItem(`${EDITOR_STORAGE_KEY}-${id}`);
                     editorNavigate('/dashboard/create', { state: { editData: presentation.data, editId: id } });
                   }
                 }} title="Edit sermon form">
@@ -846,11 +820,6 @@ const SlideEditor = () => {
                 <Play className="w-4 h-4" />
                 <span className="hidden sm:inline">Preview</span>
               </Button>
-              {id && id !== "new" && (
-                <Button variant="ghost" size="icon" className="h-9 w-9" title="Create Study Guide" onClick={() => editorNavigate(`/manuscript?fromPresentation=${id}`)}>
-                  <BookMarked className="w-4 h-4" />
-                </Button>
-              )}
               <Button variant="hero" disabled={isExporting} onClick={handleExportButtonClick}>
                 <Download className="w-4 h-4" />
                 <span className="hidden sm:inline">
