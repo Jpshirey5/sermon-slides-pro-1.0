@@ -113,6 +113,31 @@ const Account = () => {
     if (!inviteEmail || !accountId || !user) return;
     setInviting(true);
     try {
+      // Check if user already exists in profiles
+      const { data: existingProfiles } = await supabase
+        .from("profiles")
+        .select("id, email")
+        .eq("email", inviteEmail);
+
+      if (existingProfiles && existingProfiles.length > 0) {
+        toast.error("This email is already registered. They can log in and join directly.");
+        setInviting(false);
+        return;
+      }
+
+      // Check for existing pending invite
+      const { data: existingInvites } = await supabase
+        .from("account_invites")
+        .select("id")
+        .eq("email", inviteEmail)
+        .eq("account_id", accountId);
+
+      if (existingInvites && existingInvites.length > 0) {
+        toast.error("An invite has already been sent to this email.");
+        setInviting(false);
+        return;
+      }
+
       // Insert invite
       const { data: invite, error } = await supabase
         .from("account_invites")
@@ -130,25 +155,21 @@ const Account = () => {
         return;
       }
 
-      // Call edge function to send email
-      const { error: fnError } = await supabase.functions.invoke("send-invite", {
-        body: {
-          email: inviteEmail,
-          token: invite.token,
-          org_name: orgName.split(" — ")[0],
-          invited_by_name: profile?.full_name || user.email,
-        },
+      // Show the shareable signup link (no ghost user created)
+      const signupLink = `${window.location.origin}/signup?invite=${invite.token}`;
+      toast.success("Invite created! Share this link:", {
+        description: signupLink,
+        duration: 20000,
       });
 
-      if (fnError) {
-        // Invite was created even if email fails — still show the link
-        toast.info("Invite created, but email could not be sent. Share this link instead:", {
-          description: `${window.location.origin}/signup?invite=${invite.token}`,
-          duration: 15000,
-        });
-      } else {
-        toast.success(`Invite sent to ${inviteEmail}!`);
+      // Copy to clipboard
+      try {
+        await navigator.clipboard.writeText(signupLink);
+        toast.info("Link copied to clipboard!");
+      } catch {
+        // Clipboard may not be available
       }
+
       setInviteEmail("");
     } catch {
       toast.error("An error occurred.");

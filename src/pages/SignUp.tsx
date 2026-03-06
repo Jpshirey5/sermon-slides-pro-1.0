@@ -103,7 +103,11 @@ const SignUp = () => {
       });
 
       if (error) {
-        toast.error(error.message);
+        if (error.message?.toLowerCase().includes("already registered")) {
+          toast.error("This email is already registered. Please log in instead.");
+        } else {
+          toast.error(error.message);
+        }
       } else {
         toast.success("Account created! Check your email to confirm, then log in.");
         navigate("/login");
