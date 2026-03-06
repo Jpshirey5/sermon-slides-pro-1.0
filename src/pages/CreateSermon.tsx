@@ -67,7 +67,6 @@ const CreateSermon = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
-  const location = useLocation();
   const isFromDashboard = location.pathname.startsWith("/dashboard");
   const editData = (location.state as any)?.editData;
   const editId = (location.state as any)?.editId;
