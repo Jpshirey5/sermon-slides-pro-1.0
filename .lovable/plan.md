@@ -1,31 +1,31 @@
 
 
-# Remove "Create through Sermon Outline" Feature
+# Plan: Use Resend's Free Test Domain for Invite Emails
 
-## What Will Be Removed
+## The Good News
 
-1. **Dashboard button** -- The "Create through Sermon Outline" button and its `<Link>` wrapper in `src/pages/Dashboard.tsx` (lines 138-143)
-2. **Route** -- The `/dashboard/outline-upload` route in `src/App.tsx` (line 42) and its import (line 19)
-3. **Page component** -- Delete `src/pages/OutlineUpload.tsx`
-4. **Parser library** -- Delete `src/lib/outline-parser.ts`
+You already have a `RESEND_API_KEY` configured and the `send-invite` function is set up with Resend. The only issue is the `from` address — it currently uses `noreply@sermonslides.com`, which requires a verified domain.
 
-## What Will NOT Be Touched
+Resend provides a free testing sender address: `onboarding@resend.dev`. It works immediately with no domain setup, but has one limitation: **it can only send to the email address associated with your Resend account**.
 
-- All other dashboard functionality (Sermon Slide Creator card, Training Creator tab, presentations list, study guides list)
-- All other routes and pages
-- No other components, libraries, or styles
+This is perfect for building and testing the full flow. When you're ready to go live with a real domain, you just change one line.
 
-## Technical Details
+## Change
 
-### `src/pages/Dashboard.tsx`
-- Remove lines 138-143 (the `<Link to="/dashboard/outline-upload">` block containing the "Create through Sermon Outline" button)
-- No other changes to this file
+### Update `supabase/functions/send-invite/index.ts`
 
-### `src/App.tsx`
-- Remove the `import OutlineUpload` line (line 19)
-- Remove the `<Route path="/dashboard/outline-upload" ...>` line (line 42)
+Change the `from` field from:
+```
+"SermonSlides <noreply@sermonslides.com>"
+```
+to:
+```
+"SermonSlides <onboarding@resend.dev>"
+```
 
-### Deleted Files
-- `src/pages/OutlineUpload.tsx`
-- `src/lib/outline-parser.ts`
+That's it — one line change, then redeploy the function.
+
+## Testing Limitation
+
+With `onboarding@resend.dev`, Resend will only deliver emails to the email address on your Resend account. So to test, invite that specific email address. Once you verify a custom domain in Resend later, swap the `from` address and you can send to anyone.
 
