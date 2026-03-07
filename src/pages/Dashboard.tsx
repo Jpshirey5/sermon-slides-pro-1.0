@@ -23,9 +23,19 @@ import { useAuth } from "@/contexts/AuthContext";
 
 const Dashboard = () => {
   const navigate = useNavigate();
-  const { user, profile, signOut } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { user, profile, signOut, checkSubscription } = useAuth();
   const [presentations, setPresentations] = useState<SermonPresentation[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Handle returning from Stripe checkout
+  useEffect(() => {
+    if (searchParams.get("checkout") === "success") {
+      checkSubscription();
+      toast.success("Subscription activated! Welcome to SermonSlides Pro.");
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams]);
 
   const loadPresentations = async () => {
     setLoading(true);
