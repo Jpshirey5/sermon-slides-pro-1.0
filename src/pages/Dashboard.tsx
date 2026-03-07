@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import {
@@ -23,9 +23,19 @@ import { useAuth } from "@/contexts/AuthContext";
 
 const Dashboard = () => {
   const navigate = useNavigate();
-  const { user, profile, signOut } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { user, profile, signOut, checkSubscription } = useAuth();
   const [presentations, setPresentations] = useState<SermonPresentation[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Handle returning from Stripe checkout
+  useEffect(() => {
+    if (searchParams.get("checkout") === "success") {
+      checkSubscription();
+      toast.success("Subscription activated! Welcome to SermonSlides Pro.");
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams]);
 
   const loadPresentations = async () => {
     setLoading(true);

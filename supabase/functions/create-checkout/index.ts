@@ -63,7 +63,7 @@ serve(async (req) => {
       customer: customerId,
       line_items: [{ price: "price_1SqEzyP2Yr0z0IcsN8lN68kU", quantity: 1 }],
       mode: "subscription",
-      success_url: `${origin}/account?checkout=success`,
+      success_url: `${origin}/dashboard?checkout=success`,
       cancel_url: `${origin}/account`,
     });
 
