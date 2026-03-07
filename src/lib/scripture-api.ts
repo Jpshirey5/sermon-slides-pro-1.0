@@ -109,24 +109,7 @@ const translationBibleIds: Record<string, string> = {
   'BBE': '65eec8e0b60e656b-01',
   'DARBY': '478f6a31d80ce67f-01',
   'YLT': 'f72b840c855f362c-04',
-  // Map common translations to free alternatives
-  'NIV': '9879dbb7cfe39e4d-04', // WEB as fallback
-  'ESV': '9879dbb7cfe39e4d-04', // WEB as fallback
-  'NKJV': 'de4e12af7f28f599-02', // KJV as fallback
-  'NASB': '06125adad2d5898a-01', // ASV as fallback
-  'NLT': '9879dbb7cfe39e4d-04', // WEB as fallback
-  'CSB': '9879dbb7cfe39e4d-04', // WEB as fallback
-  'MSG': '9879dbb7cfe39e4d-04', // WEB as fallback
-  'AMP': '9879dbb7cfe39e4d-04', // WEB as fallback
-  // Spanish
-  'RVR1960': 'b32b9d1b64b4ef29-01', // Reina Valera
-  'NVI': 'b32b9d1b64b4ef29-01', // Fallback to RV
-  // French
-  'LSG': '5e51f89e89947acb-01', // Louis Segond
-  // German
-  'LUT': 'f492a38d0e52db0f-01', // Luther
-  // Portuguese
-  'ALMEIDA': 'bba9f40f0b60dc83-01', // Almeida
+  // ESV is handled separately via edge function — not listed here
 };
 
 function getBookCode(book: string): string | null {
