@@ -299,6 +299,37 @@ export async function lookupScripture(
     };
   }
 
+  // ESV: route through Supabase Edge Function
+  if (translation === 'ESV') {
+    try {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+      const response = await fetch(`${supabaseUrl}/functions/v1/esv-lookup`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${supabaseKey}`,
+          'apikey': supabaseKey,
+        },
+        body: JSON.stringify({ q: formattedRef }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.text) {
+          return {
+            text: data.text,
+            reference: data.canonical || formattedRef,
+            translation: 'ESV',
+            verses: data.verses,
+          };
+        }
+      }
+    } catch (error) {
+      console.log('ESV API failed, trying fallback APIs...');
+    }
+  }
+
   // Try API.Bible for free translations
   const bibleId = translationBibleIds[translation] || translationBibleIds['WEB'];
   
