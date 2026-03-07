@@ -809,7 +809,10 @@ const SlideEditor = () => {
                 <Button variant="outline" onClick={async () => {
                   const presentation = await getPresentation(id);
                   if (presentation?.data) {
-                    editorNavigate('/dashboard/create', { state: { editData: presentation.data, editId: id } });
+                    const target = location.state?.from === "dashboard" ? '/dashboard/create' : '/create';
+                    editorNavigate(target, { state: { editData: presentation.data, editId: id } });
+                  } else {
+                    toast.error("Original sermon form data not found.");
                   }
                 }} title="Edit sermon form">
                   <Pencil className="w-4 h-4" />

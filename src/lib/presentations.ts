@@ -26,6 +26,36 @@ export interface SermonPresentation {
   };
 }
 
+// The slides column stores a wrapper object with both form data and editor slides
+interface SlidesWrapper {
+  formData?: SermonPresentation['data'];
+  editorSlides?: any[];
+}
+
+function isWrapped(slides: any): slides is SlidesWrapper {
+  return slides && typeof slides === 'object' && !Array.isArray(slides) && ('formData' in slides || 'editorSlides' in slides);
+}
+
+function extractFormData(slides: any): SermonPresentation['data'] | undefined {
+  if (isWrapped(slides)) return slides.formData;
+  // Legacy: slides is the form data directly (has 'points')
+  if (slides && typeof slides === 'object' && !Array.isArray(slides) && 'points' in slides) return slides as any;
+  return undefined;
+}
+
+function extractEditorSlides(slides: any): any[] | null {
+  if (isWrapped(slides)) return slides.editorSlides || null;
+  // Legacy: slides is a raw array of editor slides
+  if (Array.isArray(slides)) return slides;
+  return null;
+}
+
+function countSlides(slides: any): number {
+  const editor = extractEditorSlides(slides);
+  if (editor) return editor.length;
+  return 0;
+}
+
 async function getUserAccountId(): Promise<string | null> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
@@ -49,12 +79,10 @@ export async function getPresentations(): Promise<SermonPresentation[]> {
     id: row.id,
     title: row.title,
     date: row.created_at.split('T')[0],
-    slides: Array.isArray(row.slides) ? (row.slides as any[]).length : 0,
+    slides: countSlides(row.slides),
     lastModified: new Date(row.updated_at).toLocaleDateString(),
     scripture_reference: row.scripture_reference || undefined,
-    data: row.slides && typeof row.slides === 'object' && 'points' in (row.slides as any)
-      ? row.slides as any
-      : undefined,
+    data: extractFormData(row.slides),
   }));
 }
 
@@ -68,17 +96,23 @@ export async function savePresentation(presentation: SermonPresentation): Promis
   // Check if presentation already exists
   const { data: existing } = await supabase
     .from('sermons')
-    .select('id')
+    .select('id, slides')
     .eq('id', presentation.id)
     .maybeSingle();
 
+  // Build wrapper preserving existing editor slides
+  const existingEditorSlides = existing ? extractEditorSlides(existing.slides) : null;
+  const wrapper: SlidesWrapper = {
+    formData: presentation.data,
+    ...(existingEditorSlides ? { editorSlides: existingEditorSlides } : {}),
+  };
+
   if (existing) {
-    // Update
     const { error } = await supabase
       .from('sermons')
       .update({
         title: presentation.title,
-        slides: presentation.data as any || [],
+        slides: wrapper as any,
         scripture_reference: presentation.scripture_reference || null,
       })
       .eq('id', presentation.id);
@@ -89,14 +123,13 @@ export async function savePresentation(presentation: SermonPresentation): Promis
     }
     return presentation.id;
   } else {
-    // Insert
     const { data, error } = await supabase
       .from('sermons')
       .insert({
         title: presentation.title,
         account_id: accountId,
         created_by_user_id: user.id,
-        slides: presentation.data as any || [],
+        slides: wrapper as any,
         scripture_reference: presentation.scripture_reference || null,
       })
       .select('id')
@@ -132,22 +165,32 @@ export async function getPresentation(id: string): Promise<SermonPresentation | 
     id: data.id,
     title: data.title,
     date: data.created_at.split('T')[0],
-    slides: Array.isArray(data.slides) ? (data.slides as any[]).length : 0,
+    slides: countSlides(data.slides),
     lastModified: new Date(data.updated_at).toLocaleDateString(),
     scripture_reference: data.scripture_reference || undefined,
-    data: data.slides && typeof data.slides === 'object' && 'points' in (data.slides as any)
-      ? data.slides as any
-      : undefined,
+    data: extractFormData(data.slides),
   };
 }
 
-// Save editor slides (the visual slide array) to the sermons table
+// Save editor slides (the visual slide array) to the sermons table, preserving form data
 export async function saveEditorSlides(sermonId: string, slides: any[]): Promise<void> {
+  // First read existing to preserve formData
+  const { data: existing } = await supabase
+    .from('sermons')
+    .select('slides')
+    .eq('id', sermonId)
+    .maybeSingle();
+
+  const existingFormData = existing ? extractFormData(existing.slides) : undefined;
+
+  const wrapper: SlidesWrapper = {
+    ...(existingFormData ? { formData: existingFormData } : {}),
+    editorSlides: slides,
+  };
+
   const { error } = await supabase
     .from('sermons')
-    .update({
-      slides: slides as any,
-    })
+    .update({ slides: wrapper as any })
     .eq('id', sermonId);
 
   if (error) console.error('Failed to save editor slides:', error);
@@ -162,10 +205,5 @@ export async function getEditorSlides(sermonId: string): Promise<any[] | null> {
     .maybeSingle();
 
   if (error || !data) return null;
-  
-  // If slides is an array of slide objects (editor format), return it
-  if (Array.isArray(data.slides)) {
-    return data.slides as any[];
-  }
-  return null;
+  return extractEditorSlides(data.slides);
 }
