@@ -1,46 +1,31 @@
 
 
-# Plan: Add ESV Translation via ESV API
+# Remove "Create through Sermon Outline" Feature
 
-## Summary
+## What Will Be Removed
 
-Add real ESV Bible text lookup using the ESV API (api.esv.org), routed through a Supabase Edge Function to keep the API key secure. Clean up the translation dropdown to only show translations that actually work.
+1. **Dashboard button** -- The "Create through Sermon Outline" button and its `<Link>` wrapper in `src/pages/Dashboard.tsx` (lines 138-143)
+2. **Route** -- The `/dashboard/outline-upload` route in `src/App.tsx` (line 42) and its import (line 19)
+3. **Page component** -- Delete `src/pages/OutlineUpload.tsx`
+4. **Parser library** -- Delete `src/lib/outline-parser.ts`
 
-## Changes
+## What Will NOT Be Touched
 
-### 1. Store the ESV API key as a Supabase secret
-- Use the secrets tool to request and store `ESV_API_KEY`
+- All other dashboard functionality (Sermon Slide Creator card, Training Creator tab, presentations list, study guides list)
+- All other routes and pages
+- No other components, libraries, or styles
 
-### 2. Create new Edge Function `supabase/functions/esv-lookup/index.ts`
-- Accepts `{ q: "John 3:16" }` in the request body
-- Calls `https://api.esv.org/v3/passage/text/` with params:
-  - `q` = the passage query
-  - `include-passage-references=false`
-  - `include-verse-numbers=true`
-  - `include-footnotes=false`
-  - `include-headings=false`
-  - `include-short-copyright=false`
-- Uses header `Authorization: Token ${ESV_API_KEY}`
-- Returns the passage text and parsed verse data
+## Technical Details
 
-### 3. Update `src/lib/scripture-api.ts`
-- In `lookupScripture()`, when translation is `'ESV'`, call the `esv-lookup` edge function instead of bible-api.com
-- Parse the ESV API response to extract verse-by-verse text (split on `[verse_number]` markers)
-- Remove the ESV fallback mapping to WEB (`'ESV': '9879dbb7cfe39e4d-04'`)
+### `src/pages/Dashboard.tsx`
+- Remove lines 138-143 (the `<Link to="/dashboard/outline-upload">` block containing the "Create through Sermon Outline" button)
+- No other changes to this file
 
-### 4. Update translation list in `src/pages/CreateSermon.tsx`
-- Remove translations that are just fallbacks to other versions (NIV, NKJV, NASB, NLT, CSB, MSG, AMP all map to KJV/WEB/ASV — they don't return the actual translation text)
-- Keep only translations that genuinely work: **KJV, ESV, WEB, ASV**
-- Also keep non-English ones if they work (RVR1960, LSG, LUT, ALMEIDA) — these use real Bible IDs in API.Bible
+### `src/App.tsx`
+- Remove the `import OutlineUpload` line (line 19)
+- Remove the `<Route path="/dashboard/outline-upload" ...>` line (line 42)
 
-### 5. Remove fake mappings in `translationBibleIds`
-- Remove lines 113-120 that map NIV/NKJV/NASB/NLT/CSB/MSG/AMP to fallback IDs
-
-## Files
-
-| File | Change |
-|------|--------|
-| `supabase/functions/esv-lookup/index.ts` | New edge function proxying ESV API |
-| `src/lib/scripture-api.ts` | Route ESV lookups through edge function; remove fake translation mappings |
-| `src/pages/CreateSermon.tsx` | Trim dropdown to only working translations |
+### Deleted Files
+- `src/pages/OutlineUpload.tsx`
+- `src/lib/outline-parser.ts`
 

@@ -46,15 +46,9 @@ interface SermonPoint {
 
 const translations = [
   { code: "KJV", name: "King James Version", language: "English" },
+  { code: "ESV", name: "English Standard Version", language: "English" },
   { code: "WEB", name: "World English Bible", language: "English" },
   { code: "ASV", name: "American Standard Version", language: "English" },
-  { code: "NIV", name: "New International Version", language: "English" },
-  { code: "ESV", name: "English Standard Version", language: "English" },
-  { code: "NKJV", name: "New King James Version", language: "English" },
-  { code: "NASB", name: "New American Standard Bible", language: "English" },
-  { code: "NLT", name: "New Living Translation", language: "English" },
-  { code: "CSB", name: "Christian Standard Bible", language: "English" },
-  { code: "MSG", name: "The Message", language: "English" },
   { code: "AMP", name: "Amplified Bible", language: "English" },
   { code: "RVR1960", name: "Reina-Valera 1960", language: "Spanish" },
   { code: "NVI", name: "Nueva Versión Internacional", language: "Spanish" },
