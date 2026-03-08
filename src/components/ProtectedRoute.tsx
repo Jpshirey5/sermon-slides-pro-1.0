@@ -16,36 +16,79 @@ const ProtectedRoute = ({ children, allowUnsubscribed = false }: ProtectedRouteP
   const [postCheckoutVerifying, setPostCheckoutVerifying] = useState(false);
 
   const isCheckoutSuccess = searchParams.get("checkout") === "success";
+  const tokenHash = searchParams.get("token_hash");
+  const authType = searchParams.get("type");
+  const hasHashAccessToken = typeof window !== "undefined" && window.location.hash.includes("access_token=");
+  const isAuthCallback = Boolean((tokenHash && authType) || hasHashAccessToken);
+  const [authFinalizing, setAuthFinalizing] = useState(isAuthCallback);
+
+  useEffect(() => {
+    if (!isAuthCallback) {
+      setAuthFinalizing(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    const finalizeAuthFromEmailLink = async () => {
+      try {
+        if (tokenHash && authType) {
+          await supabase.auth.verifyOtp({
+            token_hash: tokenHash,
+            type: authType as any,
+          });
+
+          const cleanedParams = new URLSearchParams(searchParams.toString());
+          cleanedParams.delete("token_hash");
+          cleanedParams.delete("type");
+          cleanedParams.delete("next");
+          setSearchParams(cleanedParams, { replace: true });
+        }
+
+        for (let i = 0; i < 10; i++) {
+          const { data } = await supabase.auth.getSession();
+          if (data.session) break;
+          await new Promise((r) => setTimeout(r, 300));
+        }
+      } catch (err) {
+        console.error("Auth callback finalization failed:", err);
+      } finally {
+        if (!cancelled) setAuthFinalizing(false);
+      }
+    };
+
+    finalizeAuthFromEmailLink();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthCallback, tokenHash, authType, searchParams, setSearchParams]);
 
   // Handle post-checkout: re-check subscription then clear param
   useEffect(() => {
-    if (!isCheckoutSuccess || !user || postCheckoutVerifying) return;
+    if (!isCheckoutSuccess || !user || postCheckoutVerifying || authFinalizing) return;
 
     const verify = async () => {
       setPostCheckoutVerifying(true);
-      // Retry up to 5 times with 2s delay to allow webhook processing
       for (let i = 0; i < 5; i++) {
         await checkSubscription();
-        // Need to read latest value — use a small delay then re-check
         await new Promise((r) => setTimeout(r, 2000));
-        // Re-invoke to get fresh state
-        await checkSubscription();
-        // We can't read state directly here, so after retries we just clear the param
-        // and let the component re-render with updated context
       }
-      // Remove the checkout param to prevent re-triggering
-      searchParams.delete("checkout");
-      setSearchParams(searchParams, { replace: true });
+
+      const cleanedParams = new URLSearchParams(searchParams.toString());
+      cleanedParams.delete("checkout");
+      setSearchParams(cleanedParams, { replace: true });
       setPostCheckoutVerifying(false);
     };
 
     verify();
-  }, [isCheckoutSuccess, user]);
+  }, [isCheckoutSuccess, user, postCheckoutVerifying, authFinalizing, checkSubscription, searchParams, setSearchParams]);
 
-  // Redirect to Stripe if unsubscribed (only after check completes, not during post-checkout)
+  // Redirect to Stripe if unsubscribed (only after check completes, not during callback/post-checkout)
   useEffect(() => {
     if (
       loading ||
+      authFinalizing ||
       !user ||
       allowUnsubscribed ||
       subscription.subscribed ||
@@ -72,9 +115,9 @@ const ProtectedRoute = ({ children, allowUnsubscribed = false }: ProtectedRouteP
     };
 
     redirectToCheckout();
-  }, [loading, user, subscription.subscribed, allowUnsubscribed, redirecting, session, subscriptionChecked, isCheckoutSuccess, postCheckoutVerifying]);
+  }, [loading, authFinalizing, user, subscription.subscribed, allowUnsubscribed, redirecting, session, subscriptionChecked, isCheckoutSuccess, postCheckoutVerifying]);
 
-  if (loading || !subscriptionChecked || redirecting || isCheckoutSuccess || postCheckoutVerifying) {
+  if (loading || authFinalizing || !subscriptionChecked || redirecting || isCheckoutSuccess || postCheckoutVerifying) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
@@ -82,7 +125,9 @@ const ProtectedRoute = ({ children, allowUnsubscribed = false }: ProtectedRouteP
             <BookOpen className="w-6 h-6 text-primary-foreground" />
           </div>
           <p className="text-muted-foreground">
-            {redirecting
+            {authFinalizing
+              ? "Finalizing your account..."
+              : redirecting
               ? "Setting up your subscription..."
               : isCheckoutSuccess || postCheckoutVerifying
               ? "Verifying your subscription..."
@@ -114,3 +159,4 @@ const ProtectedRoute = ({ children, allowUnsubscribed = false }: ProtectedRouteP
 };
 
 export default ProtectedRoute;
+

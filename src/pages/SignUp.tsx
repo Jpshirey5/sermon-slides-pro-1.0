@@ -98,7 +98,7 @@ const SignUp = () => {
         password,
         options: {
           data: metadata,
-          emailRedirectTo: window.location.origin + "/dashboard",
+          emailRedirectTo: `${window.location.origin}/dashboard`,
         },
       });
 
@@ -109,7 +109,7 @@ const SignUp = () => {
           toast.error(error.message);
         }
       } else {
-        toast.success("Account created! Check your email to confirm, then log in.");
+        toast.success("Account created! Confirm your email to continue straight to subscription setup.");
         navigate("/login");
       }
     } catch {
