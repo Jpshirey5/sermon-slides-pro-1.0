@@ -108,7 +108,7 @@ serve(async (req) => {
       await supabaseClient
         .from("profiles")
         .update({ subscription_status: "inactive", plan_tier: "free" })
-        .eq("id", user.id);
+        .eq("id", userId);
     }
 
     return new Response(JSON.stringify({
