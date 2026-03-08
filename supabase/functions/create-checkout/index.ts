@@ -32,39 +32,74 @@ serve(async (req) => {
     if (!authHeader) throw new Error("No authorization header");
 
     const token = authHeader.replace("Bearer ", "");
-    const { data: userData, error: userError } = await supabaseClient.auth.getUser(token);
-    if (userError) throw new Error(`Auth error: ${userError.message}`);
-    const user = userData.user;
-    if (!user?.email) throw new Error("User not authenticated");
-    logStep("User authenticated", { userId: user.id, email: user.email });
+
+    // Validate JWT via claims
+    const anonClient = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_ANON_KEY") ?? "",
+      { global: { headers: { Authorization: authHeader } } }
+    );
+
+    const { data: claimsData, error: claimsError } = await anonClient.auth.getClaims(token);
+    if (claimsError || !claimsData?.claims) throw new Error("Authentication failed");
+
+    const email = claimsData.claims.email as string;
+    const userId = claimsData.claims.sub as string;
+    if (!email) throw new Error("User not authenticated");
+    logStep("User authenticated", { userId, email });
+
+    // Look up account
+    const { data: accountId } = await supabaseClient.rpc('get_user_account_id', { _user_id: userId });
+    if (!accountId) throw new Error("No account found for user");
+    logStep("Found account", { accountId });
 
     const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
 
     // Look up or create Stripe customer
-    const customers = await stripe.customers.list({ email: user.email, limit: 1 });
+    const customers = await stripe.customers.list({ email, limit: 1 });
     let customerId: string;
     if (customers.data.length > 0) {
       customerId = customers.data[0].id;
       logStep("Existing customer found", { customerId });
     } else {
-      const customer = await stripe.customers.create({ email: user.email, metadata: { supabase_uid: user.id } });
+      const customer = await stripe.customers.create({
+        email,
+        metadata: { supabase_uid: userId, account_id: accountId },
+      });
       customerId = customer.id;
       logStep("New customer created", { customerId });
     }
 
-    // Store stripe_customer_id in profiles if missing
+    // Store stripe_customer_id on account
     await supabaseClient
-      .from("profiles")
+      .from("accounts")
       .update({ stripe_customer_id: customerId })
-      .eq("id", user.id);
+      .eq("id", accountId);
+
+    // Check if already has active subscription — prevent duplicate checkout
+    const existingSubs = await stripe.subscriptions.list({
+      customer: customerId,
+      status: "active",
+      limit: 1,
+    });
 
     const origin = req.headers.get("origin") || "https://sermonslides.app";
+
+    if (existingSubs.data.length > 0) {
+      logStep("Already subscribed, redirecting to dashboard");
+      return new Response(JSON.stringify({ url: `${origin}/dashboard` }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      });
+    }
+
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
       line_items: [{ price: "price_1SqEzyP2Yr0z0IcsN8lN68kU", quantity: 1 }],
       mode: "subscription",
       success_url: `${origin}/dashboard?checkout=success`,
       cancel_url: `${origin}/account`,
+      metadata: { account_id: accountId },
     });
 
     logStep("Checkout session created", { sessionId: session.id });
