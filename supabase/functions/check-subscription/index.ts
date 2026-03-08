@@ -32,14 +32,14 @@ serve(async (req) => {
     if (!authHeader) throw new Error("No authorization header");
 
     const token = authHeader.replace("Bearer ", "");
-    
-    // Use getClaims first for fast validation, then getUser for full user data
+
+    // Validate JWT via claims
     const anonClient = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_ANON_KEY") ?? "",
       { global: { headers: { Authorization: authHeader } } }
     );
-    
+
     const { data: claimsData, error: claimsError } = await anonClient.auth.getClaims(token);
     if (claimsError || !claimsData?.claims) {
       logStep("Claims validation failed", { error: claimsError?.message });
@@ -48,11 +48,11 @@ serve(async (req) => {
         status: 200,
       });
     }
-    
+
     const email = claimsData.claims.email as string;
     const userId = claimsData.claims.sub as string;
-    if (!email) {
-      logStep("No email in claims");
+    if (!email || !userId) {
+      logStep("No email/userId in claims");
       return new Response(JSON.stringify({ subscribed: false }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 200,
@@ -60,19 +60,49 @@ serve(async (req) => {
     }
     logStep("User authenticated", { userId, email });
 
-    const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
-    const customers = await stripe.customers.list({ email, limit: 1 });
-
-    if (customers.data.length === 0) {
-      logStep("No Stripe customer found");
+    // Look up account for this user
+    const { data: accountId } = await supabaseClient.rpc('get_user_account_id', { _user_id: userId });
+    if (!accountId) {
+      logStep("No account found for user");
       return new Response(JSON.stringify({ subscribed: false }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 200,
       });
     }
+    logStep("Found account", { accountId });
 
-    const customerId = customers.data[0].id;
-    logStep("Found customer", { customerId });
+    // Check if account already has a stripe_customer_id
+    const { data: account } = await supabaseClient
+      .from("accounts")
+      .select("stripe_customer_id, subscription_status")
+      .eq("id", accountId)
+      .single();
+
+    const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
+    let customerId = account?.stripe_customer_id;
+
+    // If no customer on account, look up by email
+    if (!customerId) {
+      const customers = await stripe.customers.list({ email, limit: 1 });
+      if (customers.data.length > 0) {
+        customerId = customers.data[0].id;
+        logStep("Found customer by email", { customerId });
+      }
+    } else {
+      logStep("Found customer on account", { customerId });
+    }
+
+    if (!customerId) {
+      logStep("No Stripe customer found");
+      await supabaseClient
+        .from("accounts")
+        .update({ subscription_status: "inactive" })
+        .eq("id", accountId);
+      return new Response(JSON.stringify({ subscribed: false }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      });
+    }
 
     const subscriptions = await stripe.subscriptions.list({
       customer: customerId,
@@ -93,22 +123,22 @@ serve(async (req) => {
       productId = sub.items.data[0].price.product;
       logStep("Active subscription found", { subscriptionId: sub.id, productId, endDate: subscriptionEnd });
 
-      // Sync to profiles
+      // Update accounts table
       await supabaseClient
-        .from("profiles")
+        .from("accounts")
         .update({
           subscription_status: "active",
-          plan_tier: "pro_30",
           stripe_customer_id: customerId,
           stripe_subscription_id: sub.id,
+          subscription_period_end: subscriptionEnd,
         })
-        .eq("id", userId);
+        .eq("id", accountId);
     } else {
       logStep("No active subscription");
       await supabaseClient
-        .from("profiles")
-        .update({ subscription_status: "inactive", plan_tier: "free" })
-        .eq("id", userId);
+        .from("accounts")
+        .update({ subscription_status: "inactive" })
+        .eq("id", accountId);
     }
 
     return new Response(JSON.stringify({

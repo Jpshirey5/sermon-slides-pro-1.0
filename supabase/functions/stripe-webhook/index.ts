@@ -46,21 +46,43 @@ serve(async (req) => {
     switch (event.type) {
       case "checkout.session.completed": {
         const session = event.data.object as Stripe.Checkout.Session;
-        const customerEmail = session.customer_details?.email;
         const customerId = session.customer as string;
         const subscriptionId = session.subscription as string;
+        const accountId = session.metadata?.account_id;
 
-        if (customerEmail) {
-          logStep("Checkout completed", { email: customerEmail, customerId, subscriptionId });
+        logStep("Checkout completed", { customerId, subscriptionId, accountId });
+
+        if (accountId) {
+          // Direct update via metadata
           await supabaseClient
-            .from("profiles")
+            .from("accounts")
             .update({
               subscription_status: "active",
-              plan_tier: "pro_30",
               stripe_customer_id: customerId,
               stripe_subscription_id: subscriptionId,
             })
-            .eq("email", customerEmail);
+            .eq("id", accountId);
+          logStep("Updated account via metadata", { accountId });
+        } else {
+          // Fallback: look up account by stripe_customer_id
+          const { data: account } = await supabaseClient
+            .from("accounts")
+            .select("id")
+            .eq("stripe_customer_id", customerId)
+            .single();
+
+          if (account) {
+            await supabaseClient
+              .from("accounts")
+              .update({
+                subscription_status: "active",
+                stripe_subscription_id: subscriptionId,
+              })
+              .eq("id", account.id);
+            logStep("Updated account via customer lookup", { accountId: account.id });
+          } else {
+            logStep("WARNING: Could not find account for customer", { customerId });
+          }
         }
         break;
       }
@@ -69,15 +91,20 @@ serve(async (req) => {
         const sub = event.data.object as Stripe.Subscription;
         const status = sub.status;
         const customerId = sub.customer as string;
+        const isActive = status === "active" || status === "trialing";
+        const endTimestamp = sub.current_period_end;
+        const subscriptionEnd = endTimestamp && typeof endTimestamp === "number"
+          ? new Date(endTimestamp * 1000).toISOString()
+          : null;
 
         logStep("Subscription updated", { customerId, status });
-        const isActive = status === "active" || status === "trialing";
+
         await supabaseClient
-          .from("profiles")
+          .from("accounts")
           .update({
-            subscription_status: isActive ? "active" : status,
-            plan_tier: isActive ? "pro_30" : "free",
+            subscription_status: isActive ? "active" : status as any,
             stripe_subscription_id: sub.id,
+            subscription_period_end: subscriptionEnd,
           })
           .eq("stripe_customer_id", customerId);
         break;
@@ -89,10 +116,9 @@ serve(async (req) => {
 
         logStep("Subscription canceled", { customerId });
         await supabaseClient
-          .from("profiles")
+          .from("accounts")
           .update({
             subscription_status: "canceled",
-            plan_tier: "free",
           })
           .eq("stripe_customer_id", customerId);
         break;

@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -25,6 +25,7 @@ interface AuthContextType {
   profile: Profile | null;
   loading: boolean;
   subscription: SubscriptionInfo;
+  subscriptionChecked: boolean;
   accountId: string | null;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
@@ -45,6 +46,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [accountId, setAccountId] = useState<string | null>(null);
+  const [subscriptionChecked, setSubscriptionChecked] = useState(false);
   const [subscription, setSubscription] = useState<SubscriptionInfo>({
     subscribed: false,
     product_id: null,
@@ -67,10 +69,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setAccountId(data || null);
   };
 
-  const checkSubscription = async () => {
+  const checkSubscription = useCallback(async () => {
     try {
       const { data: { session: currentSession } } = await supabase.auth.getSession();
-      if (!currentSession) return;
+      if (!currentSession) {
+        setSubscriptionChecked(true);
+        return;
+      }
 
       const { data, error } = await supabase.functions.invoke("check-subscription", {
         headers: { Authorization: `Bearer ${currentSession.access_token}` },
@@ -85,8 +90,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
     } catch (err) {
       console.error("Error checking subscription:", err);
+    } finally {
+      setSubscriptionChecked(true);
     }
-  };
+  }, []);
 
   const refreshProfile = async () => {
     if (user) {
@@ -102,6 +109,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setSession(null);
     setProfile(null);
     setAccountId(null);
+    setSubscriptionChecked(false);
     setSubscription({ subscribed: false, product_id: null, subscription_end: null });
   };
 
@@ -120,6 +128,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         } else {
           setProfile(null);
           setAccountId(null);
+          setSubscriptionChecked(false);
           setSubscription({ subscribed: false, product_id: null, subscription_end: null });
         }
 
@@ -138,6 +147,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         fetchProfile(initialSession.user.id);
         fetchAccountId(initialSession.user.id);
         checkSubscription();
+      } else {
+        setSubscriptionChecked(true);
       }
       setLoading(false);
     });
@@ -149,11 +160,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     if (!user) return;
     const interval = setInterval(checkSubscription, 60000);
     return () => clearInterval(interval);
-  }, [user]);
+  }, [user, checkSubscription]);
 
   return (
     <AuthContext.Provider
-      value={{ user, session, profile, loading, subscription, accountId, signOut, refreshProfile, checkSubscription }}
+      value={{ user, session, profile, loading, subscription, subscriptionChecked, accountId, signOut, refreshProfile, checkSubscription }}
     >
       {children}
     </AuthContext.Provider>
