@@ -1,40 +1,30 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Check, Zap } from "lucide-react";
+import { Check, Zap, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Link, useNavigate } from "react-router-dom";
-import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 
 const Pricing = () => {
-  const { user } = useAuth();
   const navigate = useNavigate();
-  const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [proLoading, setProLoading] = useState(false);
 
-  const handleProClick = async () => {
-    if (!user) {
-      navigate("/signup");
-      return;
-    }
-
-    setCheckoutLoading(true);
+  const handleGoPro = async () => {
+    setProLoading(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) { toast.error("Please log in again."); return; }
-
-      const { data, error } = await supabase.functions.invoke("create-checkout", {
-        headers: { Authorization: `Bearer ${session.access_token}` },
+      const { data, error } = await supabase.functions.invoke("create-guest-checkout", {
+        body: { origin: window.location.origin },
       });
       if (error || !data?.url) {
         toast.error("Could not start checkout.");
       } else {
-        window.open(data.url, "_blank");
+        window.location.href = data.url;
       }
     } catch {
       toast.error("An error occurred.");
     } finally {
-      setCheckoutLoading(false);
+      setProLoading(false);
     }
   };
 
@@ -114,8 +104,10 @@ const Pricing = () => {
                   </li>
                 ))}
               </ul>
-              <Button variant="hero" className="w-full" size="lg" onClick={handleProClick} disabled={checkoutLoading}>
-                {checkoutLoading ? "Starting Checkout..." : "Start Free Trial"}
+              <Button variant="hero" className="w-full" size="lg" onClick={handleGoPro} disabled={proLoading}>
+                {proLoading ? (
+                  <><Loader2 className="w-4 h-4 animate-spin mr-2" /> Starting Checkout...</>
+                ) : "Go Pro — $30/month"}
               </Button>
             </div>
           </div>
