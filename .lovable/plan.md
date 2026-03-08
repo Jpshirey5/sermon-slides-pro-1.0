@@ -1,31 +1,72 @@
 
 
-# Remove "Create through Sermon Outline" Feature
+# Plan: Fix Subscription Redirect Loop and Move to Account-Level Billing
 
-## What Will Be Removed
+## Root Cause
 
-1. **Dashboard button** -- The "Create through Sermon Outline" button and its `<Link>` wrapper in `src/pages/Dashboard.tsx` (lines 138-143)
-2. **Route** -- The `/dashboard/outline-upload` route in `src/App.tsx` (line 42) and its import (line 19)
-3. **Page component** -- Delete `src/pages/OutlineUpload.tsx`
-4. **Parser library** -- Delete `src/lib/outline-parser.ts`
+Two problems are causing the infinite Stripe redirect loop:
 
-## What Will NOT Be Touched
+1. **Race condition in ProtectedRoute**: When the user returns from Stripe to `/dashboard?checkout=success`, `ProtectedRoute` fires first and sees `subscription.subscribed === false` (the check hasn't completed yet). It immediately redirects back to Stripe before the Dashboard component even mounts to handle the `checkout=success` parameter.
 
-- All other dashboard functionality (Sermon Slide Creator card, Training Creator tab, presentations list, study guides list)
-- All other routes and pages
-- No other components, libraries, or styles
+2. **Wrong billing scope**: Subscription data is currently stored on the `profiles` table (per-user), but billing should be per-account since the `accounts` table already has `subscription_status`, `stripe_customer_id`, and `stripe_subscription_id` columns.
 
-## Technical Details
+## Changes
 
-### `src/pages/Dashboard.tsx`
-- Remove lines 138-143 (the `<Link to="/dashboard/outline-upload">` block containing the "Create through Sermon Outline" button)
-- No other changes to this file
+### 1. Fix `ProtectedRoute` — Stop the redirect loop
+- Detect `?checkout=success` in the URL query string
+- When present, call `checkSubscription()` and **wait** for it to resolve instead of redirecting to Stripe
+- Add a `subscriptionChecked` flag to track whether the initial check has completed, preventing premature redirects
 
-### `src/App.tsx`
-- Remove the `import OutlineUpload` line (line 19)
-- Remove the `<Route path="/dashboard/outline-upload" ...>` line (line 42)
+### 2. Update `AuthContext` — Add subscription-checked state
+- Add a `subscriptionChecked` boolean to track whether `checkSubscription()` has completed at least once
+- `ProtectedRoute` should not redirect to Stripe until this flag is true
+- This prevents the race where `subscribed === false` simply because the check hasn't run yet
 
-### Deleted Files
-- `src/pages/OutlineUpload.tsx`
-- `src/lib/outline-parser.ts`
+### 3. Update `check-subscription` edge function — Account-level lookup
+- After authenticating the user, look up their `account_id` via the `account_members` table
+- Then check the `accounts` table for `stripe_customer_id` to find the Stripe customer
+- If no Stripe customer on the account, fall back to email-based Stripe lookup
+- On finding an active subscription, update the `accounts` table (not `profiles`) with `subscription_status = 'active'`, `stripe_customer_id`, `stripe_subscription_id`, and `subscription_period_end`
+
+### 4. Update `create-checkout` edge function — Store on account
+- Look up the user's account_id
+- Store `stripe_customer_id` on the `accounts` table instead of `profiles`
+- Pass `metadata: { account_id }` to the Stripe checkout session for webhook correlation
+
+### 5. Update `stripe-webhook` — Write to accounts table
+- On `checkout.session.completed`: use metadata `account_id` (or fall back to email lookup via profiles → account_members) to update the `accounts` table
+- On `subscription.updated` / `subscription.deleted`: look up by `stripe_customer_id` in `accounts` table
+
+### 6. Update `create-checkout` — Prevent duplicate checkout for already-subscribed accounts
+- Before creating a checkout session, check if the Stripe customer already has an active subscription
+- If yes, return the dashboard URL directly instead of creating another checkout
+
+## Flow After Fix
+
+```text
+New user:
+  Sign up → confirm email → /dashboard
+    → ProtectedRoute: subscriptionChecked=false → wait
+    → checkSubscription() completes → subscribed=false, subscriptionChecked=true
+    → ProtectedRoute: redirect to Stripe
+    → Pay → /dashboard?checkout=success
+    → ProtectedRoute: sees checkout=success → calls checkSubscription(), waits
+    → check-subscription queries Stripe → active → updates accounts table → returns subscribed=true
+    → ProtectedRoute: subscribed=true → renders Dashboard
+
+Returning user:
+  Log in → /dashboard
+    → checkSubscription() → Stripe confirms active sub → subscribed=true
+    → Dashboard renders immediately
+```
+
+## Files
+
+| File | Change |
+|------|--------|
+| `src/contexts/AuthContext.tsx` | Add `subscriptionChecked` state, set after first `checkSubscription()` resolves |
+| `src/components/ProtectedRoute.tsx` | Wait for `subscriptionChecked`, detect `checkout=success` param, call `checkSubscription()` + wait before allowing render |
+| `supabase/functions/check-subscription/index.ts` | Query `account_members` → `accounts` for subscription status; update `accounts` table |
+| `supabase/functions/create-checkout/index.ts` | Store `stripe_customer_id` on `accounts`; pass `account_id` in Stripe metadata; skip checkout if already subscribed |
+| `supabase/functions/stripe-webhook/index.ts` | Update `accounts` table instead of `profiles` |
 
