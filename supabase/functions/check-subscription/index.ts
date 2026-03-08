@@ -102,7 +102,7 @@ serve(async (req) => {
           stripe_customer_id: customerId,
           stripe_subscription_id: sub.id,
         })
-        .eq("id", user.id);
+        .eq("id", userId);
     } else {
       logStep("No active subscription");
       await supabaseClient
