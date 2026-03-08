@@ -10,18 +10,16 @@ interface ProtectedRouteProps {
 }
 
 const ProtectedRoute = ({ children, allowUnsubscribed = false }: ProtectedRouteProps) => {
-  const { user, loading, subscription, subscriptionChecked, session, checkSubscription } = useAuth();
-  const [redirecting, setRedirecting] = useState(false);
+  const { user, loading, subscription, subscriptionChecked, checkSubscription } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [postCheckoutVerifying, setPostCheckoutVerifying] = useState(false);
 
-  const isCheckoutSuccess = searchParams.get("checkout") === "success";
   const tokenHash = searchParams.get("token_hash");
   const authType = searchParams.get("type");
   const hasHashAccessToken = typeof window !== "undefined" && window.location.hash.includes("access_token=");
   const isAuthCallback = Boolean((tokenHash && authType) || hasHashAccessToken);
   const [authFinalizing, setAuthFinalizing] = useState(isAuthCallback);
 
+  // Handle email confirmation callback
   useEffect(() => {
     if (!isAuthCallback) {
       setAuthFinalizing(false);
@@ -30,7 +28,7 @@ const ProtectedRoute = ({ children, allowUnsubscribed = false }: ProtectedRouteP
 
     let cancelled = false;
 
-    const finalizeAuthFromEmailLink = async () => {
+    const finalizeAuth = async () => {
       try {
         if (tokenHash && authType) {
           await supabase.auth.verifyOtp({
@@ -57,67 +55,11 @@ const ProtectedRoute = ({ children, allowUnsubscribed = false }: ProtectedRouteP
       }
     };
 
-    finalizeAuthFromEmailLink();
-
-    return () => {
-      cancelled = true;
-    };
+    finalizeAuth();
+    return () => { cancelled = true; };
   }, [isAuthCallback, tokenHash, authType, searchParams, setSearchParams]);
 
-  // Handle post-checkout: re-check subscription then clear param
-  useEffect(() => {
-    if (!isCheckoutSuccess || !user || postCheckoutVerifying || authFinalizing) return;
-
-    const verify = async () => {
-      setPostCheckoutVerifying(true);
-      for (let i = 0; i < 5; i++) {
-        await checkSubscription();
-        await new Promise((r) => setTimeout(r, 2000));
-      }
-
-      const cleanedParams = new URLSearchParams(searchParams.toString());
-      cleanedParams.delete("checkout");
-      setSearchParams(cleanedParams, { replace: true });
-      setPostCheckoutVerifying(false);
-    };
-
-    verify();
-  }, [isCheckoutSuccess, user, postCheckoutVerifying, authFinalizing, checkSubscription, searchParams, setSearchParams]);
-
-  // Redirect to Stripe if unsubscribed (only after check completes, not during callback/post-checkout)
-  useEffect(() => {
-    if (
-      loading ||
-      authFinalizing ||
-      !user ||
-      allowUnsubscribed ||
-      subscription.subscribed ||
-      redirecting ||
-      !subscriptionChecked ||
-      isCheckoutSuccess ||
-      postCheckoutVerifying
-    ) return;
-
-    const redirectToCheckout = async () => {
-      setRedirecting(true);
-      try {
-        const { data, error } = await supabase.functions.invoke("create-checkout", {
-          headers: { Authorization: `Bearer ${session?.access_token}` },
-        });
-        if (error) throw error;
-        if (data?.url) {
-          window.location.href = data.url;
-        }
-      } catch (err) {
-        console.error("Checkout redirect failed:", err);
-        setRedirecting(false);
-      }
-    };
-
-    redirectToCheckout();
-  }, [loading, authFinalizing, user, subscription.subscribed, allowUnsubscribed, redirecting, session, subscriptionChecked, isCheckoutSuccess, postCheckoutVerifying]);
-
-  if (loading || authFinalizing || !subscriptionChecked || redirecting || isCheckoutSuccess || postCheckoutVerifying) {
+  if (loading || authFinalizing || !subscriptionChecked) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
@@ -125,13 +67,7 @@ const ProtectedRoute = ({ children, allowUnsubscribed = false }: ProtectedRouteP
             <BookOpen className="w-6 h-6 text-primary-foreground" />
           </div>
           <p className="text-muted-foreground">
-            {authFinalizing
-              ? "Finalizing your account..."
-              : redirecting
-              ? "Setting up your subscription..."
-              : isCheckoutSuccess || postCheckoutVerifying
-              ? "Verifying your subscription..."
-              : "Loading..."}
+            {authFinalizing ? "Finalizing your account..." : "Loading..."}
           </p>
         </div>
       </div>
@@ -142,14 +78,21 @@ const ProtectedRoute = ({ children, allowUnsubscribed = false }: ProtectedRouteP
     return <Navigate to="/login" replace />;
   }
 
+  // No more auto-redirect to Stripe. If unsubscribed and not allowed, show message.
   if (!subscription.subscribed && !allowUnsubscribed) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 rounded-xl gradient-hero flex items-center justify-center animate-pulse">
+        <div className="flex flex-col items-center gap-4 text-center max-w-md px-4">
+          <div className="w-12 h-12 rounded-xl gradient-hero flex items-center justify-center">
             <BookOpen className="w-6 h-6 text-primary-foreground" />
           </div>
-          <p className="text-muted-foreground">Redirecting to checkout...</p>
+          <h2 className="font-serif text-xl font-semibold text-foreground">Subscription Required</h2>
+          <p className="text-muted-foreground">
+            You need an active Pro subscription to access the dashboard. Visit our homepage to subscribe.
+          </p>
+          <a href="/#pricing" className="text-primary hover:underline font-medium">
+            View Pricing
+          </a>
         </div>
       </div>
     );
@@ -159,4 +102,3 @@ const ProtectedRoute = ({ children, allowUnsubscribed = false }: ProtectedRouteP
 };
 
 export default ProtectedRoute;
-

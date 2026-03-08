@@ -1,9 +1,13 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Sparkles } from "lucide-react";
+import GetStartedModal from "@/components/GetStartedModal";
 
 const CTA = () => {
+  const [modalOpen, setModalOpen] = useState(false);
+
   return (
     <section className="py-24 gradient-hero relative overflow-hidden">
       {/* Background Pattern */}
@@ -53,12 +57,10 @@ const CTA = () => {
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <Link to="/create">
-              <Button variant="gold" size="xl">
-                Get Started Free
-                <ArrowRight className="w-5 h-5" />
-              </Button>
-            </Link>
+            <Button variant="gold" size="xl" onClick={() => setModalOpen(true)}>
+              Get Started Free
+              <ArrowRight className="w-5 h-5" />
+            </Button>
             <Link to="/login">
               <Button variant="outline" size="xl" className="border-white/30 text-white hover:bg-white/10 hover:text-white">
                 Login
@@ -67,6 +69,8 @@ const CTA = () => {
           </div>
         </motion.div>
       </div>
+
+      <GetStartedModal open={modalOpen} onOpenChange={setModalOpen} />
     </section>
   );
 };

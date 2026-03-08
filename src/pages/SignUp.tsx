@@ -4,7 +4,7 @@ import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { BookOpen, ArrowLeft } from "lucide-react";
+import { BookOpen, ArrowLeft, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -20,6 +20,7 @@ const SignUp = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const inviteToken = searchParams.get("invite");
+  const sessionId = searchParams.get("session_id");
 
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
@@ -30,10 +31,40 @@ const SignUp = () => {
   const [state, setState] = useState("");
   const [loading, setLoading] = useState(false);
 
+  // Stripe session email state
+  const [stripeEmail, setStripeEmail] = useState<string | null>(null);
+  const [stripeEmailLoading, setStripeEmailLoading] = useState(!!sessionId);
+
   // Invite state
   const [inviteValid, setInviteValid] = useState(false);
   const [inviteOrgName, setInviteOrgName] = useState("");
   const [inviteLoading, setInviteLoading] = useState(!!inviteToken);
+
+  // Fetch email from Stripe session
+  useEffect(() => {
+    if (!sessionId) return;
+
+    const fetchEmail = async () => {
+      setStripeEmailLoading(true);
+      try {
+        const { data, error } = await supabase.functions.invoke("get-checkout-email", {
+          body: { session_id: sessionId },
+        });
+        if (!error && data?.email) {
+          setStripeEmail(data.email);
+          setEmail(data.email);
+        } else {
+          toast.error("Could not retrieve your email from checkout. Please enter it manually.");
+        }
+      } catch {
+        toast.error("Could not retrieve your email from checkout.");
+      } finally {
+        setStripeEmailLoading(false);
+      }
+    };
+
+    fetchEmail();
+  }, [sessionId]);
 
   useEffect(() => {
     if (!inviteToken) return;
@@ -47,7 +78,6 @@ const SignUp = () => {
         return;
       }
       const invite = data[0];
-      // Get org name from accounts
       const { data: accountData } = await supabase
         .from("accounts_public")
         .select("name")
@@ -69,7 +99,7 @@ const SignUp = () => {
       toast.error("Please fill in all fields.");
       return;
     }
-    if (!inviteValid && (!orgName || !city || !state)) {
+    if (!inviteValid && !stripeEmail && (!orgName || !city || !state)) {
       toast.error("Please fill in your organization details.");
       return;
     }
@@ -88,7 +118,7 @@ const SignUp = () => {
       if (inviteValid && inviteToken) {
         metadata.invite_token = inviteToken;
       } else {
-        metadata.org_name = orgName;
+        metadata.org_name = orgName || "My Church";
         metadata.org_city = city;
         metadata.org_state = state;
       }
@@ -109,7 +139,7 @@ const SignUp = () => {
           toast.error(error.message);
         }
       } else {
-        toast.success("Account created! Confirm your email to continue straight to subscription setup.");
+        toast.success("Account created! Check your email to confirm, then log in to access your dashboard.");
         navigate("/login");
       }
     } catch {
@@ -119,13 +149,20 @@ const SignUp = () => {
     }
   };
 
-  if (inviteLoading) {
+  if (inviteLoading || stripeEmailLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
-        <p className="text-muted-foreground">Verifying invite...</p>
+        <div className="flex items-center gap-3">
+          <Loader2 className="w-5 h-5 animate-spin text-primary" />
+          <p className="text-muted-foreground">
+            {stripeEmailLoading ? "Retrieving your payment info..." : "Verifying invite..."}
+          </p>
+        </div>
       </div>
     );
   }
+
+  const isEmailLocked = inviteValid || !!stripeEmail;
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -156,11 +193,20 @@ const SignUp = () => {
               </div>
               <h1 className="font-serif text-2xl font-bold text-foreground mb-2">Create Account</h1>
               <p className="text-muted-foreground">
-                {inviteValid
+                {stripeEmail
+                  ? "Your Pro subscription is active! Create your account to get started."
+                  : inviteValid
                   ? `You've been invited to join ${inviteOrgName}`
                   : "Sign up to get started with SermonSlides"}
               </p>
             </div>
+
+            {stripeEmail && (
+              <div className="rounded-lg bg-primary/5 border border-primary/20 p-3 mb-6">
+                <p className="text-sm text-foreground font-medium">✓ Pro subscription active</p>
+                <p className="text-xs text-muted-foreground mt-1">Your email from Stripe has been pre-filled below.</p>
+              </div>
+            )}
 
             <form onSubmit={handleSubmit} className="space-y-5">
               <div className="space-y-2">
@@ -169,7 +215,7 @@ const SignUp = () => {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
-                <Input id="email" type="email" placeholder="you@church.org" value={email} onChange={(e) => setEmail(e.target.value)} className="h-12" required disabled={inviteValid} />
+                <Input id="email" type="email" placeholder="you@church.org" value={email} onChange={(e) => setEmail(e.target.value)} className="h-12" required disabled={isEmailLocked} />
               </div>
 
               {/* Organization fields — only show if NOT joining via invite */}
@@ -177,12 +223,12 @@ const SignUp = () => {
                 <>
                   <div className="space-y-2">
                     <Label htmlFor="orgName">Organization / Church Name</Label>
-                    <Input id="orgName" type="text" placeholder="First Baptist Church" value={orgName} onChange={(e) => setOrgName(e.target.value)} className="h-12" required />
+                    <Input id="orgName" type="text" placeholder="First Baptist Church" value={orgName} onChange={(e) => setOrgName(e.target.value)} className="h-12" required={!stripeEmail} />
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-2">
                       <Label htmlFor="city">City</Label>
-                      <Input id="city" type="text" placeholder="Dallas" value={city} onChange={(e) => setCity(e.target.value)} className="h-12" required />
+                      <Input id="city" type="text" placeholder="Dallas" value={city} onChange={(e) => setCity(e.target.value)} className="h-12" required={!stripeEmail} />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="state">State</Label>
@@ -191,7 +237,7 @@ const SignUp = () => {
                         value={state}
                         onChange={(e) => setState(e.target.value)}
                         className="h-12 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        required
+                        required={!stripeEmail}
                       >
                         <option value="">Select...</option>
                         {US_STATES.map(s => (
