@@ -59,7 +59,7 @@ const ProtectedRoute = ({ children, allowUnsubscribed = false }: ProtectedRouteP
     return () => { cancelled = true; };
   }, [isAuthCallback, tokenHash, authType, searchParams, setSearchParams]);
 
-  if (loading || authFinalizing || !subscriptionChecked) {
+  if (loading || authFinalizing) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
@@ -76,6 +76,24 @@ const ProtectedRoute = ({ children, allowUnsubscribed = false }: ProtectedRouteP
 
   if (!user) {
     return <Navigate to="/login" replace />;
+  }
+
+  if (!subscriptionChecked) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 rounded-xl gradient-hero flex items-center justify-center animate-pulse">
+            <BookOpen className="w-6 h-6 text-primary-foreground" />
+          </div>
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  const pendingProCheckout = typeof window !== "undefined" && localStorage.getItem("pending_pro_checkout") === "true";
+  if (!subscription.subscribed && !allowUnsubscribed && pendingProCheckout) {
+    return <Navigate to="/checkout-redirect?startCheckout=pro" replace />;
   }
 
   // No more auto-redirect to Stripe. If unsubscribed and not allowed, show message.

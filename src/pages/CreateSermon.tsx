@@ -26,7 +26,6 @@ import {
 } from "lucide-react";
 import { lookupScripture } from "@/lib/scripture-api";
 import { savePresentation } from "@/lib/presentations";
-import { useAuth } from "@/contexts/AuthContext";
 
 interface Scripture {
   reference: string;
@@ -60,7 +59,6 @@ const translations = [
 const CreateSermon = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user } = useAuth();
   const isFromDashboard = location.pathname.startsWith("/dashboard");
   const editData = (location.state as any)?.editData;
   const editId = (location.state as any)?.editId;
@@ -360,9 +358,9 @@ const CreateSermon = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="app-shell">
       {/* Header */}
-      <header className="border-b border-border bg-card sticky top-0 z-50">
+      <header className="border-b border-border/60 bg-white/65 backdrop-blur-md sticky top-0 z-50">
         <div className="container mx-auto px-4">
           <div className="flex items-center justify-between h-16">
             {/* Back */}
@@ -382,7 +380,7 @@ const CreateSermon = () => {
                 <BookOpen className="w-4 h-4 text-primary-foreground" />
               </div>
               <span className="font-serif text-lg font-semibold text-foreground">
-                SermonSlides
+                Sermon Slide Pro
               </span>
             </div>
 
@@ -416,7 +414,7 @@ const CreateSermon = () => {
 
           <form onSubmit={handleSubmit} className="space-y-8">
             {/* Basic Info */}
-            <div className="p-6 rounded-2xl bg-card border border-border space-y-6">
+            <div className="p-6 rounded-2xl glass-panel space-y-6">
               <h2 className="font-serif text-xl font-semibold text-foreground">
                 Sermon Details
               </h2>
@@ -496,7 +494,7 @@ const CreateSermon = () => {
                 <Reorder.Item
                   key={point.id}
                   value={point}
-                  className="p-6 rounded-2xl bg-card border border-border"
+                  className="p-6 rounded-2xl glass-panel"
                 >
                 {/* Point Header */}
                   <div className="flex items-start gap-4">

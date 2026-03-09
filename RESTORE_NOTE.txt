@@ -1,0 +1,4 @@
+Snapshot label: Nexuma
+Created: 2026-03-09
+Source: /Users/johnshirey/Desktop/Replika/sermon-slides-pro-1.0
+Restore target: /Users/johnshirey/Desktop/Replika/sermon-slides-pro-1.0

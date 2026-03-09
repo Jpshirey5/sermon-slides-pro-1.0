@@ -13,7 +13,7 @@ serve(async (req) => {
   }
 
   try {
-    const { email, token, org_name, invited_by_name } = await req.json();
+    const { email, token, org_name, invited_by_name, site_url } = await req.json();
 
     if (!email || !token) {
       return new Response(JSON.stringify({ error: "Missing email or token" }), {
@@ -32,21 +32,36 @@ serve(async (req) => {
 
     const resend = new Resend(resendApiKey);
 
-    const siteUrl = Deno.env.get("SITE_URL") || "https://id-preview--4106109b-8adc-4e56-b2c6-847326cb6d74.lovable.app";
+    const normalizeBaseUrl = (value: string | null | undefined) => {
+      if (!value) return null;
+      try {
+        const url = new URL(value);
+        return `${url.protocol}//${url.host}`;
+      } catch {
+        return null;
+      }
+    };
+
+    const requestOrigin = normalizeBaseUrl(req.headers.get("origin"));
+    const refererOrigin = normalizeBaseUrl(req.headers.get("referer"));
+    const bodySiteUrl = normalizeBaseUrl(site_url);
+    const envSiteUrl = normalizeBaseUrl(Deno.env.get("SITE_URL"));
+
+    const siteUrl = bodySiteUrl || requestOrigin || refererOrigin || envSiteUrl || "http://localhost:8080";
     const signupLink = `${siteUrl}/signup?invite=${token}`;
 
-    const orgDisplay = org_name || "SermonSlides";
+    const orgDisplay = org_name || "Sermon Slide Pro";
     const inviterDisplay = invited_by_name || "A team member";
 
     const { error } = await resend.emails.send({
-      from: "SermonSlides <onboarding@resend.dev>",
+      from: "Sermon Slide Pro <onboarding@resend.dev>",
       to: email,
-      subject: `You've been invited to join ${orgDisplay} on SermonSlides`,
+      subject: `You've been invited to join ${orgDisplay} on Sermon Slide Pro`,
       html: `
         <div style="font-family: Georgia, 'Times New Roman', serif; max-width: 560px; margin: 0 auto; padding: 40px 20px;">
           <h1 style="font-size: 24px; color: #1a1a2e; margin-bottom: 8px;">You're Invited!</h1>
           <p style="font-size: 16px; color: #555; line-height: 1.6;">
-            ${inviterDisplay} has invited you to join <strong>${orgDisplay}</strong> on SermonSlides.
+            ${inviterDisplay} has invited you to join <strong>${orgDisplay}</strong> on Sermon Slide Pro.
           </p>
           <p style="font-size: 16px; color: #555; line-height: 1.6;">
             Click the button below to create your account and get started.

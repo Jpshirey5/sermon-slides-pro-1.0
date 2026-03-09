@@ -1,35 +1,19 @@
-import { useState } from "react";
 import { motion } from "framer-motion";
-import { Check, Zap, Loader2 } from "lucide-react";
+import { Check, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Link, useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
-import { toast } from "sonner";
+import { useAuth } from "@/contexts/AuthContext";
 
 const Pricing = () => {
   const navigate = useNavigate();
-  const [proLoading, setProLoading] = useState(false);
+  const { user } = useAuth();
 
-  const handleGoPro = async () => {
-    setProLoading(true);
-    try {
-      const { data, error } = await supabase.functions.invoke("create-guest-checkout", {
-        body: { origin: window.location.origin },
-      });
-      if (error || !data?.url) {
-        toast.error("Could not start checkout.");
-      } else {
-        window.location.href = data.url;
-      }
-    } catch {
-      toast.error("An error occurred.");
-    } finally {
-      setProLoading(false);
-    }
+  const handleGoPro = () => {
+    navigate(user ? "/account" : "/signup?plan=pro");
   };
 
   return (
-    <section id="pricing" className="py-24 bg-background">
+    <section id="pricing" className="py-24">
       <div className="container mx-auto px-4">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -54,7 +38,7 @@ const Pricing = () => {
           className="max-w-4xl mx-auto grid md:grid-cols-2 gap-6"
         >
           {/* Pay Per Export */}
-          <div className="relative rounded-3xl bg-card border border-border overflow-hidden shadow-soft">
+          <div className="relative rounded-3xl glass-panel overflow-hidden">
             <div className="p-8">
               <div className="w-14 h-14 rounded-2xl bg-secondary flex items-center justify-center mb-6">
                 <Zap className="w-7 h-7 text-foreground" />
@@ -82,7 +66,7 @@ const Pricing = () => {
           </div>
 
           {/* Monthly Subscription */}
-          <div className="relative rounded-3xl bg-card border-2 border-primary overflow-hidden shadow-elevated">
+          <div className="relative rounded-3xl glass-panel border-2 border-primary/60 overflow-hidden shadow-elevated">
             <div className="absolute top-0 right-0 bg-primary text-primary-foreground text-xs font-semibold px-4 py-1 rounded-bl-xl">Best Value</div>
             <div className="p-8">
               <div className="w-14 h-14 rounded-2xl gradient-hero flex items-center justify-center mb-6 shadow-glow">
@@ -104,10 +88,8 @@ const Pricing = () => {
                   </li>
                 ))}
               </ul>
-              <Button variant="hero" className="w-full" size="lg" onClick={handleGoPro} disabled={proLoading}>
-                {proLoading ? (
-                  <><Loader2 className="w-4 h-4 animate-spin mr-2" /> Starting Checkout...</>
-                ) : "Go Pro — $30/month"}
+              <Button variant="hero" className="w-full" size="lg" onClick={handleGoPro}>
+                Go Pro — $30/month
               </Button>
             </div>
           </div>

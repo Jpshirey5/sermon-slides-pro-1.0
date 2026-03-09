@@ -32,7 +32,7 @@ const Dashboard = () => {
   useEffect(() => {
     if (searchParams.get("checkout") === "success") {
       checkSubscription();
-      toast.success("Subscription activated! Welcome to SermonSlides Pro.");
+      toast.success("Subscription activated! Welcome to Sermon Slide Pro.");
       setSearchParams({}, { replace: true });
     }
   }, [searchParams]);
@@ -62,9 +62,9 @@ const Dashboard = () => {
   const displayName = profile?.full_name || user?.email || "User";
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="app-shell">
       {/* Header */}
-      <header className="border-b border-border bg-card sticky top-0 z-50">
+      <header className="sticky top-0 z-50 border-b border-border/60 bg-white/65 backdrop-blur-md">
         <div className="container mx-auto px-4">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-2">
@@ -72,7 +72,7 @@ const Dashboard = () => {
                 <BookOpen className="w-4 h-4 text-primary-foreground" />
               </div>
               <span className="font-serif text-lg font-semibold text-foreground">
-                SermonSlides
+                Sermon Slide Pro
               </span>
             </div>
             <div className="flex items-center gap-2">
@@ -111,7 +111,7 @@ const Dashboard = () => {
           transition={{ duration: 0.4, delay: 0.1 }}
         >
           {/* Sermon Slide Creator Card */}
-          <div className="max-w-lg mx-auto rounded-2xl border border-border bg-card p-8 flex flex-col items-center text-center mb-14">
+          <div className="max-w-lg mx-auto rounded-2xl glass-panel p-8 flex flex-col items-center text-center mb-14">
             <div className="w-12 h-12 rounded-xl gradient-hero flex items-center justify-center mb-5">
               <Presentation className="w-6 h-6 text-primary-foreground" />
             </div>
@@ -147,11 +147,11 @@ const Dashboard = () => {
             </div>
 
             {loading ? (
-              <div className="rounded-2xl border border-dashed border-border bg-card/50 p-12 text-center">
+              <div className="rounded-2xl border border-dashed border-border bg-white/60 p-12 text-center">
                 <p className="text-muted-foreground">Loading presentations...</p>
               </div>
             ) : presentations.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-border bg-card/50 p-12 text-center">
+              <div className="rounded-2xl border border-dashed border-border bg-white/60 p-12 text-center">
                 <Presentation className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
                 <p className="text-muted-foreground">
                   No presentations yet. Create your first one!
@@ -160,7 +160,7 @@ const Dashboard = () => {
             ) : (
               <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {presentations.map((p) => (
-                  <div key={p.id} className="rounded-xl border border-border bg-card p-5 hover:shadow-soft transition-shadow group">
+                  <div key={p.id} className="rounded-xl border border-border/70 bg-white/75 backdrop-blur-sm p-5 hover:shadow-soft transition-shadow group">
                     <div className="cursor-pointer" onClick={() => navigate(`/editor/${p.id}`, { state: { from: "dashboard" } })}>
                       <h3 className="font-serif font-semibold text-foreground mb-1 group-hover:text-primary transition-colors truncate">
                         {p.title || "Untitled"}

@@ -1,14 +1,15 @@
 import { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { BookOpen, ArrowLeft, CreditCard, User, Crown, Users, Mail, Loader2 } from "lucide-react";
+import { BookOpen, ArrowLeft, CreditCard, User, Crown, Users, Mail, Loader2, AlertTriangle, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useSearchParams } from "react-router-dom";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 interface TeamMember {
   id: string;
@@ -18,28 +19,35 @@ interface TeamMember {
   email: string | null;
 }
 
+interface PendingInvite {
+  id: string;
+  email: string;
+  token: string;
+  created_at: string;
+  expires_at: string;
+}
+
 const Account = () => {
+  const navigate = useNavigate();
   const { user, profile, subscription, refreshProfile, signOut, checkSubscription, accountId } = useAuth();
   const [fullName, setFullName] = useState(profile?.full_name || "");
   const [saving, setSaving] = useState(false);
   const [portalLoading, setPortalLoading] = useState(false);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   // Team state
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [teamLoading, setTeamLoading] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviting, setInviting] = useState(false);
+  const [resendingInviteId, setResendingInviteId] = useState<string | null>(null);
+  const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
+  const [pendingInvitesLoading, setPendingInvitesLoading] = useState(false);
   const [orgName, setOrgName] = useState("");
   const [isOwner, setIsOwner] = useState(false);
-
-  useEffect(() => {
-    if (searchParams.get("checkout") === "success") {
-      checkSubscription();
-      toast.success("Subscription activated! Welcome to Pro.");
-    }
-  }, [searchParams]);
+  const [deleteWarningOpen, setDeleteWarningOpen] = useState(false);
+  const [deleteFinalOpen, setDeleteFinalOpen] = useState(false);
 
   useEffect(() => {
     if (profile?.full_name) setFullName(profile.full_name);
@@ -49,6 +57,7 @@ const Account = () => {
     if (user && accountId) {
       loadTeam();
       loadOrgInfo();
+      loadPendingInvites();
     }
   }, [user, accountId]);
 
@@ -93,6 +102,49 @@ const Account = () => {
     setTeamLoading(false);
   };
 
+  const loadPendingInvites = async () => {
+    if (!accountId) return;
+    setPendingInvitesLoading(true);
+    const { data, error } = await supabase
+      .from("account_invites")
+      .select("id, email, token, created_at, expires_at")
+      .eq("account_id", accountId)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      setPendingInvites([]);
+    } else {
+      setPendingInvites((data || []) as PendingInvite[]);
+    }
+    setPendingInvitesLoading(false);
+  };
+
+  const resendInvite = async (invite: PendingInvite) => {
+    if (!isOwner) return;
+    setResendingInviteId(invite.id);
+    try {
+      const { error } = await supabase.functions.invoke("send-invite", {
+        body: {
+          email: invite.email,
+          token: invite.token,
+          org_name: orgName,
+          invited_by_name: profile?.full_name || "A team member",
+          site_url: window.location.origin,
+        },
+      });
+
+      if (error) {
+        toast.error("Could not resend invite. Please try again.");
+      } else {
+        toast.success(`Invite resent to ${invite.email}.`);
+      }
+    } catch {
+      toast.error("Could not resend invite. Please try again.");
+    } finally {
+      setResendingInviteId(null);
+    }
+  };
+
   const handleSaveName = async () => {
     if (!user) return;
     setSaving(true);
@@ -111,13 +163,18 @@ const Account = () => {
 
   const handleInvite = async () => {
     if (!inviteEmail || !accountId || !user) return;
+    const normalizedInviteEmail = inviteEmail.trim().toLowerCase();
+    if (!normalizedInviteEmail) {
+      toast.error("Please enter a valid email.");
+      return;
+    }
     setInviting(true);
     try {
       // Check if user already exists in profiles
       const { data: existingProfiles } = await supabase
         .from("profiles")
         .select("id, email")
-        .eq("email", inviteEmail);
+        .ilike("email", normalizedInviteEmail);
 
       if (existingProfiles && existingProfiles.length > 0) {
         toast.error("This email is already registered. They can log in and join directly.");
@@ -129,7 +186,7 @@ const Account = () => {
       const { data: existingInvites } = await supabase
         .from("account_invites")
         .select("id")
-        .eq("email", inviteEmail)
+        .ilike("email", normalizedInviteEmail)
         .eq("account_id", accountId);
 
       if (existingInvites && existingInvites.length > 0) {
@@ -144,7 +201,7 @@ const Account = () => {
         .insert({
           account_id: accountId,
           invited_by: user.id,
-          email: inviteEmail,
+          email: normalizedInviteEmail,
         } as any)
         .select("token")
         .single();
@@ -158,20 +215,22 @@ const Account = () => {
       // Send invite email via edge function
       const { error: sendError } = await supabase.functions.invoke("send-invite", {
         body: {
-          email: inviteEmail,
+          email: normalizedInviteEmail,
           token: invite.token,
           org_name: orgName,
           invited_by_name: profile?.full_name || "A team member",
+          site_url: window.location.origin,
         },
       });
 
       if (sendError) {
         toast.error("Invite created but failed to send email. Please try again.");
       } else {
-        toast.success(`Invite sent to ${inviteEmail}!`);
+        toast.success(`Invite sent to ${normalizedInviteEmail}!`);
       }
 
       setInviteEmail("");
+      await loadPendingInvites();
     } catch {
       toast.error("An error occurred.");
     } finally {
@@ -199,7 +258,17 @@ const Account = () => {
     }
   };
 
-  const handleUpgrade = async () => {
+  const handleLogout = async () => {
+    await signOut();
+    navigate("/", { replace: true });
+  };
+
+  const handleUpgrade = async (openInNewTab: boolean = true) => {
+    if (subscription.subscribed) {
+      toast.success("Your Pro subscription is already active.");
+      return;
+    }
+
     setCheckoutLoading(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -210,7 +279,11 @@ const Account = () => {
       if (error || !data?.url) {
         toast.error("Could not start checkout.");
       } else {
-        window.open(data.url, "_blank");
+        if (openInNewTab) {
+          window.open(data.url, "_blank");
+        } else {
+          window.location.href = data.url;
+        }
       }
     } catch {
       toast.error("An error occurred.");
@@ -219,9 +292,55 @@ const Account = () => {
     }
   };
 
+  const handleStartDeleteFlow = () => {
+    setDeleteWarningOpen(true);
+  };
+
+  const handleContinueDeleteFlow = () => {
+    setDeleteWarningOpen(false);
+    setDeleteFinalOpen(true);
+  };
+
+  const handleGoToExitSurvey = () => {
+    setDeleteFinalOpen(false);
+    navigate("/exit-survey");
+  };
+
+  useEffect(() => {
+    if (searchParams.get("checkout") === "success") {
+      checkSubscription();
+      localStorage.removeItem("pending_pro_checkout");
+      localStorage.removeItem("pending_pro_checkout_email");
+      toast.success("Subscription activated! Welcome to Pro.");
+      const next = new URLSearchParams(searchParams.toString());
+      next.delete("checkout");
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchParams, setSearchParams, checkSubscription]);
+
+  useEffect(() => {
+    const pendingProCheckout = localStorage.getItem("pending_pro_checkout") === "true";
+    const shouldAutoStartCheckout = searchParams.get("startCheckout") === "pro" || pendingProCheckout;
+    if (!shouldAutoStartCheckout || !user || !accountId) return;
+
+    const next = new URLSearchParams(searchParams.toString());
+    next.delete("startCheckout");
+    setSearchParams(next, { replace: true });
+
+    if (subscription.subscribed) {
+      localStorage.removeItem("pending_pro_checkout");
+      localStorage.removeItem("pending_pro_checkout_email");
+      toast.success("Your Pro subscription is already active.");
+      return;
+    }
+
+    localStorage.removeItem("pending_pro_checkout");
+    handleUpgrade(false);
+  }, [searchParams, setSearchParams, user, accountId, subscription.subscribed]);
+
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b border-border bg-card sticky top-0 z-50">
+    <div className="app-shell">
+      <header className="border-b border-border/60 bg-white/65 backdrop-blur-md sticky top-0 z-50">
         <div className="container mx-auto px-4">
           <div className="flex items-center justify-between h-16">
             <Link to="/dashboard" className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors">
@@ -232,9 +351,9 @@ const Account = () => {
               <div className="w-8 h-8 rounded-lg gradient-hero flex items-center justify-center">
                 <BookOpen className="w-4 h-4 text-primary-foreground" />
               </div>
-              <span className="font-serif text-lg font-semibold text-foreground">SermonSlides</span>
+              <span className="font-serif text-lg font-semibold text-foreground">Sermon Slide Pro</span>
             </div>
-            <Button variant="ghost" onClick={signOut}>Log Out</Button>
+            <Button variant="ghost" onClick={handleLogout}>Log Out</Button>
           </div>
         </div>
       </header>
@@ -245,7 +364,7 @@ const Account = () => {
 
           {/* Organization */}
           {orgName && (
-            <div className="rounded-2xl bg-card border border-border p-6 mb-6">
+            <div className="rounded-2xl glass-panel p-6 mb-6">
               <div className="flex items-center gap-3 mb-4">
                 <BookOpen className="w-5 h-5 text-muted-foreground" />
                 <h2 className="font-serif text-xl font-semibold text-foreground">Organization</h2>
@@ -255,7 +374,7 @@ const Account = () => {
           )}
 
           {/* Profile Section */}
-          <div className="rounded-2xl bg-card border border-border p-6 mb-6">
+          <div className="rounded-2xl glass-panel p-6 mb-6">
             <div className="flex items-center gap-3 mb-6">
               <User className="w-5 h-5 text-muted-foreground" />
               <h2 className="font-serif text-xl font-semibold text-foreground">Profile</h2>
@@ -278,7 +397,7 @@ const Account = () => {
           </div>
 
           {/* Team Section */}
-          <div className="rounded-2xl bg-card border border-border p-6 mb-6">
+          <div className="rounded-2xl glass-panel p-6 mb-6">
             <div className="flex items-center gap-3 mb-6">
               <Users className="w-5 h-5 text-muted-foreground" />
               <h2 className="font-serif text-xl font-semibold text-foreground">Team</h2>
@@ -292,7 +411,7 @@ const Account = () => {
             ) : (
               <div className="space-y-3 mb-6">
                 {teamMembers.map(member => (
-                  <div key={member.id} className="flex items-center justify-between p-3 rounded-lg bg-muted/50 border border-border">
+                  <div key={member.id} className="flex items-center justify-between p-3 rounded-lg bg-white/65 border border-border/70">
                     <div>
                       <p className="text-sm font-medium text-foreground">{member.full_name || "Unnamed"}</p>
                       <p className="text-xs text-muted-foreground">{member.email}</p>
@@ -326,10 +445,46 @@ const Account = () => {
                 </div>
               </div>
             )}
+
+            {isOwner && (
+              <div className="pt-4 border-t border-border mt-4">
+                <div className="flex items-center justify-between mb-2">
+                  <Label className="text-sm font-medium text-foreground block">Pending invites</Label>
+                  <Button variant="ghost" size="sm" onClick={loadPendingInvites} disabled={pendingInvitesLoading}>
+                    {pendingInvitesLoading ? "Refreshing..." : "Refresh"}
+                  </Button>
+                </div>
+
+                {pendingInvites.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">No pending invites.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {pendingInvites.map((invite) => (
+                      <div key={invite.id} className="flex items-center justify-between p-3 rounded-lg bg-white/65 border border-border/70">
+                        <div>
+                          <p className="text-sm font-medium text-foreground">{invite.email}</p>
+                          <p className="text-xs text-muted-foreground">
+                            Sent {new Date(invite.created_at).toLocaleDateString()} · Expires {new Date(invite.expires_at).toLocaleDateString()}
+                          </p>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => resendInvite(invite)}
+                          disabled={resendingInviteId === invite.id}
+                        >
+                          {resendingInviteId === invite.id ? "Sending..." : "Resend"}
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Subscription Section */}
-          <div className="rounded-2xl bg-card border border-border p-6">
+          <div className="rounded-2xl glass-panel p-6">
             <div className="flex items-center gap-3 mb-6">
               <CreditCard className="w-5 h-5 text-muted-foreground" />
               <h2 className="font-serif text-xl font-semibold text-foreground">Subscription</h2>
@@ -371,8 +526,73 @@ const Account = () => {
               </div>
             </div>
           </div>
+
+          {/* Account Deletion Section */}
+          <div className="rounded-2xl glass-panel p-6 mt-6 border border-red-400/35">
+            <div className="flex items-center gap-3 mb-4">
+              <AlertTriangle className="w-5 h-5 text-red-600" />
+              <h2 className="font-serif text-xl font-semibold text-foreground">Account</h2>
+            </div>
+            <p className="text-sm text-muted-foreground mb-4">
+              Delete your account and permanently remove your data from the platform.
+              {isOwner
+                ? " As an owner, this will also remove all team members and presentations for your organization."
+                : " This action permanently removes your own login and profile access."}
+            </p>
+            <Button variant="destructive" onClick={handleStartDeleteFlow}>
+              <Trash2 className="w-4 h-4 mr-2" />
+              Delete Account
+            </Button>
+          </div>
         </motion.div>
       </main>
+
+      <Dialog open={deleteWarningOpen} onOpenChange={setDeleteWarningOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <AlertTriangle className="w-5 h-5" />
+              Warning: Permanent Account Deletion
+            </DialogTitle>
+            <DialogDescription className="pt-2 text-left">
+              This action is permanent and cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="text-sm text-foreground space-y-2">
+            <p>Deleting your account will permanently remove your profile and access.</p>
+            <p>All presentations tied to your account context will be deleted.</p>
+            {isOwner && (
+              <p className="font-medium text-red-700">
+                Because you are an owner, all associated team members will be removed and lose access.
+              </p>
+            )}
+            <p>Any active Stripe subscription for your account context will be canceled.</p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteWarningOpen(false)}>Cancel</Button>
+            <Button variant="destructive" onClick={handleContinueDeleteFlow}>I Understand</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={deleteFinalOpen} onOpenChange={setDeleteFinalOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-red-600">Final Confirmation</DialogTitle>
+            <DialogDescription className="pt-2 text-left">
+              You are about to start the final deactivation process.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="text-sm text-foreground space-y-2">
+            <p>You must complete a required exit survey to finish account deletion.</p>
+            <p className="font-medium">Once submitted, your account and data will be permanently deleted.</p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteFinalOpen(false)}>Go Back</Button>
+            <Button variant="destructive" onClick={handleGoToExitSurvey}>Continue to Exit Survey</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

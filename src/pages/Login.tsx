@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,9 +7,12 @@ import { Label } from "@/components/ui/label";
 import { BookOpen, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import PasswordInput from "@/components/auth/PasswordInput";
 
 const Login = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const nextPath = searchParams.get("next") || "/dashboard";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -23,11 +26,12 @@ const Login = () => {
 
     setLoading(true);
     try {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      const normalizedEmail = email.trim().toLowerCase();
+      const { error } = await supabase.auth.signInWithPassword({ email: normalizedEmail, password });
       if (error) {
         toast.error(error.message);
       } else {
-        navigate("/dashboard");
+        navigate(nextPath);
       }
     } catch {
       toast.error("An unexpected error occurred.");
@@ -37,8 +41,8 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
-      <header className="border-b border-border bg-card">
+    <div className="app-shell flex flex-col">
+      <header className="border-b border-border/60 bg-white/65 backdrop-blur-md">
         <div className="container mx-auto px-4">
           <div className="flex items-center justify-between h-16">
             <Link to="/" className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors">
@@ -49,7 +53,7 @@ const Login = () => {
               <div className="w-8 h-8 rounded-lg gradient-hero flex items-center justify-center">
                 <BookOpen className="w-4 h-4 text-primary-foreground" />
               </div>
-              <span className="font-serif text-lg font-semibold text-foreground">SermonSlides</span>
+              <span className="font-serif text-lg font-semibold text-foreground">Sermon Slide Pro</span>
             </div>
             <div className="w-20" />
           </div>
@@ -58,7 +62,7 @@ const Login = () => {
 
       <main className="flex-1 flex items-center justify-center px-4">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }} className="w-full max-w-md">
-          <div className="rounded-2xl bg-card border border-border p-8 shadow-elevated">
+          <div className="rounded-2xl glass-panel p-8 shadow-elevated">
             <div className="text-center mb-8">
               <div className="w-14 h-14 rounded-2xl gradient-hero flex items-center justify-center mx-auto mb-4">
                 <BookOpen className="w-7 h-7 text-primary-foreground" />
@@ -74,7 +78,7 @@ const Login = () => {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="password">Password</Label>
-                <Input id="password" type="password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} className="h-12" required />
+                <PasswordInput id="password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} className="h-12" required />
               </div>
 
               <Button variant="hero" className="w-full" size="lg" type="submit" disabled={loading}>
@@ -83,10 +87,10 @@ const Login = () => {
             </form>
 
             <div className="mt-6 text-center space-y-2">
-              <Link to="/signup" className="text-sm text-primary hover:underline block">
+              <Link to={`/signup${nextPath ? `?next=${encodeURIComponent(nextPath)}` : ""}`} className="text-sm text-primary hover:underline block">
                 Don't have an account? Sign up
               </Link>
-              <Link to="/forgot-password" className="text-sm text-muted-foreground hover:text-foreground block">
+              <Link to={`/forgot-password${nextPath ? `?next=${encodeURIComponent(nextPath)}` : ""}`} className="text-sm text-muted-foreground hover:text-foreground block">
                 Forgot password?
               </Link>
             </div>

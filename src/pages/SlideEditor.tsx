@@ -7,13 +7,14 @@ import { BookOpen, ArrowLeft, Download, Play, GripVertical, Plus, Type, Palette,
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { BackgroundPicker } from "@/components/BackgroundPicker";
 import { exportToPowerPoint, SlideData } from "@/lib/export-pptx";
-import { exportAsProBundle, exportAsPlainText, validateSlidesForExport } from "@/services/proPresenterExport";
+import { exportAsProBundle, validateSlidesForExport } from "@/services/proPresenterExport";
 import { splitVerseText } from "@/lib/scripture-api";
 import { ExportOptionsModal } from "@/components/ExportOptionsModal";
 import { PaymentPromptModal } from "@/components/PaymentPromptModal";
 import { toast } from "sonner";
 import { getPresentation, SermonPresentation, saveEditorSlides as saveEditorSlidesToDb, getEditorSlides as getEditorSlidesFromDb } from "@/lib/presentations";
 import { useAuth } from "@/contexts/AuthContext";
+import { clearPendingExportContext, setPendingExportSnapshot } from "@/lib/payPerExport";
 
 // Microsoft Word standard fonts - alphabetically ordered
 const fonts = ["Arial", "Arial Black", "Book Antiqua", "Calibri", "Cambria", "Candara", "Century Gothic", "Comic Sans MS", "Consolas", "Constantia", "Corbel", "Courier New", "Franklin Gothic Medium", "Garamond", "Georgia", "Gill Sans MT", "Impact", "Lucida Console", "Lucida Sans Unicode", "Palatino Linotype", "Segoe UI", "Tahoma", "Times New Roman", "Trebuchet MS", "Verdana"];
@@ -507,7 +508,7 @@ const SlideEditor = () => {
     }
   };
   
-  const handleExport = async (format: "pptx" | "probundle" | "txt") => {
+  const handleExport = async (format: "pptx" | "probundle") => {
     // Validate slides before export
     const validation = validateSlidesForExport(slides);
     if (!validation.isValid) {
@@ -529,12 +530,8 @@ const SlideEditor = () => {
         toast.success("ProPresenter file exported successfully!", {
           description: `${slides.length} slides exported to ${presentationTitle}.probundle`
         });
-      } else if (format === "txt") {
-        exportAsPlainText(slides, presentationTitle);
-        toast.success("Plain text file exported successfully!", {
-          description: `${slides.length} slides exported to ${presentationTitle}.txt`
-        });
       }
+      clearPendingExportContext();
       setShowExportModal(false);
     } catch (error) {
       console.error("Export error:", error);
@@ -545,6 +542,17 @@ const SlideEditor = () => {
     } finally {
       setIsExporting(false);
     }
+  };
+
+  const prepareForCheckout = async () => {
+    if (!id || id === "new") return;
+    await saveEditorSlidesToDb(id, slides);
+    setPendingExportSnapshot({
+      sermonId: id,
+      title: presentationTitle,
+      slides,
+      createdAt: Date.now(),
+    });
   };
 
   // Apply to ALL slides
@@ -1162,6 +1170,7 @@ const SlideEditor = () => {
         onClose={() => setShowPaymentModal(false)}
         sermonId={id || ""}
         onPaymentComplete={handlePaymentComplete}
+        prepareForCheckout={prepareForCheckout}
       />
       
       {/* Export Options Modal */}

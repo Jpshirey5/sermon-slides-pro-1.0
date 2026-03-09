@@ -5,10 +5,11 @@ import Pricing from "@/components/landing/Pricing";
 import Testimonials from "@/components/landing/Testimonials";
 import CTA from "@/components/landing/CTA";
 import Footer from "@/components/landing/Footer";
+import ScrollToTopButton from "@/components/ScrollToTopButton";
 
 const Index = () => {
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen grid-noise">
       <Header />
       <main>
         <Hero />
@@ -18,6 +19,7 @@ const Index = () => {
         <CTA />
       </main>
       <Footer />
+      <ScrollToTopButton />
     </div>
   );
 };

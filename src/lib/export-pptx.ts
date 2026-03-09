@@ -78,10 +78,10 @@ export async function exportToPowerPoint(
   const pptx = new pptxgen();
 
   // Set presentation properties
-  pptx.author = 'SermonSlides Pro';
+  pptx.author = 'Sermon Slide Pro';
   pptx.title = title;
   pptx.subject = 'Sermon Presentation';
-  pptx.company = 'SermonSlides Pro';
+  pptx.company = 'Sermon Slide Pro';
 
   // Set 16:9 widescreen layout (standard for presentations)
   pptx.defineLayout({ name: 'WIDESCREEN', width: 13.33, height: 7.5 });
