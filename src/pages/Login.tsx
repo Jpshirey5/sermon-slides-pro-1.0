@@ -13,6 +13,7 @@ const Login = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const nextPath = searchParams.get("next") || "/dashboard";
+  const signUpHref = `/signup?plan=pro${nextPath ? `&next=${encodeURIComponent(nextPath)}` : ""}`;
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -87,7 +88,7 @@ const Login = () => {
             </form>
 
             <div className="mt-6 text-center space-y-2">
-              <Link to={`/signup${nextPath ? `?next=${encodeURIComponent(nextPath)}` : ""}`} className="text-sm text-primary hover:underline block">
+              <Link to={signUpHref} className="text-sm text-primary hover:underline block">
                 Don't have an account? Sign up
               </Link>
               <Link to={`/forgot-password${nextPath ? `?next=${encodeURIComponent(nextPath)}` : ""}`} className="text-sm text-muted-foreground hover:text-foreground block">

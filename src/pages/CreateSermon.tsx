@@ -75,7 +75,15 @@ const CreateSermon = () => {
   
   // Track pending lookups with debounce
   const lookupTimeouts = useRef<Record<string, NodeJS.Timeout>>({});
+  const lookupVersions = useRef<Record<string, number>>({});
   const appliedDefaultRef = useRef(false);
+
+  const clearLookupTimeout = useCallback((key: string) => {
+    if (lookupTimeouts.current[key]) {
+      clearTimeout(lookupTimeouts.current[key]);
+      delete lookupTimeouts.current[key];
+    }
+  }, []);
 
   useEffect(() => {
     if (editData?.translation) return;
@@ -131,9 +139,9 @@ const CreateSermon = () => {
 
     // Clear any existing timeout for this scripture
     const key = `${pointId}-${index}`;
-    if (lookupTimeouts.current[key]) {
-      clearTimeout(lookupTimeouts.current[key]);
-    }
+    clearLookupTimeout(key);
+    const lookupVersion = (lookupVersions.current[key] || 0) + 1;
+    lookupVersions.current[key] = lookupVersion;
 
     // Set loading state
     setPoints(prev =>
@@ -153,6 +161,8 @@ const CreateSermon = () => {
     lookupTimeouts.current[key] = setTimeout(async () => {
       try {
         const result = await lookupScripture(reference, translationToUse);
+        if (lookupVersions.current[key] !== lookupVersion) return;
+
         if (result) {
           if (result.error) {
             // Handle error from API
@@ -197,6 +207,7 @@ const CreateSermon = () => {
             );
           }
         } else {
+          if (lookupVersions.current[key] !== lookupVersion) return;
           setPoints(prev =>
             prev.map((p) =>
               p.id === pointId
@@ -216,6 +227,7 @@ const CreateSermon = () => {
           );
         }
       } catch (error) {
+        if (lookupVersions.current[key] !== lookupVersion) return;
         setPoints(prev =>
           prev.map((p) =>
             p.id === pointId
@@ -233,9 +245,11 @@ const CreateSermon = () => {
               : p
           )
         );
+      } finally {
+        clearLookupTimeout(key);
       }
     }, 800);
-  }, [globalTranslation]);
+  }, [clearLookupTimeout, globalTranslation]);
 
   const updateScripture = (
     pointId: string,
@@ -248,7 +262,7 @@ const CreateSermon = () => {
           ? {
               ...p,
               scriptures: p.scriptures.map((s, i) =>
-                i === index ? { ...s, reference, text: undefined } : s
+                i === index ? { ...s, reference, text: undefined, verses: undefined, error: false, errorMessage: undefined } : s
               ),
             }
           : p
@@ -262,9 +276,8 @@ const CreateSermon = () => {
   const removeScripture = (pointId: string, index: number) => {
     // Clear any pending timeout
     const key = `${pointId}-${index}`;
-    if (lookupTimeouts.current[key]) {
-      clearTimeout(lookupTimeouts.current[key]);
-    }
+    clearLookupTimeout(key);
+    delete lookupVersions.current[key];
 
     setPoints(
       points.map((p) =>
@@ -281,17 +294,23 @@ const CreateSermon = () => {
   // Re-lookup all scriptures when global translation changes
   const handleTranslationChange = (newTranslation: string) => {
     setGlobalTranslation(newTranslation);
-    // Re-lookup all scriptures with new translation
-    setTimeout(() => {
-      points.forEach((point) => {
-        point.scriptures.forEach((scripture, index) => {
-          if (scripture.reference.trim()) {
-            autoLookupScripture(point.id, index, scripture.reference, newTranslation);
-          }
-        });
+    // Cancel stale pending lookups before re-querying in the new translation.
+    Object.keys(lookupTimeouts.current).forEach((key) => clearLookupTimeout(key));
+
+    points.forEach((point) => {
+      point.scriptures.forEach((scripture, index) => {
+        if (scripture.reference.trim()) {
+          autoLookupScripture(point.id, index, scripture.reference, newTranslation);
+        }
       });
-    }, 100);
+    });
   };
+
+  useEffect(() => {
+    return () => {
+      Object.keys(lookupTimeouts.current).forEach((key) => clearLookupTimeout(key));
+    };
+  }, [clearLookupTimeout]);
 
   const toggleExpanded = (id: string) => {
     setExpandedPoints((prev) =>
