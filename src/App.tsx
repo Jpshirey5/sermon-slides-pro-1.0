@@ -18,6 +18,7 @@ import Dashboard from "./pages/Dashboard";
 import Account from "./pages/Account";
 import ExitSurvey from "./pages/ExitSurvey";
 import CheckoutRedirect from "./pages/CheckoutRedirect";
+import Contact from "./pages/Contact";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -43,6 +44,7 @@ const App = () => (
             <Route path="/dashboard/create" element={<ProtectedRoute><CreateSermon /></ProtectedRoute>} />
             
             <Route path="/account" element={<ProtectedRoute allowUnsubscribed><Account /></ProtectedRoute>} />
+            <Route path="/contact" element={<Contact />} />
             <Route path="/exit-survey" element={<ProtectedRoute allowUnsubscribed><ExitSurvey /></ProtectedRoute>} />
             <Route path="/checkout-redirect" element={<ProtectedRoute allowUnsubscribed><CheckoutRedirect /></ProtectedRoute>} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

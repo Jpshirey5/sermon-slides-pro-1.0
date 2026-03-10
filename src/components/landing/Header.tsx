@@ -31,6 +31,7 @@ const Header = () => {
             <a href="#features" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Features</a>
             <a href="#pricing" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Pricing</a>
             <a href="#testimonials" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Testimonials</a>
+            <Link to="/contact" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Contact</Link>
           </nav>
 
           <div className="hidden md:flex items-center gap-3">
@@ -58,6 +59,7 @@ const Header = () => {
               <a href="#features" className="text-muted-foreground hover:text-foreground transition-colors" onClick={() => setIsOpen(false)}>Features</a>
               <a href="#pricing" className="text-muted-foreground hover:text-foreground transition-colors" onClick={() => setIsOpen(false)}>Pricing</a>
               <a href="#testimonials" className="text-muted-foreground hover:text-foreground transition-colors" onClick={() => setIsOpen(false)}>Testimonials</a>
+              <Link to="/contact" className="text-muted-foreground hover:text-foreground transition-colors" onClick={() => setIsOpen(false)}>Contact</Link>
               <div className="flex flex-col gap-2 pt-4 border-t border-border">
                 {user ? (
                   <>
