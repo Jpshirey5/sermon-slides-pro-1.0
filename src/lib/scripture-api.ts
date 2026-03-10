@@ -99,9 +99,9 @@ const bookMappings: Record<string, string> = {
   'revelation': 'REV', 'rev': 'REV', 'revelations': 'REV',
 };
 
-// Complete translation to Bible ID mappings for API.Bible
-// Free translations available without API key restrictions
-const translationBibleIds: Record<string, string> = {
+// Translation to Bible ID mappings for API.Bible.
+// Custom translations can be provided via env vars.
+const translationBibleIds: Record<string, string | undefined> = {
   // Free English translations
   'KJV': 'de4e12af7f28f599-02',
   'ASV': '06125adad2d5898a-01',
@@ -109,6 +109,10 @@ const translationBibleIds: Record<string, string> = {
   'BBE': '65eec8e0b60e656b-01',
   'DARBY': '478f6a31d80ce67f-01',
   'YLT': 'f72b840c855f362c-04',
+  // New translations (set these in .env for your API.Bible app)
+  'CSB': import.meta.env.VITE_BIBLE_ID_CSB,
+  'NKJV': import.meta.env.VITE_BIBLE_ID_NKJV,
+  'NIV': import.meta.env.VITE_BIBLE_ID_NIV,
   // ESV is handled separately via edge function — not listed here
 };
 
@@ -330,15 +334,46 @@ export async function lookupScripture(
     }
   }
 
-  // Try API.Bible for free translations
+  // Try API.Bible (requires VITE_BIBLE_API_KEY for non-ESV translations)
+  const bibleApiKey = import.meta.env.VITE_BIBLE_API_KEY;
+  const bibleApiBaseUrl = import.meta.env.VITE_BIBLE_API_BASE_URL || 'https://rest.api.bible/v1';
   const bibleId = translationBibleIds[translation] || translationBibleIds['WEB'];
   
-  try {
+  if (bibleApiKey && bibleId) {
     const verseId = parsed.verseEnd 
       ? `${bookCode}.${parsed.chapter}.${parsed.verseStart}-${bookCode}.${parsed.chapter}.${parsed.verseEnd}`
       : `${bookCode}.${parsed.chapter}.${parsed.verseStart}`;
-    
-    // Use the API.Bible endpoint
+
+    try {
+      const response = await fetch(
+        `${bibleApiBaseUrl}/bibles/${bibleId}/passages/${verseId}?content-type=text&include-notes=false&include-titles=false&include-chapter-numbers=false&include-verse-numbers=true`,
+        {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+            'api-key': bibleApiKey,
+          },
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        const passageText = cleanText(data?.data?.content || '');
+        if (passageText) {
+          return {
+            text: passageText,
+            reference: data?.data?.reference || formattedRef,
+            translation,
+          };
+        }
+      }
+    } catch (error) {
+      console.log('API.Bible lookup failed, trying fallback APIs...');
+    }
+  }
+
+  try {
+    // Generic fallback source
     const response = await fetch(
       `https://bible-api.com/${encodeURIComponent(reference)}`,
       {
@@ -365,7 +400,7 @@ export async function lookupScripture(
       }
     }
   } catch (error) {
-    console.log('Primary API failed, trying fallback...');
+    console.log('Primary fallback API failed, trying secondary...');
   }
 
   // Try bolls.life API as secondary fallback

@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { motion, Reorder } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -26,6 +26,8 @@ import {
 } from "lucide-react";
 import { lookupScripture } from "@/lib/scripture-api";
 import { savePresentation } from "@/lib/presentations";
+import { useAuth } from "@/contexts/AuthContext";
+import { TRANSLATION_OPTIONS, DEFAULT_TRANSLATION } from "@/lib/translations";
 
 interface Scripture {
   reference: string;
@@ -43,27 +45,15 @@ interface SermonPoint {
   scriptures: Scripture[];
 }
 
-const translations = [
-  { code: "KJV", name: "King James Version", language: "English" },
-  { code: "ESV", name: "English Standard Version", language: "English" },
-  { code: "WEB", name: "World English Bible", language: "English" },
-  { code: "ASV", name: "American Standard Version", language: "English" },
-  { code: "AMP", name: "Amplified Bible", language: "English" },
-  { code: "RVR1960", name: "Reina-Valera 1960", language: "Spanish" },
-  { code: "NVI", name: "Nueva Versión Internacional", language: "Spanish" },
-  { code: "LSG", name: "Louis Segond", language: "French" },
-  { code: "LUT", name: "Luther Bible", language: "German" },
-  { code: "ALMEIDA", name: "Almeida Revisada", language: "Portuguese" },
-];
-
 const CreateSermon = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { profile } = useAuth();
   const isFromDashboard = location.pathname.startsWith("/dashboard");
   const editData = (location.state as any)?.editData;
   const editId = (location.state as any)?.editId;
   const [title, setTitle] = useState(editData?.title || "");
-  const [globalTranslation, setGlobalTranslation] = useState(editData?.translation || "KJV");
+  const [globalTranslation, setGlobalTranslation] = useState(editData?.translation || DEFAULT_TRANSLATION);
   const [verseBreakdown, setVerseBreakdown] = useState(editData?.verseBreakdown || "verse-by-verse");
   const [points, setPoints] = useState<SermonPoint[]>(
     editData?.points
@@ -85,6 +75,15 @@ const CreateSermon = () => {
   
   // Track pending lookups with debounce
   const lookupTimeouts = useRef<Record<string, NodeJS.Timeout>>({});
+  const appliedDefaultRef = useRef(false);
+
+  useEffect(() => {
+    if (editData?.translation) return;
+    if (appliedDefaultRef.current) return;
+    if (!profile?.default_translation) return;
+    setGlobalTranslation(profile.default_translation);
+    appliedDefaultRef.current = true;
+  }, [profile?.default_translation, editData?.translation]);
 
   const addPoint = () => {
     const newId = String(Date.now());
@@ -126,8 +125,9 @@ const CreateSermon = () => {
   };
 
   // Auto-lookup scripture when reference changes (debounced)
-  const autoLookupScripture = useCallback(async (pointId: string, index: number, reference: string) => {
+  const autoLookupScripture = useCallback(async (pointId: string, index: number, reference: string, translationOverride?: string) => {
     if (!reference.trim()) return;
+    const translationToUse = translationOverride || globalTranslation;
 
     // Clear any existing timeout for this scripture
     const key = `${pointId}-${index}`;
@@ -152,7 +152,7 @@ const CreateSermon = () => {
     // Debounce the lookup by 800ms
     lookupTimeouts.current[key] = setTimeout(async () => {
       try {
-        const result = await lookupScripture(reference, globalTranslation);
+        const result = await lookupScripture(reference, translationToUse);
         if (result) {
           if (result.error) {
             // Handle error from API
@@ -286,7 +286,7 @@ const CreateSermon = () => {
       points.forEach((point) => {
         point.scriptures.forEach((scripture, index) => {
           if (scripture.reference.trim()) {
-            autoLookupScripture(point.id, index, scripture.reference);
+            autoLookupScripture(point.id, index, scripture.reference, newTranslation);
           }
         });
       });
@@ -446,7 +446,7 @@ const CreateSermon = () => {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {translations.map((t) => (
+                      {TRANSLATION_OPTIONS.map((t) => (
                         <SelectItem key={t.code} value={t.code}>
                           <span className="font-medium">{t.code}</span>
                           <span className="text-muted-foreground ml-2">

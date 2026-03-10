@@ -4,12 +4,14 @@ import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { BookOpen, ArrowLeft, CreditCard, User, Crown, Users, Mail, Loader2, AlertTriangle, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useSearchParams } from "react-router-dom";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { TRANSLATION_OPTIONS, DEFAULT_TRANSLATION } from "@/lib/translations";
 
 interface TeamMember {
   id: string;
@@ -31,7 +33,9 @@ const Account = () => {
   const navigate = useNavigate();
   const { user, profile, subscription, refreshProfile, signOut, checkSubscription, accountId } = useAuth();
   const [fullName, setFullName] = useState(profile?.full_name || "");
+  const [defaultTranslation, setDefaultTranslation] = useState(profile?.default_translation || DEFAULT_TRANSLATION);
   const [saving, setSaving] = useState(false);
+  const [savingDefaultTranslation, setSavingDefaultTranslation] = useState(false);
   const [portalLoading, setPortalLoading] = useState(false);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
@@ -51,6 +55,7 @@ const Account = () => {
 
   useEffect(() => {
     if (profile?.full_name) setFullName(profile.full_name);
+    setDefaultTranslation(profile?.default_translation || DEFAULT_TRANSLATION);
   }, [profile]);
 
   useEffect(() => {
@@ -159,6 +164,22 @@ const Account = () => {
       await refreshProfile();
     }
     setSaving(false);
+  };
+
+  const handleSaveDefaultTranslation = async () => {
+    if (!user) return;
+    setSavingDefaultTranslation(true);
+    const { error } = await supabase
+      .from("profiles")
+      .update({ default_translation: defaultTranslation })
+      .eq("id", user.id);
+    if (error) {
+      toast.error("Failed to update default translation.");
+    } else {
+      toast.success("Default translation updated!");
+      await refreshProfile();
+    }
+    setSavingDefaultTranslation(false);
   };
 
   const handleInvite = async () => {
@@ -392,6 +413,34 @@ const Account = () => {
                     {saving ? "Saving..." : "Save"}
                   </Button>
                 </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="defaultTranslation">Default Translation</Label>
+                <div className="flex gap-2">
+                  <Select value={defaultTranslation} onValueChange={setDefaultTranslation}>
+                    <SelectTrigger id="defaultTranslation" className="h-10">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {TRANSLATION_OPTIONS.map((t) => (
+                        <SelectItem key={t.code} value={t.code}>
+                          <span className="font-medium">{t.code}</span>
+                          <span className="text-muted-foreground ml-2">{t.name}</span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    onClick={handleSaveDefaultTranslation}
+                    disabled={savingDefaultTranslation || defaultTranslation === (profile?.default_translation || DEFAULT_TRANSLATION)}
+                    size="sm"
+                  >
+                    {savingDefaultTranslation ? "Saving..." : "Save"}
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  New presentations will start with this translation by default.
+                </p>
               </div>
             </div>
           </div>
