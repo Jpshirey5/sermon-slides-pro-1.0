@@ -89,6 +89,7 @@ serve(async (req) => {
 
         const customerId = account?.stripe_customer_id || null;
         const subscriptionId = account?.stripe_subscription_id || null;
+        const customerIdsToDelete = new Set<string>();
 
         if (subscriptionId) {
           try {
@@ -97,12 +98,16 @@ serve(async (req) => {
               await stripe.subscriptions.cancel(subscriptionId);
               logStep("Canceled subscription by id", { subscriptionId });
             }
+            if (subscription?.customer && typeof subscription.customer === "string") {
+              customerIdsToDelete.add(subscription.customer);
+            }
           } catch (err) {
             logStep("Failed cancel by subscription id", { subscriptionId, error: String(err) });
           }
         }
 
         if (customerId) {
+          customerIdsToDelete.add(customerId);
           try {
             const subscriptions = await stripe.subscriptions.list({ customer: customerId, limit: 100 });
             for (const sub of subscriptions.data) {
@@ -117,6 +122,44 @@ serve(async (req) => {
             }
           } catch (err) {
             logStep("Failed subscription list by customer", { customerId, error: String(err) });
+          }
+        }
+
+        // Fallback: if account row does not have a customer id, attempt lookup by owner email.
+        if (customerIdsToDelete.size === 0 && email) {
+          try {
+            const customers = await stripe.customers.list({ email, limit: 100 });
+            for (const customer of customers.data) {
+              customerIdsToDelete.add(customer.id);
+            }
+          } catch (err) {
+            logStep("Failed customer lookup by email", { email, error: String(err) });
+          }
+        }
+
+        for (const stripeCustomerId of customerIdsToDelete) {
+          try {
+            // Safety pass: cancel any remaining active subscriptions before deleting the customer.
+            const subscriptions = await stripe.subscriptions.list({ customer: stripeCustomerId, limit: 100 });
+            for (const sub of subscriptions.data) {
+              if (sub.status !== "canceled" && sub.status !== "incomplete_expired") {
+                try {
+                  await stripe.subscriptions.cancel(sub.id);
+                  logStep("Canceled subscription before customer delete", { subscriptionId: sub.id });
+                } catch (err) {
+                  logStep("Failed cancel before customer delete", { subscriptionId: sub.id, error: String(err) });
+                }
+              }
+            }
+          } catch (err) {
+            logStep("Failed pre-delete subscription list", { customerId: stripeCustomerId, error: String(err) });
+          }
+
+          try {
+            await stripe.customers.del(stripeCustomerId);
+            logStep("Deleted stripe customer", { customerId: stripeCustomerId });
+          } catch (err) {
+            logStep("Failed deleting stripe customer", { customerId: stripeCustomerId, error: String(err) });
           }
         }
       }
