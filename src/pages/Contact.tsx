@@ -1,3 +1,5 @@
+// {To-Do - Add form validation and error handling. Consider integrating a service like Formspree or using a backend API to handle form submissions.}
+
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { ArrowLeft, BookOpen, ChevronDown } from "lucide-react";
@@ -66,7 +68,7 @@ export default function Contact() {
                   <Input id="last-name" name="last-name" type="text" autoComplete="family-name" className="h-11" />
                 </div>
                 <div className="space-y-2 sm:col-span-2">
-                  <Label htmlFor="company">Company</Label>
+                  <Label htmlFor="company">Organization</Label>
                   <Input id="company" name="company" type="text" autoComplete="organization" className="h-11" />
                 </div>
                 <div className="space-y-2 sm:col-span-2">
