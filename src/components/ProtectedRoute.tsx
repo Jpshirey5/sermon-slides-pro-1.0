@@ -93,7 +93,10 @@ const ProtectedRoute = ({ children, allowUnsubscribed = false }: ProtectedRouteP
 
   const pendingProCheckout = typeof window !== "undefined" && localStorage.getItem("pending_pro_checkout") === "true";
   if (!subscription.subscribed && !allowUnsubscribed && pendingProCheckout) {
-    return <Navigate to="/checkout-redirect?startCheckout=pro" replace />;
+    const pendingPriceId = localStorage.getItem("pending_pro_checkout_price_id");
+    const params = new URLSearchParams({ startCheckout: "pro" });
+    if (pendingPriceId) params.set("priceId", pendingPriceId);
+    return <Navigate to={`/checkout-redirect?${params.toString()}`} replace />;
   }
 
   // No more auto-redirect to Stripe. If unsubscribed and not allowed, show message.

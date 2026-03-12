@@ -24,6 +24,7 @@ const SignUp = () => {
   const [searchParams] = useSearchParams();
   const inviteToken = searchParams.get("invite");
   const selectedPlan = searchParams.get("plan");
+  const selectedPriceId = searchParams.get("priceId");
   const nextPath = searchParams.get("next");
   const isProIntent = selectedPlan === "pro";
 
@@ -101,8 +102,11 @@ const SignUp = () => {
         metadata.org_state = state;
       }
 
+      const checkoutParams = new URLSearchParams({ startCheckout: "pro" });
+      if (selectedPriceId) checkoutParams.set("priceId", selectedPriceId);
+
       const emailRedirectTo = isProIntent && !inviteValid
-        ? `${window.location.origin}/checkout-redirect?startCheckout=pro`
+        ? `${window.location.origin}/checkout-redirect?${checkoutParams.toString()}`
         : `${window.location.origin}/dashboard`;
 
       const { data: signUpData, error } = await supabase.auth.signUp({
@@ -124,6 +128,11 @@ const SignUp = () => {
       } else if (isProIntent && !inviteValid) {
         localStorage.setItem("pending_pro_checkout", "true");
         localStorage.setItem("pending_pro_checkout_email", normalizedEmail);
+        if (selectedPriceId) {
+          localStorage.setItem("pending_pro_checkout_price_id", selectedPriceId);
+        } else {
+          localStorage.removeItem("pending_pro_checkout_price_id");
+        }
         toast.success("Account created. Confirm your email to continue to secure Pro checkout.");
         navigate("/login");
       } else if (inviteValid) {

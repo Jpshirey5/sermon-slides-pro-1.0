@@ -284,7 +284,7 @@ const Account = () => {
     navigate("/", { replace: true });
   };
 
-  const handleUpgrade = async (openInNewTab: boolean = true) => {
+  const handleUpgrade = async (openInNewTab: boolean = true, priceId?: string) => {
     if (subscription.subscribed) {
       toast.success("Your Pro subscription is already active.");
       return;
@@ -296,6 +296,7 @@ const Account = () => {
       if (!session) { toast.error("Please log in again."); return; }
       const { data, error } = await supabase.functions.invoke("create-checkout", {
         headers: { Authorization: `Bearer ${session.access_token}` },
+        body: priceId ? { priceId } : undefined,
       });
       if (error || !data?.url) {
         toast.error("Could not start checkout.");
@@ -332,6 +333,7 @@ const Account = () => {
       checkSubscription();
       localStorage.removeItem("pending_pro_checkout");
       localStorage.removeItem("pending_pro_checkout_email");
+      localStorage.removeItem("pending_pro_checkout_price_id");
       toast.success("Subscription activated! Welcome to Pro.");
       const next = new URLSearchParams(searchParams.toString());
       next.delete("checkout");
@@ -343,20 +345,24 @@ const Account = () => {
     const pendingProCheckout = localStorage.getItem("pending_pro_checkout") === "true";
     const shouldAutoStartCheckout = searchParams.get("startCheckout") === "pro" || pendingProCheckout;
     if (!shouldAutoStartCheckout || !user || !accountId) return;
+    const requestedPriceId =
+      searchParams.get("priceId") || localStorage.getItem("pending_pro_checkout_price_id") || undefined;
 
     const next = new URLSearchParams(searchParams.toString());
     next.delete("startCheckout");
+    next.delete("priceId");
     setSearchParams(next, { replace: true });
 
     if (subscription.subscribed) {
       localStorage.removeItem("pending_pro_checkout");
       localStorage.removeItem("pending_pro_checkout_email");
+      localStorage.removeItem("pending_pro_checkout_price_id");
       toast.success("Your Pro subscription is already active.");
       return;
     }
 
     localStorage.removeItem("pending_pro_checkout");
-    handleUpgrade(false);
+    handleUpgrade(false, requestedPriceId);
   }, [searchParams, setSearchParams, user, accountId, subscription.subscribed]);
 
   return (

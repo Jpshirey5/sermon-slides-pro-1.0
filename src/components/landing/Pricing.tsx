@@ -7,9 +7,19 @@ import { useAuth } from "@/contexts/AuthContext";
 const Pricing = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const yearlyPriceId = "price_1T9xQ9P2Yr0z0IcsrsAjgQip";
 
-  const handleGoPro = () => {
-    navigate(user ? "/account" : "/signup?plan=pro");
+  const handleGoPro = (priceId?: string) => {
+    if (user) {
+      const params = new URLSearchParams({ startCheckout: "pro" });
+      if (priceId) params.set("priceId", priceId);
+      navigate(`/account?${params.toString()}`);
+      return;
+    }
+
+    const params = new URLSearchParams({ plan: "pro" });
+    if (priceId) params.set("priceId", priceId);
+    navigate(`/signup?${params.toString()}`);
   };
 
   return (
@@ -35,11 +45,11 @@ const Pricing = () => {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.5 }}
-          className="max-w-4xl mx-auto grid md:grid-cols-2 gap-6"
+          className="max-w-6xl mx-auto grid md:grid-cols-3 gap-6"
         >
           {/* Pay Per Export */}
           <div className="relative rounded-3xl glass-panel overflow-hidden">
-            <div className="p-8">
+            <div className="p-8 flex h-full flex-col">
               <div className="w-14 h-14 rounded-2xl bg-secondary flex items-center justify-center mb-6">
                 <Zap className="w-7 h-7 text-foreground" />
               </div>
@@ -59,27 +69,27 @@ const Pricing = () => {
                   </li>
                 ))}
               </ul>
-              <Link to="/create">
+              <Link to="/create" className="mt-auto block">
                 <Button variant="outline" className="w-full" size="lg">Get Started Free</Button>
               </Link>
             </div>
           </div>
 
           {/* Monthly Subscription */}
-          <div className="relative rounded-3xl glass-panel border-2 border-primary/60 overflow-hidden shadow-elevated">
+          <div className="relative z-10 rounded-3xl glass-panel border-2 border-primary/70 overflow-hidden shadow-elevated md:-translate-y-4 md:shadow-[0_30px_80px_-20px_rgba(0,0,0,0.55)]">
             <div className="absolute top-0 right-0 bg-primary text-primary-foreground text-xs font-semibold px-4 py-1 rounded-bl-xl">Best Value</div>
-            <div className="p-8">
+            <div className="p-8 flex h-full flex-col">
               <div className="w-14 h-14 rounded-2xl gradient-hero flex items-center justify-center mb-6 shadow-glow">
                 <Zap className="w-7 h-7 text-primary-foreground" />
               </div>
               <h3 className="font-serif text-2xl font-semibold text-foreground mb-2">Pro Monthly</h3>
-              <p className="text-muted-foreground mb-6">Unlimited access for your ministry</p>
+              <p className="text-muted-foreground mb-6">Unlimited access, billed monthly</p>
               <div className="flex items-baseline gap-1 mb-8">
                 <span className="text-5xl font-bold text-foreground">$30</span>
                 <span className="text-muted-foreground">/month</span>
               </div>
               <ul className="space-y-4 mb-8">
-                {["Everything in Pay Per Export", "Unlimited exports", "Personal dashboard", "Saved presentations", "Manuscript Study Guide Generator", "Conference & Training Builder"].map((feature, i) => (
+                {["Everything in Pay Per Export", "Account Creation Required", "Unlimited exports", "Personal dashboard", "Saved presentations"].map((feature, i) => (
                   <li key={i} className="flex items-start gap-3">
                     <div className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
                       <Check className="w-3 h-3 text-primary" />
@@ -88,8 +98,36 @@ const Pricing = () => {
                   </li>
                 ))}
               </ul>
-              <Button variant="hero" className="w-full" size="lg" onClick={handleGoPro}>
+              <Button variant="hero" className="w-full mt-auto" size="lg" onClick={() => handleGoPro()}>
                 Go Pro — $30/month
+              </Button>
+            </div>
+          </div>
+
+          {/* Yearly Subscription */}
+          <div className="relative rounded-3xl glass-panel border-2 border-primary/60 overflow-hidden shadow-elevated">
+            <div className="p-8 flex h-full flex-col">
+              <div className="w-14 h-14 rounded-2xl bg-secondary flex items-center justify-center mb-6">
+                <Zap className="w-7 h-7 text-foreground" />
+              </div>
+              <h3 className="font-serif text-2xl font-semibold text-foreground mb-2">Pro Yearly</h3>
+              <p className="text-muted-foreground mb-6">Unlimited access, billed annually</p>
+              <div className="flex items-baseline gap-1 mb-8">
+                <span className="text-5xl font-bold text-foreground">$350</span>
+                <span className="text-muted-foreground">/year</span>
+              </div>
+              <ul className="space-y-4 mb-8">
+                {["Everything in Pro Monthly", "Priority support", "2 months free vs monthly billing", "Simplified annual budgeting"].map((feature, i) => (
+                  <li key={i} className="flex items-start gap-3">
+                    <div className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <Check className="w-3 h-3 text-primary" />
+                    </div>
+                    <span className="text-foreground">{feature}</span>
+                  </li>
+                ))}
+              </ul>
+              <Button variant="outline" className="w-full mt-auto" size="lg" onClick={() => handleGoPro(yearlyPriceId)}>
+                Go Pro — $350/year
               </Button>
             </div>
           </div>

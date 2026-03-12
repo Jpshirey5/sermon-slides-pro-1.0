@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Loader2, BookOpen } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -7,6 +7,7 @@ import { useAuth } from "@/contexts/AuthContext";
 
 const CheckoutRedirect = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { user, accountId, subscription, subscriptionChecked, checkSubscription } = useAuth();
   const startedRef = useRef(false);
 
@@ -16,6 +17,7 @@ const CheckoutRedirect = () => {
     if (subscription.subscribed) {
       localStorage.removeItem("pending_pro_checkout");
       localStorage.removeItem("pending_pro_checkout_email");
+      localStorage.removeItem("pending_pro_checkout_price_id");
       navigate("/dashboard", { replace: true });
       return;
     }
@@ -31,8 +33,12 @@ const CheckoutRedirect = () => {
           return;
         }
 
+        const requestedPriceId =
+          searchParams.get("priceId") || localStorage.getItem("pending_pro_checkout_price_id");
+
         const { data, error } = await supabase.functions.invoke("create-checkout", {
           headers: { Authorization: `Bearer ${session.access_token}` },
+          body: requestedPriceId ? { priceId: requestedPriceId } : undefined,
         });
 
         if (error || !data?.url) {
@@ -42,6 +48,7 @@ const CheckoutRedirect = () => {
         }
 
         localStorage.removeItem("pending_pro_checkout");
+        localStorage.removeItem("pending_pro_checkout_price_id");
         window.location.href = data.url;
       } catch {
         toast.error("Could not start checkout.");
@@ -50,7 +57,7 @@ const CheckoutRedirect = () => {
     };
 
     startCheckout();
-  }, [user, accountId, subscription.subscribed, subscriptionChecked, navigate]);
+  }, [user, accountId, subscription.subscribed, subscriptionChecked, navigate, searchParams]);
 
   useEffect(() => {
     if (!subscription.subscribed) return;
