@@ -19,8 +19,6 @@ import {
   Trash2,
   GripVertical,
   Wand2,
-  ChevronDown,
-  ChevronUp,
   Loader2,
   Book,
 } from "lucide-react";
@@ -61,16 +59,15 @@ const CreateSermon = () => {
           id: p.id,
           type: p.type || 'point',
           title: p.title,
-          scriptures: p.scriptures.map((s: any) => ({
-            reference: s.reference,
-            text: s.text,
-            verses: s.verses,
-          })),
+          scriptures: (p.type || 'point') === 'verse'
+            ? p.scriptures.map((s: any) => ({
+                reference: s.reference,
+                text: s.text,
+                verses: s.verses,
+              }))
+            : [],
         }))
-      : [{ id: "1", type: "point", title: "", scriptures: [] }]
-  );
-  const [expandedPoints, setExpandedPoints] = useState<string[]>(
-    editData?.points ? editData.points.map((p: any) => p.id) : ["1"]
+      : []
   );
   
   // Track pending lookups with debounce
@@ -96,20 +93,15 @@ const CreateSermon = () => {
   const addPoint = () => {
     const newId = String(Date.now());
     setPoints([...points, { id: newId, type: "point", title: "", scriptures: [] }]);
-    setExpandedPoints([...expandedPoints, newId]);
   };
 
   const addVerse = () => {
     const newId = String(Date.now());
     setPoints([...points, { id: newId, type: "verse", title: "", scriptures: [{ reference: "" }] }]);
-    setExpandedPoints([...expandedPoints, newId]);
   };
 
   const removePoint = (id: string) => {
-    if (points.length > 1) {
-      setPoints(points.filter((p) => p.id !== id));
-      setExpandedPoints(expandedPoints.filter((e) => e !== id));
-    }
+    setPoints(points.filter((p) => p.id !== id));
   };
 
   const updatePoint = (id: string, title: string) => {
@@ -312,11 +304,11 @@ const CreateSermon = () => {
     };
   }, [clearLookupTimeout]);
 
-  const toggleExpanded = (id: string) => {
-    setExpandedPoints((prev) =>
-      prev.includes(id) ? prev.filter((e) => e !== id) : [...prev, id]
-    );
-  };
+  const hasValidContent = points.some((point) =>
+    point.type === "point"
+      ? point.title.trim().length > 0
+      : point.scriptures.some((scripture) => scripture.reference.trim().length > 0)
+  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -335,11 +327,6 @@ const CreateSermon = () => {
         });
       } else if (point.title) {
         slideCount++; // Point slide
-        point.scriptures.forEach(s => {
-          if (s.reference && s.text) {
-            slideCount++;
-          }
-        });
       }
     });
     
@@ -359,11 +346,13 @@ const CreateSermon = () => {
           id: p.id,
           type: p.type,
           title: p.title,
-          scriptures: p.scriptures.map(s => ({
-            reference: s.reference,
-            text: s.text,
-            verses: s.verses,
-          })),
+          scriptures: p.type === "verse"
+            ? p.scriptures.map(s => ({
+                reference: s.reference,
+                text: s.text,
+                verses: s.verses,
+              }))
+            : [],
         })),
       },
     });
@@ -407,7 +396,7 @@ const CreateSermon = () => {
             <Button
               variant="hero"
               onClick={handleSubmit}
-              disabled={!title || points.every((p) => p.type === 'point' ? !p.title : !p.scriptures.some(s => s.reference.trim()))}
+              disabled={!title.trim() || !hasValidContent}
             >
               <Wand2 className="w-4 h-4" />
               <span className="hidden sm:inline">Generate Slides</span>
@@ -535,18 +524,7 @@ const CreateSermon = () => {
                               onChange={(e) => updatePoint(point.id, e.target.value)}
                               className="h-12 flex-1"
                             />
-                            <button
-                              type="button"
-                              onClick={() => toggleExpanded(point.id)}
-                              className="p-2 text-muted-foreground hover:text-foreground"
-                            >
-                              {expandedPoints.includes(point.id) ? (
-                                <ChevronUp className="w-5 h-5" />
-                              ) : (
-                                <ChevronDown className="w-5 h-5" />
-                              )}
-                            </button>
-                            {points.length > 1 && (
+                            {points.length > 0 && (
                               <button
                                 type="button"
                                 onClick={() => removePoint(point.id)}
@@ -556,81 +534,6 @@ const CreateSermon = () => {
                               </button>
                             )}
                           </div>
-
-                          {/* Scriptures */}
-                          {expandedPoints.includes(point.id) && (
-                            <div className="pl-4 border-l-2 border-border space-y-4">
-                              <p className="text-sm text-muted-foreground">
-                                Supporting Scriptures (optional) — verses auto-populate using {globalTranslation}
-                              </p>
-
-                              {point.scriptures.map((scripture, scriptureIndex) => (
-                                <div
-                                  key={scriptureIndex}
-                                  className="space-y-2"
-                                >
-                                  <div className="flex items-center gap-3">
-                                    <div className="relative flex-1">
-                                      <Input
-                                        type="text"
-                                        placeholder="e.g., John 3:16"
-                                        value={scripture.reference}
-                                        onChange={(e) =>
-                                          updateScripture(
-                                            point.id,
-                                            scriptureIndex,
-                                            e.target.value
-                                          )
-                                        }
-                                        className="pr-10"
-                                      />
-                                      {scripture.isLoading && (
-                                        <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                                          <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
-                                        </div>
-                                      )}
-                                    </div>
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        removeScripture(point.id, scriptureIndex)
-                                      }
-                                      className="p-2 text-muted-foreground hover:text-destructive"
-                                    >
-                                      <Trash2 className="w-4 h-4" />
-                                    </button>
-                                  </div>
-                                  {scripture.error && scripture.errorMessage && (
-                                    <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/30">
-                                      <p className="text-sm text-destructive">
-                                        {scripture.errorMessage}
-                                      </p>
-                                    </div>
-                                  )}
-                                  {scripture.text && !scripture.error && (
-                                    <div className="p-3 rounded-lg bg-muted/50 border border-border">
-                                      <p className="text-sm text-muted-foreground italic">
-                                        "{scripture.text}"
-                                      </p>
-                                      <p className="text-xs text-muted-foreground mt-1">
-                                        — {scripture.reference} ({globalTranslation})
-                                      </p>
-                                    </div>
-                                  )}
-                                </div>
-                              ))}
-
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => addScripture(point.id)}
-                              >
-                                <Plus className="w-4 h-4" />
-                                Add Scripture
-                              </Button>
-                            </div>
-                          )}
                         </div>
                       </>
                     ) : (
@@ -643,7 +546,7 @@ const CreateSermon = () => {
 
                         <div className="flex-1 space-y-4">
                           <div className="flex items-center justify-end">
-                            {points.length > 1 && (
+                            {points.length > 0 && (
                               <button
                                 type="button"
                                 onClick={() => removePoint(point.id)}
@@ -748,7 +651,7 @@ const CreateSermon = () => {
                 type="submit"
                 variant="hero"
                 size="lg"
-                disabled={!title || points.every((p) => p.type === 'point' ? !p.title : !p.scriptures.some(s => s.reference.trim()))}
+                disabled={!title.trim() || !hasValidContent}
               >
                 <Wand2 className="w-5 h-5" />
                 Generate Slides
