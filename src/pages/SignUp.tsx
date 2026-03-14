@@ -4,12 +4,22 @@ import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { BookOpen, ArrowLeft, Loader2 } from "lucide-react";
-import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import PasswordInput from "@/components/auth/PasswordInput";
 import PasswordRequirements from "@/components/auth/PasswordRequirements";
 import { isPasswordStrong } from "@/lib/password";
+import SubscriptionPlanPicker from "@/components/SubscriptionPlanPicker";
+import { getPlanByPriceId, SUBSCRIPTION_PLANS, type BillingInterval } from "@/lib/subscriptionPlans";
 
 const US_STATES = [
   "Alabama","Alaska","Arizona","Arkansas","California","Colorado","Connecticut","Delaware","Florida","Georgia",
@@ -19,14 +29,19 @@ const US_STATES = [
   "South Dakota","Tennessee","Texas","Utah","Vermont","Virginia","Washington","West Virginia","Wisconsin","Wyoming"
 ];
 
+type SignupNotice = {
+  title: string;
+  description: string;
+  onContinue?: () => void;
+};
+
 const SignUp = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const inviteToken = searchParams.get("invite");
-  const selectedPlan = searchParams.get("plan");
   const selectedPriceId = searchParams.get("priceId");
   const nextPath = searchParams.get("next");
-  const isProIntent = selectedPlan === "pro";
+  const preselectedPlan = getPlanByPriceId(selectedPriceId);
 
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
@@ -36,11 +51,24 @@ const SignUp = () => {
   const [city, setCity] = useState("");
   const [state, setState] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showPlanSelection, setShowPlanSelection] = useState(false);
+  const [planLoading, setPlanLoading] = useState<BillingInterval | null>(null);
+  const [notice, setNotice] = useState<SignupNotice | null>(null);
 
   // Invite state
   const [inviteValid, setInviteValid] = useState(false);
   const [inviteOrgName, setInviteOrgName] = useState("");
   const [inviteLoading, setInviteLoading] = useState(!!inviteToken);
+
+  const showNotice = (title: string, description: string, onContinue?: () => void) => {
+    setNotice({ title, description, onContinue });
+  };
+
+  const handleNoticeContinue = () => {
+    const onContinue = notice?.onContinue;
+    setNotice(null);
+    onContinue?.();
+  };
 
   useEffect(() => {
     if (!inviteToken) return;
@@ -49,7 +77,7 @@ const SignUp = () => {
       setInviteLoading(true);
       const { data, error } = await supabase.rpc("get_invite_by_token", { _token: inviteToken });
       if (error || !data || data.length === 0) {
-        toast.error("Invalid or expired invite link.");
+        showNotice("Invite unavailable", "This invite link is invalid or has expired.");
         setInviteLoading(false);
         return;
       }
@@ -69,28 +97,35 @@ const SignUp = () => {
     lookupInvite();
   }, [inviteToken]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const validateForm = () => {
     const normalizedEmail = email.trim().toLowerCase();
     const trimmedName = fullName.trim();
 
     if (!trimmedName || !normalizedEmail || !password || !confirmPassword) {
-      toast.error("Please fill in all fields.");
-      return;
+      showNotice("Missing details", "Please fill in all fields.");
+      return null;
     }
     if (!inviteValid && (!orgName || !city || !state)) {
-      toast.error("Please fill in your organization details.");
-      return;
+      showNotice("Organization details needed", "Please fill in your organization details.");
+      return null;
     }
     if (password !== confirmPassword) {
-      toast.error("Passwords do not match.");
-      return;
+      showNotice("Passwords do not match", "Please make sure both password fields match before continuing.");
+      return null;
     }
     if (!isPasswordStrong(password)) {
-      toast.error("Password must meet all requirements.");
-      return;
+      showNotice("Password requirements", "Your password must meet all listed requirements before you can continue.");
+      return null;
     }
 
+    return { normalizedEmail, trimmedName };
+  };
+
+  const createAccount = async (selectedBillingInterval?: BillingInterval) => {
+    const validated = validateForm();
+    if (!validated) return;
+
+    const { normalizedEmail, trimmedName } = validated;
     setLoading(true);
     try {
       const metadata: Record<string, string> = { full_name: trimmedName };
@@ -102,10 +137,11 @@ const SignUp = () => {
         metadata.org_state = state;
       }
 
+      const selectedPlanConfig = selectedBillingInterval ? SUBSCRIPTION_PLANS[selectedBillingInterval] : preselectedPlan;
       const checkoutParams = new URLSearchParams({ startCheckout: "pro" });
-      if (selectedPriceId) checkoutParams.set("priceId", selectedPriceId);
+      if (selectedPlanConfig?.priceId) checkoutParams.set("priceId", selectedPlanConfig.priceId);
 
-      const emailRedirectTo = isProIntent && !inviteValid
+      const emailRedirectTo = !inviteValid
         ? `${window.location.origin}/checkout-redirect?${checkoutParams.toString()}`
         : `${window.location.origin}/dashboard`;
 
@@ -121,37 +157,65 @@ const SignUp = () => {
       if (error) {
         const message = error.message?.toLowerCase() || "";
         if (message.includes("already registered") || message.includes("already exists") || message.includes("user already registered")) {
-          toast.error("This email is already registered. Please log in instead.");
+          showNotice("Email already registered", "This email is already registered. Please log in instead.");
         } else {
-          toast.error(error.message);
+          showNotice("Signup error", error.message);
         }
-      } else if (isProIntent && !inviteValid) {
+      } else if (!inviteValid) {
         localStorage.setItem("pending_pro_checkout", "true");
         localStorage.setItem("pending_pro_checkout_email", normalizedEmail);
-        if (selectedPriceId) {
-          localStorage.setItem("pending_pro_checkout_price_id", selectedPriceId);
-        } else {
-          localStorage.removeItem("pending_pro_checkout_price_id");
-        }
-        toast.success("Account created. Confirm your email to continue to secure Pro checkout.");
-        navigate("/login");
+        localStorage.setItem("pending_pro_checkout_price_id", selectedPlanConfig!.priceId);
+        showNotice(
+          "Confirm your email",
+          "Your account has been created. Confirm your email to continue to secure Pro checkout.",
+          () => navigate("/login"),
+        );
       } else if (inviteValid) {
         if (signUpData?.session) {
-          toast.success("Invite accepted! Redirecting to dashboard...");
-          navigate("/dashboard");
+          showNotice("Invite accepted", "Your invite has been accepted. Continue to your dashboard.", () => navigate("/dashboard"));
         } else {
-          toast.success("Invite accepted! Check your email to confirm, then you'll be redirected to your dashboard.");
-          navigate("/login");
+          showNotice(
+            "Confirm your email",
+            "Your invite has been accepted. Check your email to confirm your account, then continue to log in.",
+            () => navigate("/login"),
+          );
         }
       } else {
-        toast.success("Account created! Check your email to confirm, then log in to access your dashboard.");
-        navigate(nextPath ? `/login?next=${encodeURIComponent(nextPath)}` : "/login");
+        showNotice(
+          "Account created",
+          "Check your email to confirm your account, then continue to log in and access your dashboard.",
+          () => navigate(nextPath ? `/login?next=${encodeURIComponent(nextPath)}` : "/login"),
+        );
       }
     } catch {
-      toast.error("An unexpected error occurred.");
+      showNotice("Unexpected error", "An unexpected error occurred. Please try again.");
     } finally {
       setLoading(false);
+      setPlanLoading(null);
     }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (inviteValid) {
+      await createAccount();
+      return;
+    }
+
+    const validated = validateForm();
+    if (!validated) return;
+
+    if (preselectedPlan) {
+      await createAccount(preselectedPlan.id);
+      return;
+    }
+
+    setShowPlanSelection(true);
+  };
+
+  const handleSelectPlan = async (interval: BillingInterval) => {
+    setPlanLoading(interval);
+    await createAccount(interval);
   };
 
   if (inviteLoading) {
@@ -198,81 +262,94 @@ const SignUp = () => {
               <p className="text-muted-foreground">
                 {inviteValid
                   ? `You've been invited to join ${inviteOrgName}`
-                  : isProIntent
-                  ? "Set up your account, confirm your email, then complete Pro checkout."
-                  : "Sign up to get started with Sermon Slide Pro"}
+                  : showPlanSelection
+                  ? "Choose your billing plan to finish setting up your account."
+                  : "Create your account to continue to secure Pro checkout."}
               </p>
             </div>
 
-            {isProIntent && !inviteValid && (
+            {!inviteValid && !showPlanSelection && (
               <div className="rounded-lg bg-primary/5 border border-primary/20 p-3 mb-6">
-                <p className="text-sm text-foreground font-medium">Pro onboarding</p>
-                <p className="text-xs text-muted-foreground mt-1">After you confirm your email, we’ll send you to secure checkout.</p>
+                <p className="text-sm text-foreground font-medium">Paid account setup</p>
+                <p className="text-xs text-muted-foreground mt-1">All new accounts require a Pro subscription. After you confirm your email, we’ll send you to secure checkout.</p>
               </div>
             )}
 
-            <form onSubmit={handleSubmit} className="space-y-5">
-              <div className="space-y-2">
-                <Label htmlFor="fullName">Full Name</Label>
-                <Input id="fullName" type="text" placeholder="John Smith" value={fullName} onChange={(e) => setFullName(e.target.value)} className="h-12" required />
+            {showPlanSelection ? (
+              <div className="space-y-4">
+                <SubscriptionPlanPicker
+                  title="Choose Your Pro Plan"
+                  description="Select monthly or yearly billing to finish creating your account."
+                  onSelectPlan={handleSelectPlan}
+                  loadingInterval={planLoading}
+                />
+                <Button variant="outline" className="w-full" onClick={() => setShowPlanSelection(false)} disabled={loading}>
+                  Back to Account Details
+                </Button>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
-                <Input id="email" type="email" placeholder="you@church.org" value={email} onChange={(e) => setEmail(e.target.value)} className="h-12" required disabled={isEmailLocked} />
-              </div>
-
-              {/* Organization fields — only show if NOT joining via invite */}
-              {!inviteValid && (
-                <>
-                  <div className="space-y-2">
-                    <Label htmlFor="orgName">Organization / Church Name</Label>
-                    <Input id="orgName" type="text" placeholder="First Baptist Church" value={orgName} onChange={(e) => setOrgName(e.target.value)} className="h-12" required />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-2">
-                      <Label htmlFor="city">City</Label>
-                      <Input id="city" type="text" placeholder="Dallas" value={city} onChange={(e) => setCity(e.target.value)} className="h-12" required />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="state">State</Label>
-                      <select
-                        id="state"
-                        value={state}
-                        onChange={(e) => setState(e.target.value)}
-                        className="h-12 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        required
-                      >
-                        <option value="">Select...</option>
-                        {US_STATES.map(s => (
-                          <option key={s} value={s}>{s}</option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                </>
-              )}
-
-              {inviteValid && (
-                <div className="rounded-lg bg-primary/5 border border-primary/20 p-3">
-                  <p className="text-sm text-foreground font-medium">Organization: {inviteOrgName}</p>
-                  <p className="text-xs text-muted-foreground mt-1">You'll be added as a member of this organization.</p>
+            ) : (
+              <form onSubmit={handleSubmit} className="space-y-5">
+                <div className="space-y-2">
+                  <Label htmlFor="fullName">Full Name</Label>
+                  <Input id="fullName" type="text" placeholder="John Smith" value={fullName} onChange={(e) => setFullName(e.target.value)} className="h-12" required />
                 </div>
-              )}
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email</Label>
+                  <Input id="email" type="email" placeholder="you@church.org" value={email} onChange={(e) => setEmail(e.target.value)} className="h-12" required disabled={isEmailLocked} />
+                </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
-                <PasswordInput id="password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} className="h-12" required />
-                <PasswordRequirements password={password} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="confirmPassword">Confirm Password</Label>
-                <PasswordInput id="confirmPassword" placeholder="••••••••" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="h-12" required />
-              </div>
+                {!inviteValid && (
+                  <>
+                    <div className="space-y-2">
+                      <Label htmlFor="orgName">Organization / Church Name</Label>
+                      <Input id="orgName" type="text" placeholder="First Baptist Church" value={orgName} onChange={(e) => setOrgName(e.target.value)} className="h-12" required />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-2">
+                        <Label htmlFor="city">City</Label>
+                        <Input id="city" type="text" placeholder="Dallas" value={city} onChange={(e) => setCity(e.target.value)} className="h-12" required />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="state">State</Label>
+                        <select
+                          id="state"
+                          value={state}
+                          onChange={(e) => setState(e.target.value)}
+                          className="h-12 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          required
+                        >
+                          <option value="">Select...</option>
+                          {US_STATES.map(s => (
+                            <option key={s} value={s}>{s}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </>
+                )}
 
-              <Button variant="hero" className="w-full" size="lg" type="submit" disabled={loading}>
-                {loading ? "Creating Account..." : "Sign Up"}
-              </Button>
-            </form>
+                {inviteValid && (
+                  <div className="rounded-lg bg-primary/5 border border-primary/20 p-3">
+                    <p className="text-sm text-foreground font-medium">Organization: {inviteOrgName}</p>
+                    <p className="text-xs text-muted-foreground mt-1">You'll be added as a member of this organization.</p>
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <Label htmlFor="password">Password</Label>
+                  <PasswordInput id="password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} className="h-12" required />
+                  <PasswordRequirements password={password} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="confirmPassword">Confirm Password</Label>
+                  <PasswordInput id="confirmPassword" placeholder="••••••••" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="h-12" required />
+                </div>
+
+                <Button variant="hero" className="w-full" size="lg" type="submit" disabled={loading}>
+                  {loading ? "Creating Account..." : inviteValid ? "Sign Up" : preselectedPlan ? `Continue with ${preselectedPlan.label}` : "Continue to Plan Selection"}
+                </Button>
+              </form>
+            )}
 
             <div className="mt-6 text-center">
               <Link to={nextPath ? `/login?next=${encodeURIComponent(nextPath)}` : "/login"} className="text-sm text-primary hover:underline">
@@ -282,6 +359,18 @@ const SignUp = () => {
           </div>
         </motion.div>
       </main>
+
+      <AlertDialog open={!!notice}>
+        <AlertDialogContent onEscapeKeyDown={(event) => event.preventDefault()}>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{notice?.title}</AlertDialogTitle>
+            <AlertDialogDescription>{notice?.description}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={handleNoticeContinue}>Continue</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

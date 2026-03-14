@@ -32,17 +32,44 @@ serve(async (req) => {
     if (!authHeader) throw new Error("No authorization header");
 
     const token = authHeader.replace("Bearer ", "");
-    const { data: userData, error: userError } = await supabaseClient.auth.getUser(token);
-    if (userError) throw new Error(`Auth error: ${userError.message}`);
-    const user = userData.user;
-    if (!user?.email) throw new Error("User not authenticated");
-    logStep("User authenticated", { userId: user.id, email: user.email });
+    const anonClient = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_ANON_KEY") ?? "",
+      { global: { headers: { Authorization: authHeader } } }
+    );
+
+    const { data: claimsData, error: claimsError } = await anonClient.auth.getClaims(token);
+    if (claimsError || !claimsData?.claims) throw new Error("Authentication failed");
+
+    const userId = claimsData.claims.sub as string;
+    const email = claimsData.claims.email as string;
+    if (!userId || !email) throw new Error("User not authenticated");
+    logStep("User authenticated", { userId, email });
 
     const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
-    const customers = await stripe.customers.list({ email: user.email, limit: 1 });
-    if (customers.data.length === 0) throw new Error("No Stripe customer found");
+    const { data: accountId } = await supabaseClient.rpc("get_user_account_id", { _user_id: userId });
+    let customerId: string | null = null;
 
-    const customerId = customers.data[0].id;
+    if (accountId) {
+      const { data: account } = await supabaseClient
+        .from("accounts")
+        .select("stripe_customer_id")
+        .eq("id", accountId)
+        .maybeSingle();
+
+      customerId = account?.stripe_customer_id || null;
+      if (customerId) {
+        logStep("Using account stripe customer", { accountId, customerId });
+      }
+    }
+
+    if (!customerId) {
+      const customers = await stripe.customers.list({ email, limit: 1 });
+      if (customers.data.length === 0) throw new Error("No Stripe customer found");
+      customerId = customers.data[0].id;
+      logStep("Using email stripe customer", { customerId });
+    }
+
     const origin = req.headers.get("origin") || "https://sermonslides.app";
 
     const portalSession = await stripe.billingPortal.sessions.create({

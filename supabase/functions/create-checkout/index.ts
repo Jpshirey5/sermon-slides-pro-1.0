@@ -96,7 +96,7 @@ serve(async (req) => {
     });
 
     const origin = req.headers.get("origin") || "https://sermonslides.app";
-    const checkoutPriceId = requestedPriceId || "price_1SqEzyP2Yr0z0IcsN8lN68kU";
+    const checkoutPriceId = requestedPriceId || "price_1TAr39P2Yr0z0IcssSAqGZ8n";
     logStep("Using checkout price", { checkoutPriceId });
 
     if (existingSubs.data.length > 0) {

@@ -17,7 +17,12 @@ interface Profile {
 interface SubscriptionInfo {
   subscribed: boolean;
   product_id: string | null;
+  price_id: string | null;
+  billing_interval: "month" | "year" | null;
+  plan_label: string | null;
   subscription_end: string | null;
+  cancel_at_period_end: boolean;
+  subscription_status: string | null;
 }
 
 interface AuthContextType {
@@ -51,7 +56,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [subscription, setSubscription] = useState<SubscriptionInfo>({
     subscribed: false,
     product_id: null,
+    price_id: null,
+    billing_interval: null,
+    plan_label: null,
     subscription_end: null,
+    cancel_at_period_end: false,
+    subscription_status: null,
   });
 
   const fetchProfile = async (userId: string) => {
@@ -86,7 +96,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setSubscription({
           subscribed: data.subscribed || false,
           product_id: data.product_id || null,
+          price_id: data.price_id || null,
+          billing_interval: data.billing_interval || null,
+          plan_label: data.plan_label || null,
           subscription_end: data.subscription_end || null,
+          cancel_at_period_end: data.cancel_at_period_end || false,
+          subscription_status: data.subscription_status || null,
         });
       }
     } catch (err) {
@@ -111,7 +126,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setProfile(null);
     setAccountId(null);
     setSubscriptionChecked(false);
-    setSubscription({ subscribed: false, product_id: null, subscription_end: null });
+    setSubscription({
+      subscribed: false,
+      product_id: null,
+      price_id: null,
+      billing_interval: null,
+      plan_label: null,
+      subscription_end: null,
+      cancel_at_period_end: false,
+      subscription_status: null,
+    });
   };
 
   useEffect(() => {
@@ -130,7 +154,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           setProfile(null);
           setAccountId(null);
           setSubscriptionChecked(false);
-          setSubscription({ subscribed: false, product_id: null, subscription_end: null });
+          setSubscription({
+            subscribed: false,
+            product_id: null,
+            price_id: null,
+            billing_interval: null,
+            plan_label: null,
+            subscription_end: null,
+            cancel_at_period_end: false,
+            subscription_status: null,
+          });
         }
 
         if (event === "SIGNED_OUT") {
@@ -149,7 +182,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         fetchAccountId(initialSession.user.id);
         checkSubscription();
       } else {
-        setSubscriptionChecked(true);
+      setSubscriptionChecked(true);
       }
       setLoading(false);
     });

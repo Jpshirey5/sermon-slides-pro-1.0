@@ -20,6 +20,7 @@ import ExitSurvey from "./pages/ExitSurvey";
 import CheckoutRedirect from "./pages/CheckoutRedirect";
 import Contact from "./pages/Contact";
 import NotFound from "./pages/NotFound";
+import SessionTimeoutManager from "@/components/SessionTimeoutManager";
 
 const queryClient = new QueryClient();
 
@@ -30,6 +31,7 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <AuthProvider>
+          <SessionTimeoutManager />
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/create" element={<CreateSermon />} />

@@ -99,24 +99,8 @@ const ProtectedRoute = ({ children, allowUnsubscribed = false }: ProtectedRouteP
     return <Navigate to={`/checkout-redirect?${params.toString()}`} replace />;
   }
 
-  // No more auto-redirect to Stripe. If unsubscribed and not allowed, show message.
   if (!subscription.subscribed && !allowUnsubscribed) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4 text-center max-w-md px-4">
-          <div className="w-12 h-12 rounded-xl gradient-hero flex items-center justify-center">
-            <BookOpen className="w-6 h-6 text-primary-foreground" />
-          </div>
-          <h2 className="font-serif text-xl font-semibold text-foreground">Subscription Required</h2>
-          <p className="text-muted-foreground">
-            You need an active Pro subscription to access the dashboard. Visit our homepage to subscribe.
-          </p>
-          <a href="/#pricing" className="text-primary hover:underline font-medium">
-            View Pricing
-          </a>
-        </div>
-      </div>
-    );
+    return <Navigate to="/account?requiredSubscription=1" replace />;
   }
 
   return <>{children}</>;

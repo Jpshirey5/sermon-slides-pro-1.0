@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -13,10 +13,16 @@ const Login = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const nextPath = searchParams.get("next") || "/dashboard";
-  const signUpHref = `/signup?plan=pro${nextPath ? `&next=${encodeURIComponent(nextPath)}` : ""}`;
+  const signUpHref = `/signup${nextPath ? `?next=${encodeURIComponent(nextPath)}` : ""}`;
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (searchParams.get("reason") === "inactive") {
+      toast.error("You were logged out after 30 minutes of inactivity.");
+    }
+  }, [searchParams]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

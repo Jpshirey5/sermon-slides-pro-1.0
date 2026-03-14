@@ -11,6 +11,12 @@ const logStep = (step: string, details?: any) => {
   console.log(`[CHECK-SUBSCRIPTION] ${step}${details ? ` - ${JSON.stringify(details)}` : ''}`);
 };
 
+const resolvePlanLabel = (interval: string | null) => {
+  if (interval === "month") return "Pro Monthly";
+  if (interval === "year") return "Pro Yearly";
+  return null;
+};
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -43,7 +49,16 @@ serve(async (req) => {
     const { data: claimsData, error: claimsError } = await anonClient.auth.getClaims(token);
     if (claimsError || !claimsData?.claims) {
       logStep("Claims validation failed", { error: claimsError?.message });
-      return new Response(JSON.stringify({ subscribed: false }), {
+      return new Response(JSON.stringify({
+        subscribed: false,
+        product_id: null,
+        price_id: null,
+        billing_interval: null,
+        plan_label: null,
+        subscription_end: null,
+        cancel_at_period_end: false,
+        subscription_status: "inactive",
+      }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 200,
       });
@@ -53,7 +68,16 @@ serve(async (req) => {
     const userId = claimsData.claims.sub as string;
     if (!email || !userId) {
       logStep("No email/userId in claims");
-      return new Response(JSON.stringify({ subscribed: false }), {
+      return new Response(JSON.stringify({
+        subscribed: false,
+        product_id: null,
+        price_id: null,
+        billing_interval: null,
+        plan_label: null,
+        subscription_end: null,
+        cancel_at_period_end: false,
+        subscription_status: "inactive",
+      }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 200,
       });
@@ -64,7 +88,16 @@ serve(async (req) => {
     const { data: accountId } = await supabaseClient.rpc('get_user_account_id', { _user_id: userId });
     if (!accountId) {
       logStep("No account found for user");
-      return new Response(JSON.stringify({ subscribed: false }), {
+      return new Response(JSON.stringify({
+        subscribed: false,
+        product_id: null,
+        price_id: null,
+        billing_interval: null,
+        plan_label: null,
+        subscription_end: null,
+        cancel_at_period_end: false,
+        subscription_status: "inactive",
+      }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 200,
       });
@@ -98,7 +131,16 @@ serve(async (req) => {
         .from("accounts")
         .update({ subscription_status: "inactive" })
         .eq("id", accountId);
-      return new Response(JSON.stringify({ subscribed: false }), {
+      return new Response(JSON.stringify({
+        subscribed: false,
+        product_id: null,
+        price_id: null,
+        billing_interval: null,
+        plan_label: null,
+        subscription_end: null,
+        cancel_at_period_end: false,
+        subscription_status: "inactive",
+      }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 200,
       });
@@ -106,28 +148,87 @@ serve(async (req) => {
 
     const subscriptions = await stripe.subscriptions.list({
       customer: customerId,
-      status: "active",
-      limit: 1,
+      status: "all",
+      limit: 10,
     });
 
-    const hasActiveSub = subscriptions.data.length > 0;
+    const currentSubscription = subscriptions.data.find((sub) =>
+      sub.status === "active" || sub.status === "trialing"
+    );
+    const hasActiveSub = Boolean(currentSubscription);
     let productId = null;
+    let priceId = null;
+    let billingInterval: "month" | "year" | null = null;
+    let planLabel = null;
     let subscriptionEnd = null;
+    let cancelAtPeriodEnd = false;
+    let subscriptionStatus = account?.subscription_status || "inactive";
 
     if (hasActiveSub) {
-      const sub = subscriptions.data[0];
+      const sub = currentSubscription!;
       const endTimestamp = sub.current_period_end;
-      if (endTimestamp && typeof endTimestamp === "number") {
-        subscriptionEnd = new Date(endTimestamp * 1000).toISOString();
-      }
       productId = sub.items.data[0].price.product;
-      logStep("Active subscription found", { subscriptionId: sub.id, productId, endDate: subscriptionEnd });
+      priceId = sub.items.data[0].price.id;
+      const recurringInterval = sub.items.data[0].price.recurring?.interval;
+      billingInterval = recurringInterval === "month" || recurringInterval === "year" ? recurringInterval : null;
+      planLabel = resolvePlanLabel(billingInterval);
+      cancelAtPeriodEnd = Boolean(sub.cancel_at_period_end);
+      subscriptionStatus = cancelAtPeriodEnd ? "canceled" : sub.status;
+
+      if (cancelAtPeriodEnd) {
+        const explicitCancelTimestamp =
+          typeof sub.cancel_at === "number"
+            ? sub.cancel_at
+            : typeof sub.ended_at === "number"
+            ? sub.ended_at
+            : endTimestamp && typeof endTimestamp === "number"
+            ? endTimestamp
+            : null;
+
+        if (explicitCancelTimestamp) {
+          subscriptionEnd = new Date(explicitCancelTimestamp * 1000).toISOString();
+        }
+      } else {
+        try {
+          const upcomingInvoice = await stripe.invoices.createPreview({
+            customer: customerId,
+            subscription: sub.id,
+          });
+
+          const nextInvoiceTimestamp =
+            typeof upcomingInvoice.period_end === "number"
+              ? upcomingInvoice.period_end
+              : typeof upcomingInvoice.next_payment_attempt === "number"
+              ? upcomingInvoice.next_payment_attempt
+              : null;
+
+          if (nextInvoiceTimestamp) {
+            subscriptionEnd = new Date(nextInvoiceTimestamp * 1000).toISOString();
+          }
+        } catch (invoiceError) {
+          logStep("Upcoming invoice preview failed", { error: String(invoiceError), subscriptionId: sub.id });
+        }
+
+        if (!subscriptionEnd && endTimestamp && typeof endTimestamp === "number") {
+          subscriptionEnd = new Date(endTimestamp * 1000).toISOString();
+        }
+      }
+
+      logStep("Current subscription found", {
+        subscriptionId: sub.id,
+        productId,
+        priceId,
+        billingInterval,
+        endDate: subscriptionEnd,
+        cancelAtPeriodEnd,
+        subscriptionStatus,
+      });
 
       // Update accounts table
       await supabaseClient
         .from("accounts")
         .update({
-          subscription_status: "active",
+          subscription_status: sub.status === "trialing" ? "trialing" : "active",
           stripe_customer_id: customerId,
           stripe_subscription_id: sub.id,
           subscription_period_end: subscriptionEnd,
@@ -139,12 +240,18 @@ serve(async (req) => {
         .from("accounts")
         .update({ subscription_status: "inactive" })
         .eq("id", accountId);
+      subscriptionStatus = "inactive";
     }
 
     return new Response(JSON.stringify({
       subscribed: hasActiveSub,
       product_id: productId,
+      price_id: priceId,
+      billing_interval: billingInterval,
+      plan_label: planLabel,
       subscription_end: subscriptionEnd,
+      cancel_at_period_end: cancelAtPeriodEnd,
+      subscription_status: subscriptionStatus,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 200,

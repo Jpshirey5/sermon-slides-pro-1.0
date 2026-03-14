@@ -3,11 +3,11 @@ import { Check, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
+import { SUBSCRIPTION_PLANS } from "@/lib/subscriptionPlans";
 
 const Pricing = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const yearlyPriceId = "price_1T9xQ9P2Yr0z0IcsrsAjgQip";
 
   const handleGoPro = (priceId?: string) => {
     if (user) {
@@ -17,9 +17,9 @@ const Pricing = () => {
       return;
     }
 
-    const params = new URLSearchParams({ plan: "pro" });
-    if (priceId) params.set("priceId", priceId);
-    navigate(`/signup?${params.toString()}`);
+      const params = new URLSearchParams({ plan: "pro" });
+      if (priceId) params.set("priceId", priceId);
+      navigate(`/signup?${params.toString()}`);
   };
 
   return (
@@ -85,8 +85,8 @@ const Pricing = () => {
               <h3 className="font-serif text-2xl font-semibold text-foreground mb-2">Pro Monthly</h3>
               <p className="text-muted-foreground mb-6">Unlimited access, billed monthly</p>
               <div className="flex items-baseline gap-1 mb-8">
-                <span className="text-5xl font-bold text-foreground">$30</span>
-                <span className="text-muted-foreground">/month</span>
+                <span className="text-5xl font-bold text-foreground">{SUBSCRIPTION_PLANS.month.displayPrice}</span>
+                <span className="text-muted-foreground">{SUBSCRIPTION_PLANS.month.intervalLabel}</span>
               </div>
               <ul className="space-y-4 mb-8">
                 {["Everything in Pay Per Export", "Account Creation Required", "Unlimited exports", "Personal dashboard", "Saved presentations"].map((feature, i) => (
@@ -98,8 +98,8 @@ const Pricing = () => {
                   </li>
                 ))}
               </ul>
-              <Button variant="hero" className="w-full mt-auto" size="lg" onClick={() => handleGoPro()}>
-                Go Pro — $30/month
+              <Button variant="hero" className="w-full mt-auto" size="lg" onClick={() => handleGoPro(SUBSCRIPTION_PLANS.month.priceId)}>
+                Go Pro — {SUBSCRIPTION_PLANS.month.displayPrice}{SUBSCRIPTION_PLANS.month.intervalLabel}
               </Button>
             </div>
           </div>
@@ -113,8 +113,8 @@ const Pricing = () => {
               <h3 className="font-serif text-2xl font-semibold text-foreground mb-2">Pro Yearly</h3>
               <p className="text-muted-foreground mb-6">Unlimited access, billed annually</p>
               <div className="flex items-baseline gap-1 mb-8">
-                <span className="text-5xl font-bold text-foreground">$350</span>
-                <span className="text-muted-foreground">/year</span>
+                <span className="text-5xl font-bold text-foreground">{SUBSCRIPTION_PLANS.year.displayPrice}</span>
+                <span className="text-muted-foreground">{SUBSCRIPTION_PLANS.year.intervalLabel}</span>
               </div>
               <ul className="space-y-4 mb-8">
                 {["Everything in Pro Monthly", "Priority support", "2 months free vs monthly billing", "Simplified annual budgeting"].map((feature, i) => (
@@ -126,8 +126,8 @@ const Pricing = () => {
                   </li>
                 ))}
               </ul>
-              <Button variant="outline" className="w-full mt-auto" size="lg" onClick={() => handleGoPro(yearlyPriceId)}>
-                Go Pro — $350/year
+              <Button variant="outline" className="w-full mt-auto" size="lg" onClick={() => handleGoPro(SUBSCRIPTION_PLANS.year.priceId)}>
+                Go Pro — {SUBSCRIPTION_PLANS.year.displayPrice}{SUBSCRIPTION_PLANS.year.intervalLabel}
               </Button>
             </div>
           </div>

@@ -12,6 +12,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useSearchParams } from "react-router-dom";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { TRANSLATION_OPTIONS, DEFAULT_TRANSLATION } from "@/lib/translations";
+import SubscriptionPlanPicker from "@/components/SubscriptionPlanPicker";
+import { getPlanByInterval, getPlanByPriceId, type BillingInterval } from "@/lib/subscriptionPlans";
 
 interface TeamMember {
   id: string;
@@ -38,6 +40,7 @@ const Account = () => {
   const [savingDefaultTranslation, setSavingDefaultTranslation] = useState(false);
   const [portalLoading, setPortalLoading] = useState(false);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [requiredPlanLoading, setRequiredPlanLoading] = useState<BillingInterval | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Team state
@@ -270,7 +273,7 @@ const Account = () => {
       if (error || !data?.url) {
         toast.error("Could not open subscription portal.");
       } else {
-        window.open(data.url, "_blank");
+        window.location.href = data.url;
       }
     } catch {
       toast.error("An error occurred.");
@@ -284,7 +287,7 @@ const Account = () => {
     navigate("/", { replace: true });
   };
 
-  const handleUpgrade = async (openInNewTab: boolean = true, priceId?: string) => {
+  const handleUpgrade = async (openInNewTab: boolean = false, priceId?: string) => {
     if (subscription.subscribed) {
       toast.success("Your Pro subscription is already active.");
       return;
@@ -327,6 +330,36 @@ const Account = () => {
     setDeleteFinalOpen(false);
     navigate("/exit-survey");
   };
+
+  const handleSelectRequiredPlan = async (interval: BillingInterval) => {
+    const requestedPlan = getPlanByInterval(interval);
+    if (!requestedPlan) return;
+    setRequiredPlanLoading(interval);
+    try {
+      await handleUpgrade(false, requestedPlan.priceId);
+    } finally {
+      setRequiredPlanLoading(null);
+    }
+  };
+
+  const formattedSubscriptionEnd = subscription.subscription_end
+    ? new Date(subscription.subscription_end).toLocaleDateString()
+    : null;
+  const isCancelingSubscription = subscription.subscribed && subscription.cancel_at_period_end;
+  const resolvedPlan = getPlanByPriceId(subscription.price_id) || getPlanByInterval(subscription.billing_interval);
+  const planLabel = subscription.subscribed
+    ? subscription.plan_label || resolvedPlan?.badgeLabel || "Pro"
+    : "No active subscription";
+  const statusLabel = isCancelingSubscription
+    ? "Cancelled"
+    : subscription.subscribed
+    ? "Active"
+    : "Inactive";
+  const statusClassName = isCancelingSubscription
+    ? "text-amber-600 font-medium"
+    : subscription.subscribed
+    ? "text-green-600 font-medium"
+    : "text-muted-foreground";
 
   useEffect(() => {
     if (searchParams.get("checkout") === "success") {
@@ -551,32 +584,66 @@ const Account = () => {
                   subscription.subscribed ? "bg-primary/10 text-primary" : "bg-secondary text-muted-foreground"
                 }`}>
                   {subscription.subscribed && <Crown className="w-3.5 h-3.5" />}
-                  {subscription.subscribed ? "Pro Monthly ($30/mo)" : "Free"}
+                  {planLabel}
                 </span>
               </div>
-              <div>
-                <span className="text-muted-foreground">Status: </span>
-                <span className={subscription.subscribed ? "text-green-600 font-medium" : "text-muted-foreground"}>
-                  {subscription.subscribed ? "Active" : "Inactive"}
-                </span>
-              </div>
-              {subscription.subscription_end && (
+              {subscription.subscribed && (
                 <div>
-                  <span className="text-muted-foreground">Renews: </span>
+                  <span className="text-muted-foreground">Billing: </span>
                   <span className="text-foreground">
-                    {new Date(subscription.subscription_end).toLocaleDateString()}
+                    {resolvedPlan
+                      ? `${resolvedPlan.displayPrice} ${resolvedPlan.id === "year" ? "yearly" : "monthly"}`
+                      : "Pro"}
                   </span>
                 </div>
               )}
+              <div>
+                <span className="text-muted-foreground">Status: </span>
+                <span className={statusClassName}>
+                  {statusLabel}
+                </span>
+              </div>
+              {subscription.subscribed && (
+                <div>
+                  <span className="text-muted-foreground">
+                    {isCancelingSubscription ? "Ends on: " : "Renews on: "}
+                  </span>
+                  <span className="text-foreground">
+                    {formattedSubscriptionEnd || "Unavailable"}
+                  </span>
+                </div>
+              )}
+              {isCancelingSubscription && formattedSubscriptionEnd && (
+                <div className="rounded-xl border border-amber-300/50 bg-amber-50/60 p-4">
+                  <p className="text-sm text-amber-900">
+                    You still have access till this {formattedSubscriptionEnd}.
+                  </p>
+                </div>
+              )}
               <div className="pt-4 flex gap-3">
-                {subscription.subscribed ? (
+                {isCancelingSubscription ? (
+                  <Button onClick={handleManageSubscription} disabled={portalLoading} variant="hero">
+                    {portalLoading ? "Opening..." : "Resubscribe"}
+                  </Button>
+                ) : subscription.subscribed ? (
                   <Button onClick={handleManageSubscription} disabled={portalLoading} variant="outline">
                     {portalLoading ? "Opening..." : "Manage Subscription"}
                   </Button>
                 ) : (
-                  <Button onClick={handleUpgrade} disabled={checkoutLoading} variant="hero">
-                    {checkoutLoading ? "Starting..." : "Upgrade to Pro — $30/mo"}
-                  </Button>
+                  <div className="w-full space-y-4">
+                    <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
+                      <p className="text-sm text-foreground font-medium">Subscription required</p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Choose a monthly or yearly Pro plan to activate your account and continue.
+                      </p>
+                    </div>
+                    <SubscriptionPlanPicker
+                      title="Choose Your Plan"
+                      description="Select the billing option you want to use for this account."
+                      onSelectPlan={handleSelectRequiredPlan}
+                      loadingInterval={requiredPlanLoading}
+                    />
+                  </div>
                 )}
               </div>
             </div>
