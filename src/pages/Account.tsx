@@ -407,12 +407,12 @@ const Account = () => {
               <ArrowLeft className="w-5 h-5" />
               <span className="hidden sm:inline">Dashboard</span>
             </Link>
-            <div className="flex items-center gap-2">
+            <Link to="/" className="flex items-center gap-2 hover:opacity-90 transition-opacity">
               <div className="w-8 h-8 rounded-lg gradient-hero flex items-center justify-center">
                 <BookOpen className="w-4 h-4 text-primary-foreground" />
               </div>
               <span className="font-serif text-lg font-semibold text-foreground">Sermon Slide Pro</span>
-            </div>
+            </Link>
             <Button variant="ghost" onClick={handleLogout}>Log Out</Button>
           </div>
         </div>

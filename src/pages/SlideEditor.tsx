@@ -909,12 +909,14 @@ const SlideEditor = () => {
 
             {/* Title + Paid Badge + Save Indicator */}
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg gradient-hero flex items-center justify-center">
-                <BookOpen className="w-4 h-4 text-primary-foreground" />
-              </div>
-              <span className="font-serif text-lg font-semibold text-foreground">
-                {presentationTitle}
-              </span>
+              <Link to="/" className="flex items-center gap-3 hover:opacity-90 transition-opacity">
+                <div className="w-8 h-8 rounded-lg gradient-hero flex items-center justify-center">
+                  <BookOpen className="w-4 h-4 text-primary-foreground" />
+                </div>
+                <span className="font-serif text-lg font-semibold text-foreground">
+                  {presentationTitle}
+                </span>
+              </Link>
               
               {/* Paid Badge - shows when export is unlocked */}
               {isExportUnlocked && (
