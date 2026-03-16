@@ -19,6 +19,7 @@ import Account from "./pages/Account";
 import ExitSurvey from "./pages/ExitSurvey";
 import CheckoutRedirect from "./pages/CheckoutRedirect";
 import Contact from "./pages/Contact";
+import TrustCenter from "./pages/TrustCenter";
 import NotFound from "./pages/NotFound";
 import SessionTimeoutManager from "@/components/SessionTimeoutManager";
 
@@ -47,6 +48,7 @@ const App = () => (
             
             <Route path="/account" element={<ProtectedRoute allowUnsubscribed><Account /></ProtectedRoute>} />
             <Route path="/contact" element={<Contact />} />
+            <Route path="/trust-center" element={<TrustCenter />} />
             <Route path="/exit-survey" element={<ProtectedRoute allowUnsubscribed><ExitSurvey /></ProtectedRoute>} />
             <Route path="/checkout-redirect" element={<ProtectedRoute allowUnsubscribed><CheckoutRedirect /></ProtectedRoute>} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
