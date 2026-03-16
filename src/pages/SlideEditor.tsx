@@ -15,6 +15,13 @@ import { toast } from "sonner";
 import { getPresentation, SermonPresentation, saveEditorSlides as saveEditorSlidesToDb, getEditorSlides as getEditorSlidesFromDb } from "@/lib/presentations";
 import { useAuth } from "@/contexts/AuthContext";
 import { clearPendingExportContext, setPendingExportSnapshot } from "@/lib/payPerExport";
+import {
+  deleteStoredBackground,
+  fileToDataUrl,
+  isStorageBackground,
+  resolveBackgroundImageSource,
+  uploadPresentationBackground,
+} from "@/lib/background-assets";
 
 // Microsoft Word standard fonts - alphabetically ordered
 const fonts = ["Arial", "Arial Black", "Book Antiqua", "Calibri", "Cambria", "Candara", "Century Gothic", "Comic Sans MS", "Consolas", "Constantia", "Corbel", "Courier New", "Franklin Gothic Medium", "Garamond", "Georgia", "Gill Sans MT", "Impact", "Lucida Console", "Lucida Sans Unicode", "Palatino Linotype", "Segoe UI", "Tahoma", "Times New Roman", "Trebuchet MS", "Verdana"];
@@ -208,7 +215,7 @@ const SlideEditor = () => {
   const { id } = useParams();
   const location = useLocation();
   const editorNavigate = useNavigate();
-  const { subscription } = useAuth();
+  const { subscription, accountId, user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [slides, setSlides] = useState<SlideData[]>(defaultSlides);
   const [selectedSlide, setSelectedSlide] = useState(0);
@@ -219,6 +226,7 @@ const SlideEditor = () => {
   const [isDragging, setIsDragging] = useState(false);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const [resolvedBackgroundImages, setResolvedBackgroundImages] = useState<Record<string, string>>({});
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
   // Payment state
@@ -335,6 +343,35 @@ const SlideEditor = () => {
       }
     };
   }, [slides, id]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const resolveBackgrounds = async () => {
+      const entries = await Promise.all(
+        slides.map(async (slide) => {
+          if (!slide.backgroundImage) return [slide.id, ""] as const;
+          try {
+            const resolved = await resolveBackgroundImageSource(slide.backgroundImage);
+            return [slide.id, resolved || ""] as const;
+          } catch {
+            return [slide.id, ""] as const;
+          }
+        })
+      );
+
+      if (cancelled) return;
+      setResolvedBackgroundImages(
+        Object.fromEntries(entries.filter(([, value]) => value))
+      );
+    };
+
+    void resolveBackgrounds();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [slides]);
   
   // Update history when slides change (but not during undo/redo)
   useEffect(() => {
@@ -555,13 +592,62 @@ const SlideEditor = () => {
     });
   };
 
+  const getRenderableBackgroundImage = (slide: SlideData) =>
+    resolvedBackgroundImages[slide.id] || slide.backgroundImage;
+
+  const cleanupRemovedStorageBackgrounds = (previousSlides: SlideData[], nextSlides: SlideData[]) => {
+    const nextRefs = new Set(
+      nextSlides
+        .map((slide) => slide.backgroundImage)
+        .filter((image): image is string => Boolean(image) && isStorageBackground(image))
+    );
+
+    const refsToDelete = new Set(
+      previousSlides
+        .map((slide) => slide.backgroundImage)
+        .filter((image): image is string => Boolean(image) && isStorageBackground(image) && !nextRefs.has(image))
+    );
+
+    refsToDelete.forEach((image) => {
+      void deleteStoredBackground(image);
+    });
+  };
+
   // Apply to ALL slides
   const handleBackgroundChange = (background: string, backgroundImage?: string) => {
-    setSlides(slides.map(slide => ({
+    const nextSlides = slides.map(slide => ({
       ...slide,
       background,
       backgroundImage
-    })));
+    }));
+
+    cleanupRemovedStorageBackgrounds(slides, nextSlides);
+    setSlides(nextSlides);
+  };
+
+  const handleBackgroundUpload = async (file: File) => {
+    if (!id || id === "new") {
+      throw new Error("Please save the presentation before uploading a custom background.");
+    }
+
+    let backgroundImage: string;
+    if (user && accountId) {
+      try {
+        backgroundImage = await uploadPresentationBackground({
+          file,
+          accountId,
+          presentationId: id,
+          slideId: currentSlide.id,
+        });
+      } catch (error) {
+        console.warn("Falling back to embedded background image after storage upload failure:", error);
+        backgroundImage = await fileToDataUrl(file);
+      }
+    } else {
+      backgroundImage = await fileToDataUrl(file);
+    }
+
+    handleBackgroundChange(currentSlide.background, backgroundImage);
   };
 
   // Apply to ALL slides
@@ -666,13 +752,14 @@ const SlideEditor = () => {
     }
   };
   if (isPreviewMode) {
+    const currentSlideBackgroundImage = getRenderableBackgroundImage(currentSlide);
     return <div className="fixed inset-0 z-50 flex items-center justify-center bg-cover bg-center" style={{
-      background: currentSlide.backgroundImage ? `url(${currentSlide.backgroundImage})` : currentSlide.background,
+      background: currentSlideBackgroundImage ? `url(${currentSlideBackgroundImage})` : currentSlide.background,
       backgroundSize: 'cover',
       backgroundPosition: 'center'
     }} onClick={() => setIsPreviewMode(false)}>
         {/* Dark overlay for images */}
-        {currentSlide.backgroundImage && <div className="absolute inset-0 bg-black/40" />}
+        {currentSlideBackgroundImage && <div className="absolute inset-0 bg-black/40" />}
         
         <div className="absolute top-4 right-4 flex gap-2 z-10">
           <Button variant="outline" className="bg-white/10 border-white/20 text-white hover:bg-white/20" onClick={e => {
@@ -961,7 +1048,7 @@ const SlideEditor = () => {
                         <div 
                           className="absolute inset-0"
                           style={{
-                            background: slide.backgroundImage ? `url(${slide.backgroundImage})` : slide.background,
+                            background: getRenderableBackgroundImage(slide) ? `url(${getRenderableBackgroundImage(slide)})` : slide.background,
                             backgroundSize: 'cover',
                             backgroundPosition: 'center'
                           }}
@@ -999,6 +1086,9 @@ const SlideEditor = () => {
         <main className="flex-1 flex flex-col overflow-hidden min-h-0">
           {/* Slide Preview - Fixed region, centered */}
           <div className="flex-1 flex items-center justify-center p-4 bg-muted/30 min-h-0 overflow-hidden">
+            {(() => {
+              const currentSlideBackgroundImage = getRenderableBackgroundImage(currentSlide);
+              return (
             <motion.div key={selectedSlide} initial={{
             opacity: 0,
             scale: 0.95
@@ -1026,7 +1116,7 @@ const SlideEditor = () => {
                 <div 
                   className="absolute inset-0 bg-cover bg-center"
                   style={{
-                    background: currentSlide.backgroundImage ? `url(${currentSlide.backgroundImage})` : currentSlide.background,
+                    background: currentSlideBackgroundImage ? `url(${currentSlideBackgroundImage})` : currentSlide.background,
                     backgroundSize: 'cover',
                     backgroundPosition: 'center'
                   }}
@@ -1034,7 +1124,7 @@ const SlideEditor = () => {
               )}
               
               {/* Dark overlay for images */}
-              {currentSlide.backgroundImage && <div className="absolute inset-0 bg-black/30" />}
+              {currentSlideBackgroundImage && <div className="absolute inset-0 bg-black/30" />}
               
               <div className="text-center max-w-2xl px-6 relative z-10 w-full flex flex-col items-center justify-center" style={{
               lineHeight: currentSlide.lineSpacing || 1.5
@@ -1073,6 +1163,8 @@ const SlideEditor = () => {
                 {currentSlide.type === "blank" && <p className="text-muted-foreground text-sm">Blank Slide</p>}
               </div>
             </motion.div>
+              );
+            })()}
           </div>
 
           {/* Toolbar - Fixed at bottom, always visible */}
@@ -1133,7 +1225,12 @@ const SlideEditor = () => {
               </div>
 
               {/* Background */}
-              <BackgroundPicker currentBackground={currentSlide.background} currentBackgroundImage={currentSlide.backgroundImage} onBackgroundChange={handleBackgroundChange} />
+              <BackgroundPicker
+                currentBackground={currentSlide.background}
+                currentBackgroundImage={currentSlide.backgroundImage}
+                onBackgroundChange={handleBackgroundChange}
+                onBackgroundUpload={handleBackgroundUpload}
+              />
 
               {/* Navigation */}
               <div className="flex items-center gap-1.5">

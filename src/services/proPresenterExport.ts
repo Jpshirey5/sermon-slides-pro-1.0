@@ -1,6 +1,7 @@
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import { Presentation } from './pro7-schema';
+import { resolveBackgroundImageSource } from '@/lib/background-assets';
 
 export interface SlideData {
   id: string;
@@ -348,9 +349,11 @@ export async function exportAsProBundle(
   for (let i = 0; i < slides.length; i++) {
     const slide = slides[i];
     if (slide.backgroundImage) {
-      const ext = getImageExtension(slide.backgroundImage);
+      const resolvedBackgroundImage = await resolveBackgroundImageSource(slide.backgroundImage);
+      if (!resolvedBackgroundImage) continue;
+      const ext = getImageExtension(resolvedBackgroundImage);
       const filename = `bg_${String(i + 1).padStart(3, '0')}.${ext}`;
-      const blob = await fetchImageAsBlob(slide.backgroundImage);
+      const blob = await fetchImageAsBlob(resolvedBackgroundImage);
       if (blob) {
         zip.file(`Media/${filename}`, blob);
         mediaMap.set(i, filename);

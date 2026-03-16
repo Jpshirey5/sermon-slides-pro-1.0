@@ -8,12 +8,14 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Image, Upload, Palette, Check } from 'lucide-react';
+import { Image, Upload, Palette, Check, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 
 interface BackgroundPickerProps {
   currentBackground: string;
   currentBackgroundImage?: string;
   onBackgroundChange: (background: string, backgroundImage?: string) => void;
+  onBackgroundUpload: (file: File) => Promise<void>;
 }
 
 const gradientPresets = [
@@ -56,21 +58,27 @@ export function BackgroundPicker({
   currentBackground,
   currentBackgroundImage,
   onBackgroundChange,
+  onBackgroundUpload,
 }: BackgroundPickerProps) {
   const [open, setOpen] = useState(false);
   const [selectedTab, setSelectedTab] = useState('gradients');
+  const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const dataUrl = e.target?.result as string;
-        onBackgroundChange(currentBackground, dataUrl);
+      setIsUploading(true);
+      try {
+        await onBackgroundUpload(file);
         setOpen(false);
-      };
-      reader.readAsDataURL(file);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Could not upload custom background.';
+        toast.error(message);
+      } finally {
+        setIsUploading(false);
+        event.target.value = '';
+      }
     }
   };
 
@@ -192,11 +200,15 @@ export function BackgroundPicker({
           <TabsContent value="upload" className="mt-4">
             <div
               className="border-2 border-dashed border-border rounded-lg p-8 text-center cursor-pointer hover:border-primary transition-colors"
-              onClick={() => fileInputRef.current?.click()}
+              onClick={() => !isUploading && fileInputRef.current?.click()}
             >
-              <Upload className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
+              {isUploading ? (
+                <Loader2 className="w-12 h-12 mx-auto mb-4 text-muted-foreground animate-spin" />
+              ) : (
+                <Upload className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
+              )}
               <p className="text-foreground font-medium mb-2">
-                Click to upload an image
+                {isUploading ? 'Uploading image...' : 'Click to upload an image'}
               </p>
               <p className="text-sm text-muted-foreground">
                 PNG, JPG up to 10MB

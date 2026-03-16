@@ -1,5 +1,6 @@
 // Presentation types and Supabase utilities
 import { supabase } from "@/integrations/supabase/client";
+import { deleteStoredBackground, isStorageBackground } from "@/lib/background-assets";
 
 export interface SermonPresentation {
   id: string;
@@ -59,6 +60,17 @@ function extractEditorSlides(slides: any): any[] | null {
   // Legacy: slides is a raw array of editor slides
   if (Array.isArray(slides)) return slides;
   return null;
+}
+
+function collectStorageBackgrounds(editorSlides: any[] | null): string[] {
+  if (!editorSlides) return [];
+  return Array.from(
+    new Set(
+      editorSlides
+        .map((slide: any) => slide?.backgroundImage)
+        .filter((image: string | undefined): image is string => Boolean(image) && isStorageBackground(image))
+    )
+  );
 }
 
 function countSlides(slides: any): number {
@@ -213,12 +225,25 @@ export async function deletePresentation(id: string): Promise<void> {
     return;
   }
 
+  const { data: existing } = await supabase
+    .from('sermons')
+    .select('slides')
+    .eq('id', id)
+    .maybeSingle();
+
+  const backgroundRefs = collectStorageBackgrounds(existing ? extractEditorSlides(existing.slides) : null);
+
   const { error } = await supabase
     .from('sermons')
     .delete()
     .eq('id', id);
   
   if (error) console.error('Failed to delete sermon:', error);
+  if (!error) {
+    backgroundRefs.forEach((image) => {
+      void deleteStoredBackground(image);
+    });
+  }
 }
 
 export async function getPresentation(id: string): Promise<SermonPresentation | undefined> {
