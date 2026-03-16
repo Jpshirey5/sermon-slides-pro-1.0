@@ -33,6 +33,16 @@ interface SlidesWrapper {
   editorSlides?: any[];
 }
 
+export interface EditorPresentationState {
+  id: string;
+  title: string;
+  formData?: SermonPresentation["data"];
+  editorSlides: any[] | null;
+  createdAt?: string;
+  updatedAt?: string;
+  scriptureReference?: string;
+}
+
 interface GuestSermonRow {
   id: string;
   title: string;
@@ -272,6 +282,55 @@ export async function getPresentation(id: string): Promise<SermonPresentation | 
     lastModified: new Date(data.updated_at).toLocaleDateString(),
     scripture_reference: data.scripture_reference || undefined,
     data: extractFormData(data.slides),
+  };
+}
+
+export async function getEditorPresentationState(id: string): Promise<EditorPresentationState | undefined> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    const guestRow = readGuestSermons()[id];
+    if (!guestRow) return undefined;
+
+    return {
+      id: guestRow.id,
+      title: guestRow.title,
+      formData: extractFormData(guestRow.slides),
+      editorSlides: extractEditorSlides(guestRow.slides),
+      createdAt: guestRow.created_at,
+      updatedAt: guestRow.updated_at,
+      scriptureReference: guestRow.scripture_reference || undefined,
+    };
+  }
+
+  const { data, error } = await supabase
+    .from("sermons")
+    .select("id, title, scripture_reference, slides, created_at, updated_at")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (error || !data) {
+    const guestRow = readGuestSermons()[id];
+    if (!guestRow) return undefined;
+
+    return {
+      id: guestRow.id,
+      title: guestRow.title,
+      formData: extractFormData(guestRow.slides),
+      editorSlides: extractEditorSlides(guestRow.slides),
+      createdAt: guestRow.created_at,
+      updatedAt: guestRow.updated_at,
+      scriptureReference: guestRow.scripture_reference || undefined,
+    };
+  }
+
+  return {
+    id: data.id,
+    title: data.title,
+    formData: extractFormData(data.slides),
+    editorSlides: extractEditorSlides(data.slides),
+    createdAt: data.created_at,
+    updatedAt: data.updated_at,
+    scriptureReference: data.scripture_reference || undefined,
   };
 }
 

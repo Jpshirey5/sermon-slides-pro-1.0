@@ -98,6 +98,38 @@ export async function resolveBackgroundImageSource(image?: string): Promise<stri
   return data.signedUrl;
 }
 
+function preloadImage(url: string): Promise<void> {
+  return new Promise((resolve) => {
+    if (typeof window === "undefined") {
+      resolve();
+      return;
+    }
+
+    const image = new Image();
+    image.onload = () => resolve();
+    image.onerror = () => resolve();
+    image.src = url;
+  });
+}
+
+export async function resolveBackgroundImages(images: string[]): Promise<Record<string, string>> {
+  const uniqueImages = Array.from(new Set(images.filter(Boolean)));
+  const resolvedEntries = await Promise.all(
+    uniqueImages.map(async (image) => {
+      try {
+        const resolved = await resolveBackgroundImageSource(image);
+        if (!resolved) return [image, ""] as const;
+        await preloadImage(resolved);
+        return [image, resolved] as const;
+      } catch {
+        return [image, ""] as const;
+      }
+    })
+  );
+
+  return Object.fromEntries(resolvedEntries.filter(([, resolved]) => Boolean(resolved)));
+}
+
 export async function deleteStoredBackground(image?: string): Promise<void> {
   const path = getStoragePathFromBackgroundRef(image);
   if (!path) return;

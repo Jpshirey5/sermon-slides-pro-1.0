@@ -12,14 +12,14 @@ import { splitVerseText } from "@/lib/scripture-api";
 import { ExportOptionsModal } from "@/components/ExportOptionsModal";
 import { PaymentPromptModal } from "@/components/PaymentPromptModal";
 import { toast } from "sonner";
-import { getPresentation, SermonPresentation, saveEditorSlides as saveEditorSlidesToDb, getEditorSlides as getEditorSlidesFromDb } from "@/lib/presentations";
+import { getEditorPresentationState, SermonPresentation, saveEditorSlides as saveEditorSlidesToDb } from "@/lib/presentations";
 import { useAuth } from "@/contexts/AuthContext";
 import { clearPendingExportContext, setPendingExportSnapshot } from "@/lib/payPerExport";
 import {
   deleteStoredBackground,
   fileToDataUrl,
   isStorageBackground,
-  resolveBackgroundImageSource,
+  resolveBackgroundImages,
   uploadPresentationBackground,
 } from "@/lib/background-assets";
 
@@ -227,6 +227,7 @@ const SlideEditor = () => {
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
   const [resolvedBackgroundImages, setResolvedBackgroundImages] = useState<Record<string, string>>({});
+  const [isPresentationLoading, setIsPresentationLoading] = useState(true);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
   // Payment state
@@ -274,37 +275,79 @@ const SlideEditor = () => {
 
   // Load presentation data - check for saved editor slides first
   useEffect(() => {
+    let cancelled = false;
+
     const loadData = async () => {
+      setIsPresentationLoading(true);
       if (id && id !== "new") {
-        // First, try to load saved editor slides from Supabase
-        const savedEditorSlides = await getEditorSlidesFromDb(id);
-        if (savedEditorSlides && savedEditorSlides.length > 0 && savedEditorSlides[0]?.id) {
-          setSlides(savedEditorSlides);
-          setHistory([savedEditorSlides]);
+        const presentationState = await getEditorPresentationState(id);
+        if (cancelled) return;
+
+        if (presentationState) {
+          setPresentationTitle(presentationState.title);
+
+          const generatedPresentation: SermonPresentation | null = presentationState.formData
+            ? {
+                id: presentationState.id,
+                title: presentationState.title,
+                date: presentationState.createdAt?.split("T")[0] || new Date().toISOString().split("T")[0],
+                slides: presentationState.editorSlides?.length || 0,
+                lastModified: presentationState.updatedAt
+                  ? new Date(presentationState.updatedAt).toLocaleDateString()
+                  : new Date().toLocaleDateString(),
+                scripture_reference: presentationState.scriptureReference,
+                data: presentationState.formData,
+              }
+            : null;
+
+          const initialSlides =
+            presentationState.editorSlides && presentationState.editorSlides.length > 0 && presentationState.editorSlides[0]?.id
+              ? presentationState.editorSlides
+              : generatedPresentation
+                ? generateSlidesFromData(generatedPresentation)
+                : defaultSlides;
+
+          setSlides(initialSlides);
+          setHistory([initialSlides]);
           setHistoryIndex(0);
-          
-          // Get title from presentation
-          const presentation = await getPresentation(id);
-          if (presentation) {
-            setPresentationTitle(presentation.title);
-          }
-        } else {
-          // No saved editor slides, generate from presentation data
-          const presentation = await getPresentation(id);
-          if (presentation) {
-            setPresentationTitle(presentation.title);
-            const generatedSlides = generateSlidesFromData(presentation);
-            if (generatedSlides.length > 0) {
-              setSlides(generatedSlides);
-              setHistory([generatedSlides]);
-              setHistoryIndex(0);
-            }
+
+          const backgroundRefs = Array.from(
+            new Set(
+              initialSlides
+                .map((slide) => slide.backgroundImage)
+                .filter((image): image is string => Boolean(image))
+            )
+          );
+
+          if (backgroundRefs.length > 0) {
+            void resolveBackgroundImages(backgroundRefs).then((resolvedByImage) => {
+              if (cancelled) return;
+              const bySlideId = Object.fromEntries(
+                initialSlides
+                  .map((slide) => {
+                    const original = slide.backgroundImage;
+                    const resolved = original ? resolvedByImage[original] : "";
+                    return resolved ? [slide.id, resolved] : null;
+                  })
+                  .filter((entry): entry is [string, string] => Boolean(entry))
+              );
+              setResolvedBackgroundImages(bySlideId);
+            });
+          } else {
+            setResolvedBackgroundImages({});
           }
         }
       }
+      if (cancelled) return;
       isInitialLoadRef.current = false;
+      setIsPresentationLoading(false);
     };
-    loadData();
+
+    void loadData();
+
+    return () => {
+      cancelled = true;
+    };
   }, [id]);
   const currentSlide = slides[selectedSlide];
   
@@ -348,17 +391,26 @@ const SlideEditor = () => {
     let cancelled = false;
 
     const resolveBackgrounds = async () => {
-      const entries = await Promise.all(
-        slides.map(async (slide) => {
-          if (!slide.backgroundImage) return [slide.id, ""] as const;
-          try {
-            const resolved = await resolveBackgroundImageSource(slide.backgroundImage);
-            return [slide.id, resolved || ""] as const;
-          } catch {
-            return [slide.id, ""] as const;
-          }
-        })
+      const backgroundRefs = Array.from(
+        new Set(
+          slides
+            .map((slide) => slide.backgroundImage)
+            .filter((image): image is string => Boolean(image))
+        )
       );
+
+      if (backgroundRefs.length === 0) {
+        if (!cancelled) {
+          setResolvedBackgroundImages({});
+        }
+        return;
+      }
+
+      const resolvedByImage = await resolveBackgroundImages(backgroundRefs);
+      const entries = slides.map((slide) => {
+        const resolved = slide.backgroundImage ? resolvedByImage[slide.backgroundImage] : "";
+        return [slide.id, resolved || ""] as const;
+      });
 
       if (cancelled) return;
       setResolvedBackgroundImages(
@@ -831,6 +883,19 @@ const SlideEditor = () => {
         </div>
       </div>;
   }
+  if (isPresentationLoading) {
+    return <div className="h-screen bg-background flex flex-col overflow-hidden">
+      <header className="h-14 border-b border-border bg-card flex-shrink-0" />
+      <div className="flex-1 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-10 h-10 rounded-xl gradient-hero flex items-center justify-center mx-auto mb-4">
+            <BookOpen className="w-5 h-5 text-primary-foreground" />
+          </div>
+          <p className="text-sm text-muted-foreground">Opening presentation...</p>
+        </div>
+      </div>
+    </div>;
+  }
   return <div className="h-screen bg-background flex flex-col overflow-hidden">
       {/* Header - Fixed height */}
       <header className="h-14 border-b border-border bg-card flex-shrink-0">
@@ -902,10 +967,10 @@ const SlideEditor = () => {
               
               {id && id !== "new" && (
                 <Button variant="outline" onClick={async () => {
-                  const presentation = await getPresentation(id);
-                  if (presentation?.data) {
+                  const presentation = await getEditorPresentationState(id);
+                  if (presentation?.formData) {
                     const target = location.state?.from === "dashboard" ? '/dashboard/create' : '/create';
-                    editorNavigate(target, { state: { editData: presentation.data, editId: id } });
+                    editorNavigate(target, { state: { editData: presentation.formData, editId: id } });
                   } else {
                     toast.error("Original sermon form data not found.");
                   }
