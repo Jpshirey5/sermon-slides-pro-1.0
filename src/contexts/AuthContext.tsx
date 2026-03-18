@@ -1,6 +1,11 @@
-import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, useCallback, ReactNode, useRef } from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
+import {
+  clearStoredLogoutReason,
+  getStoredLogoutReason,
+  setStoredLogoutReason,
+} from "@/lib/session-security";
 
 interface Profile {
   id: string;
@@ -33,7 +38,7 @@ interface AuthContextType {
   subscription: SubscriptionInfo;
   subscriptionChecked: boolean;
   accountId: string | null;
-  signOut: () => Promise<void>;
+  signOut: (options?: { userInitiated?: boolean }) => Promise<void>;
   refreshProfile: () => Promise<void>;
   checkSubscription: () => Promise<void>;
 }
@@ -63,6 +68,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     cancel_at_period_end: false,
     subscription_status: null,
   });
+  const userInitiatedSignOutRef = useRef(false);
+  const lastUserIdRef = useRef<string | null>(null);
 
   const fetchProfile = async (userId: string) => {
     const { data } = await supabase
@@ -119,7 +126,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const signOut = async () => {
+  const signOut = async (options?: { userInitiated?: boolean }) => {
+    const userInitiated = options?.userInitiated ?? true;
+    userInitiatedSignOutRef.current = userInitiated;
+    if (userInitiated) {
+      clearStoredLogoutReason();
+    }
     await supabase.auth.signOut();
     setUser(null);
     setSession(null);
@@ -167,8 +179,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }
 
         if (event === "SIGNED_OUT") {
+          if (lastUserIdRef.current && !userInitiatedSignOutRef.current && !getStoredLogoutReason()) {
+            setStoredLogoutReason("security");
+          }
           setProfile(null);
           setAccountId(null);
+          lastUserIdRef.current = null;
+          userInitiatedSignOutRef.current = false;
+        } else if (newSession?.user?.id) {
+          lastUserIdRef.current = newSession.user.id;
+          userInitiatedSignOutRef.current = false;
         }
         setLoading(false);
       }
@@ -178,11 +198,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setSession(initialSession);
       setUser(initialSession?.user ?? null);
       if (initialSession?.user) {
+        lastUserIdRef.current = initialSession.user.id;
         fetchProfile(initialSession.user.id);
         fetchAccountId(initialSession.user.id);
         checkSubscription();
       } else {
-      setSubscriptionChecked(true);
+        lastUserIdRef.current = null;
+        setSubscriptionChecked(true);
       }
       setLoading(false);
     });

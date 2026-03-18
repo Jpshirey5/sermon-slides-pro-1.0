@@ -2,11 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { AlertDialog, AlertDialogAction, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useAuth } from "@/contexts/AuthContext";
-
-const IDLE_TIMEOUT_MS = 30 * 60 * 1000;
-const WARNING_MS = 10 * 1000;
-const STORAGE_LAST_ACTIVITY_KEY = "ssp_last_activity_at";
-const STORAGE_FORCED_LOGOUT_KEY = "ssp_forced_logout_at";
+import {
+  IDLE_TIMEOUT_MS,
+  WARNING_MS,
+  STORAGE_LAST_ACTIVITY_KEY,
+  STORAGE_FORCED_LOGOUT_KEY,
+  setStoredLogoutReason,
+} from "@/lib/session-security";
 
 const SessionTimeoutManager = () => {
   const { user, signOut } = useAuth();
@@ -60,7 +62,8 @@ const SessionTimeoutManager = () => {
 
       if (event.key === STORAGE_FORCED_LOGOUT_KEY && event.newValue && !loggingOutRef.current) {
         loggingOutRef.current = true;
-        await signOut();
+        setStoredLogoutReason("inactive");
+        await signOut({ userInitiated: false });
         navigate("/login?reason=inactive", { replace: true, state: { from: location.pathname } });
       }
     };
@@ -80,8 +83,9 @@ const SessionTimeoutManager = () => {
 
       if (remainingMs <= 0 && !loggingOutRef.current) {
         loggingOutRef.current = true;
+        setStoredLogoutReason("inactive");
         localStorage.setItem(STORAGE_FORCED_LOGOUT_KEY, String(Date.now()));
-        await signOut();
+        await signOut({ userInitiated: false });
         navigate("/login?reason=inactive", { replace: true, state: { from: location.pathname } });
       }
     }, 1000);
@@ -108,7 +112,7 @@ const SessionTimeoutManager = () => {
         <AlertDialogHeader>
           <AlertDialogTitle>Still there?</AlertDialogTitle>
           <AlertDialogDescription>
-            For security, you will be signed out in {secondsRemaining} seconds unless you choose to stay signed in.
+            For security, your session will expire in {secondsRemaining} seconds unless you choose to stay signed in.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

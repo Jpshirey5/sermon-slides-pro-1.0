@@ -8,6 +8,7 @@ import { BookOpen, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import PasswordInput from "@/components/auth/PasswordInput";
+import { consumeStoredLogoutReason } from "@/lib/session-security";
 
 const Login = () => {
   const navigate = useNavigate();
@@ -19,8 +20,17 @@ const Login = () => {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (searchParams.get("reason") === "inactive") {
-      toast.error("You were logged out after 30 minutes of inactivity.");
+    const queryReason = searchParams.get("reason");
+    const storedReason = consumeStoredLogoutReason();
+    const reason = queryReason === "inactive" || queryReason === "security" ? queryReason : storedReason;
+
+    if (reason === "inactive") {
+      toast.error("You were signed out after 15 minutes of inactivity.");
+      return;
+    }
+
+    if (reason === "security") {
+      toast.error("You were signed out for security. This can happen after inactivity or if your account became active on another device.");
     }
   }, [searchParams]);
 
