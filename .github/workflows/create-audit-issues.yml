@@ -1,0 +1,44 @@
+name: Create audit issues
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  create-issues:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create issues from backlog
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BACKLOG: ${{ secrets.CODEX_ISSUE_BACKLOG }}
+          REPO: ${{ github.repository }}
+        run: |
+          python <<'PY'
+          import os, re, subprocess
+
+          backlog = os.environ["BACKLOG"]
+          repo = os.environ["REPO"]
+
+          chunks = re.split(r'\n(?=TITLE:\s*\n)', backlog.strip(), flags=re.MULTILINE)
+
+          for chunk in chunks:
+              title_match = re.search(r'TITLE:\s*\n(.+?)\nBODY:\s*\n', chunk, re.DOTALL)
+              body_match = re.search(r'BODY:\s*\n([\s\S]+)$', chunk)
+
+              if not title_match or not body_match:
+                  continue
+
+              title = title_match.group(1).strip()
+              body = body_match.group(1).strip()
+
+              subprocess.run([
+                  "gh", "issue", "create",
+                  "--repo", repo,
+                  "--title", title,
+                  "--body", body
+              ])
+          PY
