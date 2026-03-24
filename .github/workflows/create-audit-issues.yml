@@ -18,27 +18,56 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           python <<'PY'
-          import os, re, subprocess
+          import os
+          import subprocess
 
           backlog = os.environ["BACKLOG"]
           repo = os.environ["REPO"]
 
-          chunks = re.split(r'\n(?=TITLE:\s*\n)', backlog.strip(), flags=re.MULTILINE)
+          chunks = backlog.split("TITLE:")
+          created = []
 
           for chunk in chunks:
-              title_match = re.search(r'TITLE:\s*\n(.+?)\nBODY:\s*\n', chunk, re.DOTALL)
-              body_match = re.search(r'BODY:\s*\n([\s\S]+)$', chunk)
-
-              if not title_match or not body_match:
+              chunk = chunk.strip()
+              if not chunk:
                   continue
 
-              title = title_match.group(1).strip()
-              body = body_match.group(1).strip()
+              if "BODY:" not in chunk:
+                  print(f"Skipping malformed block:\n{chunk[:300]}\n")
+                  continue
 
-              subprocess.run([
-                  "gh", "issue", "create",
-                  "--repo", repo,
-                  "--title", title,
-                  "--body", body
-              ])
+              title_part, body_part = chunk.split("BODY:", 1)
+              title = title_part.strip()
+              body = body_part.strip()
+
+              if not title or not body:
+                  print(f"Skipping incomplete block:\n{chunk[:300]}\n")
+                  continue
+
+              print(f"Creating issue: {title}")
+
+              result = subprocess.run(
+                  [
+                      "gh", "issue", "create",
+                      "--repo", repo,
+                      "--title", title,
+                      "--body", body,
+                  ],
+                  capture_output=True,
+                  text=True,
+              )
+
+              print(result.stdout)
+              print(result.stderr)
+
+              if result.returncode == 0:
+                  created.append(title)
+              else:
+                  print(f"Failed to create: {title}")
+
+          print("\nCreated issues:")
+          for title in created:
+              print(f"- {title}")
+
+          print(f"\nTotal created: {len(created)}")
           PY
