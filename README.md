@@ -1,73 +1,126 @@
-# Welcome to your Lovable project
+# Sermon Slide Pro
 
-## Project info
+Sermon Slide Pro is a React and Vite application for building sermon presentations with guided onboarding, scripture lookup, slide editing, subscription management, and export workflows.
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+This repository contains the web app, the supporting Supabase configuration, and the edge functions used for billing, account operations, and supporting services.
 
-## How can I edit this code?
+## Stack
 
-There are several ways of editing your application.
+- React 18
+- Vite 5
+- TypeScript
+- Tailwind CSS
+- shadcn/ui
+- Supabase Auth, Database, and Edge Functions
+- Stripe
+- Cloudflare Wrangler
 
-**Use Lovable**
+## Core Features
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
+- Marketing landing page with pricing and conversion flows
+- Email and invite-based signup/login with Supabase Auth
+- Email confirmation and password reset flows
+- Guided product tour across dashboard, creator, and editor
+- Sermon creation flow with title, translation, points, and verse lookup
+- Slide editor and saved presentation dashboard
+- Subscription management and Stripe checkout handoff
+- Export-related services for PowerPoint and ProPresenter
 
-Changes made via Lovable will be committed automatically to this repo.
+## Getting Started
 
-**Use your preferred IDE**
+### Prerequisites
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+- Node.js 20+ recommended
+- npm for local development
+- Bun for the Cloudflare deploy scripts in `package.json`
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
+### Install
 
 ```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+git clone <your-repo-url>
+cd sermon-slides-pro-1.0
+npm install
+```
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+### Run the app locally
 
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
+```sh
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+The Vite dev server runs locally and uses the frontend environment variables defined in `.env`.
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+## Available Scripts
 
-**Use GitHub Codespaces**
+- `npm run dev` starts the local Vite dev server
+- `npm run build` creates a production build
+- `npm run build:dev` creates a development-mode build
+- `npm run preview` previews the production build locally
+- `npm run lint` runs ESLint
+- `bun run deploy` builds the app and deploys with Wrangler
+- `bun run preview:cf` builds the app and starts Wrangler dev for Cloudflare preview behavior
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+## Environment Variables
 
-## What technologies are used for this project?
+Current frontend variables are defined in [.env](/Users/johnshirey/Desktop/Replika/sermon-slides-pro-1.0/.env):
 
-This project is built with:
+- `VITE_SITE_URL`
+- `VITE_STRIPE_PAYMENT_LINK`
+- `VITE_SUPABASE_PROJECT_ID`
+- `VITE_SUPABASE_PUBLISHABLE_KEY`
+- `VITE_SUPABASE_URL`
+- `VITE_BIBLE_API_BASE_URL`
+- `VITE_BIBLE_API_KEY`
+- `VITE_BIBLE_ID_CSB`
+- `VITE_BIBLE_ID_NIV`
+- `VITE_BIBLE_ID_NKJV`
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+Notes:
 
-## How can I deploy this project?
+- `VITE_*` variables are exposed to the frontend bundle and should only contain public values.
+- Supabase service-role keys, Stripe secrets, Resend API keys, webhook secrets, and similar credentials should not live in the frontend `.env`.
+- Secrets for Edge Functions should be configured in Supabase or your deployment environment.
+- `VITE_SITE_URL` should match the canonical app URL used for auth-related redirects in production.
 
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
+## Auth and Billing Notes
 
-## Can I connect a custom domain to my Lovable project?
+- Supabase handles signup, login, email confirmation, and password reset.
+- The app uses a dedicated `/auth/confirm` route for email confirmation.
+- Password resets route through `/reset-password`.
+- Stripe checkout is initiated through the app and Supabase Edge Functions, not directly from the email template.
+- If auth emails are pointing to the wrong host, check Supabase `Authentication -> URL Configuration` and the confirm-signup email template.
 
-Yes, you can!
+## Deployment
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+This project is deployed as a Vite app with Cloudflare Wrangler.
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+Typical deploy flow:
+
+```sh
+bun install --frozen-lockfile
+bun run build
+bun run deploy
+```
+
+Operational requirements:
+
+- Cloudflare/Wrangler must be configured for the target environment.
+- Supabase URL Configuration must use the correct production domain.
+- Supabase email templates must align with the app’s confirmation route.
+- Stripe-related Supabase Edge Functions must have the required environment secrets configured.
+
+## Project Structure
+
+- `src/pages` route-level screens such as landing, dashboard, auth, creator, and editor
+- `src/components` shared UI, onboarding, layout, and feature components
+- `src/lib` application utilities for exports, monitoring, product tours, auth helpers, pricing, and data flows
+- `src/contexts` shared state providers such as authentication
+- `supabase/functions` edge functions for checkout, subscription checks, invites, telemetry, and supporting integrations
+- `supabase/migrations` database migration history
+
+## Operational Notes
+
+- Auth confirmation and password reset depend on correct Supabase Dashboard configuration.
+- Stripe checkout depends on the related Supabase Edge Functions and their secrets being configured correctly.
+- Invite delivery depends on the `send-invite` Edge Function and its email provider configuration.
+- The README documents the current repo behavior and scripts; if deployment or auth configuration changes, this file should be updated alongside those changes.
