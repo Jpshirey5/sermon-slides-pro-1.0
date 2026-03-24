@@ -22,41 +22,46 @@ import Contact from "./pages/Contact";
 import TrustCenter from "./pages/TrustCenter";
 import NotFound from "./pages/NotFound";
 import SessionTimeoutManager from "@/components/SessionTimeoutManager";
+import ErrorBoundary from "@/components/ErrorBoundary";
+import RouteTracker from "@/components/RouteTracker";
 
 const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <BrowserRouter>
-        <AuthProvider>
-          <SessionTimeoutManager />
-          <Routes>
-            <Route path="/" element={<Index />} />
-            <Route path="/create" element={<CreateSermon />} />
-            <Route path="/editor/:id" element={<SlideEditor />} />
-            <Route path="/payment-success" element={<PaymentSuccess />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="/signup" element={<SignUp />} />
-            <Route path="/invite-signup" element={<InviteSignUp />} />
-            <Route path="/forgot-password" element={<ForgotPassword />} />
-            <Route path="/reset-password" element={<ResetPassword />} />
-            <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-            <Route path="/dashboard/create" element={<ProtectedRoute><CreateSermon /></ProtectedRoute>} />
-            
-            <Route path="/account" element={<ProtectedRoute allowUnsubscribed><Account /></ProtectedRoute>} />
-            <Route path="/contact" element={<Contact />} />
-            <Route path="/trust-center" element={<TrustCenter />} />
-            <Route path="/exit-survey" element={<ProtectedRoute allowUnsubscribed><ExitSurvey /></ProtectedRoute>} />
-            <Route path="/checkout-redirect" element={<ProtectedRoute allowUnsubscribed><CheckoutRedirect /></ProtectedRoute>} />
-            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </AuthProvider>
-      </BrowserRouter>
-    </TooltipProvider>
+    <ErrorBoundary>
+      <TooltipProvider>
+        <Toaster />
+        <Sonner />
+        <BrowserRouter>
+          <RouteTracker />
+          <AuthProvider>
+            <SessionTimeoutManager />
+            <Routes>
+              <Route path="/" element={<Index />} />
+              <Route path="/create" element={<CreateSermon />} />
+              <Route path="/editor/:id" element={<SlideEditor />} />
+              <Route path="/payment-success" element={<PaymentSuccess />} />
+              <Route path="/login" element={<Login />} />
+              <Route path="/signup" element={<SignUp />} />
+              <Route path="/invite-signup" element={<InviteSignUp />} />
+              <Route path="/forgot-password" element={<ForgotPassword />} />
+              <Route path="/reset-password" element={<ResetPassword />} />
+              <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+              <Route path="/dashboard/create" element={<ProtectedRoute><CreateSermon /></ProtectedRoute>} />
+              
+              <Route path="/account" element={<ProtectedRoute allowUnsubscribed><Account /></ProtectedRoute>} />
+              <Route path="/contact" element={<Contact />} />
+              <Route path="/trust-center" element={<TrustCenter />} />
+              <Route path="/exit-survey" element={<ProtectedRoute allowUnsubscribed><ExitSurvey /></ProtectedRoute>} />
+              <Route path="/checkout-redirect" element={<ProtectedRoute allowUnsubscribed><CheckoutRedirect /></ProtectedRoute>} />
+              {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </AuthProvider>
+        </BrowserRouter>
+      </TooltipProvider>
+    </ErrorBoundary>
   </QueryClientProvider>
 );
 

@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import PasswordInput from "@/components/auth/PasswordInput";
 import { consumeStoredLogoutReason } from "@/lib/session-security";
+import { logError, trackEvent } from "@/lib/monitoring";
 
 const Login = () => {
   const navigate = useNavigate();
@@ -20,6 +21,7 @@ const Login = () => {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
+    trackEvent("login_viewed", { nextPath, hasReason: Boolean(searchParams.get("reason")) });
     const queryReason = searchParams.get("reason");
     const storedReason = consumeStoredLogoutReason();
     const reason = queryReason === "inactive" || queryReason === "security" ? queryReason : storedReason;
@@ -32,11 +34,12 @@ const Login = () => {
     if (reason === "security") {
       toast.error("You were signed out for security. This can happen after inactivity or if your account became active on another device.");
     }
-  }, [searchParams]);
+  }, [nextPath, searchParams]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !password) {
+      trackEvent("login_validation_failed", { reason: "missing_credentials" });
       toast.error("Please enter your email and password.");
       return;
     }
@@ -44,13 +47,17 @@ const Login = () => {
     setLoading(true);
     try {
       const normalizedEmail = email.trim().toLowerCase();
+      trackEvent("login_submitted", { nextPath });
       const { error } = await supabase.auth.signInWithPassword({ email: normalizedEmail, password });
       if (error) {
+        trackEvent("login_failed", { reason: error.message });
         toast.error(error.message);
       } else {
+        trackEvent("login_succeeded", { nextPath });
         navigate(nextPath);
       }
-    } catch {
+    } catch (error) {
+      logError(error, { scope: "login_submit", nextPath });
       toast.error("An unexpected error occurred.");
     } finally {
       setLoading(false);

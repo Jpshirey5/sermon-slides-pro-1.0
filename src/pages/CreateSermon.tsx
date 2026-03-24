@@ -16,6 +16,7 @@ import {
   BookOpen,
   ArrowLeft,
   Plus,
+  Sparkles,
   Trash2,
   GripVertical,
   Wand2,
@@ -26,6 +27,9 @@ import { lookupScripture } from "@/lib/scripture-api";
 import { savePresentation } from "@/lib/presentations";
 import { useAuth } from "@/contexts/AuthContext";
 import { TRANSLATION_OPTIONS, DEFAULT_TRANSLATION } from "@/lib/translations";
+import { logError, trackEvent } from "@/lib/monitoring";
+import ProductTour, { type ProductTourStep } from "@/components/ProductTour";
+import { consumeCreateTourPrompt, readProductTourState, setProductTourStage } from "@/lib/product-tour";
 
 interface Scripture {
   reference: string;
@@ -46,13 +50,14 @@ interface SermonPoint {
 const CreateSermon = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { profile } = useAuth();
+  const { profile, user } = useAuth();
   const isFromDashboard = location.pathname.startsWith("/dashboard");
   const editData = (location.state as any)?.editData;
   const editId = (location.state as any)?.editId;
   const [title, setTitle] = useState(editData?.title || "");
   const [globalTranslation, setGlobalTranslation] = useState(editData?.translation || DEFAULT_TRANSLATION);
   const [verseBreakdown, setVerseBreakdown] = useState(editData?.verseBreakdown || "verse-by-verse");
+  const [showTourBuilderPrompt, setShowTourBuilderPrompt] = useState(false);
   const [points, setPoints] = useState<SermonPoint[]>(
     editData?.points
       ? editData.points.map((p: any) => ({
@@ -74,6 +79,7 @@ const CreateSermon = () => {
   const lookupTimeouts = useRef<Record<string, NodeJS.Timeout>>({});
   const lookupVersions = useRef<Record<string, number>>({});
   const appliedDefaultRef = useRef(false);
+  const titleInputRef = useRef<HTMLInputElement | null>(null);
 
   const clearLookupTimeout = useCallback((key: string) => {
     if (lookupTimeouts.current[key]) {
@@ -83,12 +89,29 @@ const CreateSermon = () => {
   }, []);
 
   useEffect(() => {
+    trackEvent("create_sermon_viewed", {
+      fromDashboard: isFromDashboard,
+      editingExisting: Boolean(editId),
+    });
+  }, [editId, isFromDashboard]);
+
+  useEffect(() => {
     if (editData?.translation) return;
     if (appliedDefaultRef.current) return;
     if (!profile?.default_translation) return;
     setGlobalTranslation(profile.default_translation);
     appliedDefaultRef.current = true;
   }, [profile?.default_translation, editData?.translation]);
+
+  useEffect(() => {
+    if (!user) return;
+
+    const shouldShowPrompt = consumeCreateTourPrompt(user.id);
+    if (shouldShowPrompt) {
+      setShowTourBuilderPrompt(true);
+      trackEvent("create_tour_prompt_shown");
+    }
+  }, [user]);
 
   const addPoint = () => {
     const newId = String(Date.now());
@@ -219,6 +242,12 @@ const CreateSermon = () => {
           );
         }
       } catch (error) {
+        logError(error, {
+          scope: "scripture_lookup",
+          pointId,
+          index,
+          translation: translationToUse,
+        });
         if (lookupVersions.current[key] !== lookupVersion) return;
         setPoints(prev =>
           prev.map((p) =>
@@ -312,6 +341,14 @@ const CreateSermon = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setShowTourBuilderPrompt(false);
+    trackEvent("sermon_generation_submitted", {
+      editingExisting: Boolean(editId),
+      pointCount: points.length,
+      hasTitle: Boolean(title.trim()),
+      verseBreakdown,
+      translation: globalTranslation,
+    });
     
     // Use editId if re-editing, otherwise generate new ID
     const presentationId = editId || crypto.randomUUID();
@@ -331,39 +368,88 @@ const CreateSermon = () => {
     });
     
     // Save presentation data to Supabase
-    const savedId = await savePresentation({
-      id: presentationId,
-      title: title,
-      date: new Date().toISOString().split('T')[0],
-      slides: slideCount,
-      lastModified: 'Just now',
-      data: {
-        title,
+    try {
+      const savedId = await savePresentation({
+        id: presentationId,
+        title: title,
         date: new Date().toISOString().split('T')[0],
-        verseBreakdown,
-        translation: globalTranslation,
-        points: points.map(p => ({
-          id: p.id,
-          type: p.type,
-          title: p.title,
-          scriptures: p.type === "verse"
-            ? p.scriptures.map(s => ({
-                reference: s.reference,
-                text: s.text,
-                verses: s.verses,
-              }))
-            : [],
-        })),
-      },
-    });
-    
-    if (savedId) {
-      navigate(`/editor/${savedId}`);
-    } else {
+        slides: slideCount,
+        lastModified: 'Just now',
+        data: {
+          title,
+          date: new Date().toISOString().split('T')[0],
+          verseBreakdown,
+          translation: globalTranslation,
+          points: points.map(p => ({
+            id: p.id,
+            type: p.type,
+            title: p.title,
+            scriptures: p.type === "verse"
+              ? p.scriptures.map(s => ({
+                  reference: s.reference,
+                  text: s.text,
+                  verses: s.verses,
+                }))
+              : [],
+          })),
+        },
+      });
+      
+      if (savedId) {
+        if (user) {
+          const tourState = readProductTourState(user.id);
+          if (tourState && (tourState.status === "pending" || tourState.status === "active") && tourState.stage === "create") {
+            setProductTourStage(user.id, "editor", 0);
+          }
+        }
+        trackEvent("sermon_generation_succeeded", {
+          editingExisting: Boolean(editId),
+          slideCount,
+        });
+        navigate(`/editor/${savedId}`);
+      } else {
+        trackEvent("sermon_generation_failed", {
+          editingExisting: Boolean(editId),
+          reason: "save_presentation_returned_null",
+        });
+        const { toast } = await import("sonner");
+        toast.error("Failed to save presentation. Please try again.");
+      }
+    } catch (error) {
+      logError(error, {
+        scope: "sermon_generation_submit",
+        editingExisting: Boolean(editId),
+        slideCount,
+      });
       const { toast } = await import("sonner");
       toast.error("Failed to save presentation. Please try again.");
     }
   };
+
+  const createTourSteps: ProductTourStep[] = [
+    {
+      targetId: "create-sermon-title",
+      title: "Start with the sermon title",
+      description: "Name the presentation here. This title carries into your saved deck and editor.",
+    },
+    {
+      targetId: "create-sermon-translation",
+      title: "Choose the translation once",
+      description: "Set the Bible translation here and the scripture lookup uses it throughout the presentation.",
+    },
+    {
+      targetId: "create-sermon-points",
+      title: "Build your outline here",
+      description: "Add sermon points or verse blocks. Scripture entries auto-populate as you type references.",
+    },
+    {
+      targetId: "create-sermon-generate",
+      title: "Generate slides when ready",
+      description: "When your outline looks right, generate the deck. The tour will continue in the editor after that.",
+      nextStage: "editor",
+      nextLabel: "Got it",
+    },
+  ];
 
   return (
     <div className="app-shell">
@@ -420,6 +506,43 @@ const CreateSermon = () => {
             you.
           </p>
 
+          {showTourBuilderPrompt && (
+            <div className="mb-8 rounded-3xl border border-primary/20 bg-primary/5 px-6 py-5 shadow-sm">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2 text-primary">
+                    <Sparkles className="h-4 w-4" />
+                    <p className="text-sm font-semibold uppercase tracking-[0.18em]">Next Step</p>
+                  </div>
+                  <h2 className="font-serif text-2xl font-semibold text-foreground">
+                    You're ready. Try the builder and generate your slides.
+                  </h2>
+                  <p className="text-sm text-muted-foreground">
+                    Fill in your sermon details, build the outline, and then generate slides to continue the tour in the editor.
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowTourBuilderPrompt(false)}
+                  >
+                    Dismiss
+                  </Button>
+                  <Button
+                    variant="hero"
+                    onClick={() => {
+                      titleInputRef.current?.focus();
+                      titleInputRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+                    }}
+                  >
+                    <Wand2 className="w-4 h-4" />
+                    Try the Builder
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
           <form onSubmit={handleSubmit} className="space-y-8">
             {/* Basic Info */}
             <div className="p-6 rounded-2xl glass-panel space-y-6">
@@ -431,6 +554,8 @@ const CreateSermon = () => {
                 <div className="space-y-2">
                   <Label htmlFor="title">Sermon Title</Label>
                   <Input
+                    ref={titleInputRef}
+                    data-tour-id="create-sermon-title"
                     id="title"
                     type="text"
                     placeholder="e.g., The Power of Faith"
@@ -442,15 +567,12 @@ const CreateSermon = () => {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="translation" className="flex items-center gap-2">
-                    <Book className="w-4 h-4" />
-                    Bible Translation
-                  </Label>
+                  <Label htmlFor="translation">Bible Translation</Label>
                   <Select
                     value={globalTranslation}
                     onValueChange={handleTranslationChange}
                   >
-                    <SelectTrigger className="h-12">
+                    <SelectTrigger className="h-12" data-tour-id="create-sermon-translation">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -492,7 +614,7 @@ const CreateSermon = () => {
             </div>
 
             {/* Sermon Points */}
-            <div className="space-y-4">
+            <div className="space-y-4" data-tour-id="create-sermon-points">
               <h2 className="font-serif text-xl font-semibold text-foreground">
                 Sermon Points
               </h2>
@@ -648,6 +770,7 @@ const CreateSermon = () => {
                 </Button>
               </Link>
               <Button
+                data-tour-id="create-sermon-generate"
                 type="submit"
                 variant="hero"
                 size="lg"
@@ -660,6 +783,13 @@ const CreateSermon = () => {
           </form>
         </motion.div>
       </main>
+      {user && (
+        <ProductTour
+          userId={user.id}
+          stage="create"
+          steps={createTourSteps}
+        />
+      )}
     </div>
   );
 };

@@ -1,0 +1,2 @@
+-- Placeholder migration to align local history with the remote Supabase project.
+-- The schema changes for version 20260310121500 already exist remotely.

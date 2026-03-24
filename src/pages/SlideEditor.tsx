@@ -22,6 +22,8 @@ import {
   resolveBackgroundImages,
   uploadPresentationBackground,
 } from "@/lib/background-assets";
+import { logError, trackEvent } from "@/lib/monitoring";
+import ProductTour, { type ProductTourStep } from "@/components/ProductTour";
 
 // Microsoft Word standard fonts - alphabetically ordered
 const fonts = ["Arial", "Arial Black", "Book Antiqua", "Calibri", "Cambria", "Candara", "Century Gothic", "Comic Sans MS", "Consolas", "Constantia", "Corbel", "Courier New", "Franklin Gothic Medium", "Garamond", "Georgia", "Gill Sans MT", "Impact", "Lucida Console", "Lucida Sans Unicode", "Palatino Linotype", "Segoe UI", "Tahoma", "Times New Roman", "Trebuchet MS", "Verdana"];
@@ -251,6 +253,7 @@ const SlideEditor = () => {
     const paymentStatus = searchParams.get('payment');
     
     if (paymentStatus === 'success' && id && id !== "new") {
+      trackEvent("payment_unlock_applied", { sermonId: id });
       localStorage.setItem(`export_unlocked:${id}`, "true");
       setIsExportUnlocked(true);
       searchParams.delete('payment');
@@ -264,6 +267,7 @@ const SlideEditor = () => {
   // Handle successful payment from embedded checkout
   const handlePaymentComplete = () => {
     if (id && id !== "new") {
+      trackEvent("export_payment_completed", { sermonId: id });
       localStorage.setItem(`export_unlocked:${id}`, "true");
       setIsExportUnlocked(true);
       setShowPaymentModal(false);
@@ -343,7 +347,11 @@ const SlideEditor = () => {
       setIsPresentationLoading(false);
     };
 
-    void loadData();
+    trackEvent("editor_viewed", { sermonId: id || "unknown" });
+    void loadData().catch((error) => {
+      logError(error, { scope: "editor_load_data", sermonId: id || "unknown" });
+      setIsPresentationLoading(false);
+    });
 
     return () => {
       cancelled = true;
@@ -373,7 +381,7 @@ const SlideEditor = () => {
             setSaveStatus('idle');
           }, 2000);
         } catch (error) {
-          console.error('Failed to save:', error);
+          logError(error, { scope: "editor_autosave", sermonId: id });
           toast.error('Failed to save changes');
           setSaveStatus('idle');
         }
@@ -575,6 +583,7 @@ const SlideEditor = () => {
   // Handle export button click - check subscription and unlock status
   const handleExportButtonClick = () => {
     if (subscription.subscribed) {
+      trackEvent("export_modal_opened", { sermonId: id || "unknown", source: "subscription" });
       // Pro user — show export options immediately
       setShowExportModal(true);
       return;
@@ -586,13 +595,16 @@ const SlideEditor = () => {
       : false;
       
     if (isUnlocked) {
+      trackEvent("export_modal_opened", { sermonId: id || "unknown", source: "one_time_unlock" });
       setShowExportModal(true);
     } else {
       if (!id || id === "new") {
+        trackEvent("export_blocked_unsaved");
         toast.error("Please save your presentation first");
         return;
       }
       // Show payment modal
+      trackEvent("export_payment_prompt_opened", { sermonId: id });
       setShowPaymentModal(true);
     }
   };
@@ -601,6 +613,11 @@ const SlideEditor = () => {
     // Validate slides before export
     const validation = validateSlidesForExport(slides);
     if (!validation.isValid) {
+      trackEvent("export_validation_failed", {
+        sermonId: id || "unknown",
+        format,
+        errorCount: validation.errors.length,
+      });
       toast.error("Cannot export", {
         description: validation.errors.join(' ')
       });
@@ -609,6 +626,11 @@ const SlideEditor = () => {
     
     setIsExporting(true);
     try {
+      trackEvent("export_started", {
+        sermonId: id || "unknown",
+        format,
+        slideCount: slides.length,
+      });
       if (format === "pptx") {
         await exportToPowerPoint(slides, presentationTitle);
         toast.success("PowerPoint file exported successfully!", {
@@ -620,10 +642,24 @@ const SlideEditor = () => {
           description: `${slides.length} slides exported to ${presentationTitle}.probundle`
         });
       }
+      trackEvent("export_succeeded", {
+        sermonId: id || "unknown",
+        format,
+        slideCount: slides.length,
+      });
       clearPendingExportContext();
       setShowExportModal(false);
     } catch (error) {
-      console.error("Export error:", error);
+      logError(error, {
+        scope: "editor_export",
+        sermonId: id || "unknown",
+        format,
+        slideCount: slides.length,
+      });
+      trackEvent("export_failed", {
+        sermonId: id || "unknown",
+        format,
+      });
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       toast.error("Export failed", {
         description: `Could not export presentation: ${errorMessage}. Please try again.`
@@ -635,6 +671,7 @@ const SlideEditor = () => {
 
   const prepareForCheckout = async () => {
     if (!id || id === "new") return;
+    trackEvent("export_checkout_prepared", { sermonId: id, slideCount: slides.length });
     await saveEditorSlidesToDb(id, slides);
     setPendingExportSnapshot({
       sermonId: id,
@@ -646,6 +683,30 @@ const SlideEditor = () => {
 
   const getRenderableBackgroundImage = (slide: SlideData) =>
     resolvedBackgroundImages[slide.id] || slide.backgroundImage;
+
+  const editorTourSteps: ProductTourStep[] = [
+    {
+      targetId: "editor-preview",
+      title: "This is your live slide preview",
+      description: "Edit text directly in the canvas and move through the deck to check how each slide will look.",
+    },
+    {
+      targetId: "editor-styles",
+      title: "Style the presentation here",
+      description: "Adjust fonts, colors, spacing, and backgrounds from the toolbar without leaving the editor.",
+    },
+    {
+      targetId: "editor-export-button",
+      title: "Export from this button",
+      description: "When the deck is ready, export PowerPoint or ProPresenter here.",
+    },
+    {
+      title: "You are ready to use the platform",
+      description: "That is the full flow from dashboard to export. We will take you back to the dashboard so you can start creating with the tour complete.",
+      nextLabel: "Back to Dashboard",
+      nextPath: "/dashboard",
+    },
+  ];
 
   const cleanupRemovedStorageBackgrounds = (previousSlides: SlideData[], nextSlides: SlideData[]) => {
     const nextRefs = new Set(
@@ -985,7 +1046,7 @@ const SlideEditor = () => {
                 <Play className="w-4 h-4" />
                 <span className="hidden sm:inline">Preview</span>
               </Button>
-              <Button variant="hero" disabled={isExporting} onClick={handleExportButtonClick}>
+              <Button variant="hero" disabled={isExporting} onClick={handleExportButtonClick} data-tour-id="editor-export-button">
                 <Download className="w-4 h-4" />
                 <span className="hidden sm:inline">
                   {isExporting ? "Exporting..." : "Export"}
@@ -1156,7 +1217,7 @@ const SlideEditor = () => {
             {(() => {
               const currentSlideBackgroundImage = getRenderableBackgroundImage(currentSlide);
               return (
-            <motion.div key={selectedSlide} initial={{
+            <motion.div key={selectedSlide} data-tour-id="editor-preview" initial={{
             opacity: 0,
             scale: 0.95
           }} animate={{
@@ -1236,7 +1297,7 @@ const SlideEditor = () => {
 
           {/* Toolbar - Fixed at bottom, always visible */}
           <div className="h-16 border-t border-border bg-card flex-shrink-0 flex items-center justify-center px-4">
-            <div className="flex items-center justify-center gap-4 flex-wrap">
+            <div className="flex items-center justify-center gap-4 flex-wrap" data-tour-id="editor-styles">
               {/* Font */}
               <div className="flex items-center gap-1.5">
                 <Type className="w-3.5 h-3.5 text-muted-foreground" />
@@ -1344,6 +1405,14 @@ const SlideEditor = () => {
         onExport={handleExport}
         isExporting={isExporting}
       />
+      {user && (
+        <ProductTour
+          userId={user.id}
+          stage="editor"
+          steps={editorTourSteps}
+          onNavigate={editorNavigate}
+        />
+      )}
     </div>;
 };
 export default SlideEditor;
