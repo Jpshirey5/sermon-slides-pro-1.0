@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { BookOpen, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { buildAppUrl } from "@/lib/site-url";
 
 const ForgotPassword = () => {
   const [email, setEmail] = useState("");
@@ -20,7 +21,7 @@ const ForgotPassword = () => {
     setLoading(true);
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/reset-password`,
+        redirectTo: buildAppUrl("/reset-password"),
       });
       if (error) {
         toast.error(error.message);

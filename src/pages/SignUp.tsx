@@ -22,6 +22,7 @@ import SubscriptionPlanPicker from "@/components/SubscriptionPlanPicker";
 import { getPlanByPriceId, SUBSCRIPTION_PLANS, type BillingInterval } from "@/lib/subscriptionPlans";
 import { logError, trackEvent } from "@/lib/monitoring";
 import { startProductTour } from "@/lib/product-tour";
+import { buildAppUrl } from "@/lib/site-url";
 
 const US_STATES = [
   "Alabama","Alaska","Arizona","Arkansas","California","Colorado","Connecticut","Delaware","Florida","Georgia",
@@ -154,6 +155,7 @@ const SignUp = () => {
       const metadata: Record<string, string> = { full_name: trimmedName };
       if (inviteValid && inviteToken) {
         metadata.invite_token = inviteToken;
+        metadata.signup_intent = "dashboard";
       } else {
         metadata.org_name = orgName.trim() || "My Church";
         metadata.org_city = city.trim();
@@ -161,12 +163,14 @@ const SignUp = () => {
       }
 
       const selectedPlanConfig = selectedBillingInterval ? SUBSCRIPTION_PLANS[selectedBillingInterval] : preselectedPlan;
-      const checkoutParams = new URLSearchParams({ startCheckout: "pro" });
-      if (selectedPlanConfig?.priceId) checkoutParams.set("priceId", selectedPlanConfig.priceId);
+      if (!inviteValid) {
+        metadata.signup_intent = "checkout";
+        if (selectedPlanConfig?.priceId) {
+          metadata.signup_checkout_price_id = selectedPlanConfig.priceId;
+        }
+      }
 
-      const emailRedirectTo = !inviteValid
-        ? `${window.location.origin}/checkout-redirect?${checkoutParams.toString()}`
-        : `${window.location.origin}/dashboard`;
+      const emailRedirectTo = buildAppUrl("/auth/confirm");
 
       const { data: signUpData, error } = await supabase.auth.signUp({
         email: normalizedEmail,
