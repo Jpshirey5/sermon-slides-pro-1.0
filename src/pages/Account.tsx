@@ -31,6 +31,8 @@ interface PendingInvite {
   expires_at: string;
 }
 
+const MAX_TEAM_INVITES = 2;
+
 const Account = () => {
   const navigate = useNavigate();
   const { user, profile, subscription, refreshProfile, signOut, checkSubscription, accountId } = useAuth();
@@ -113,10 +115,12 @@ const Account = () => {
   const loadPendingInvites = async () => {
     if (!accountId) return;
     setPendingInvitesLoading(true);
+    const nowIso = new Date().toISOString();
     const { data, error } = await supabase
       .from("account_invites")
       .select("id, email, token, created_at, expires_at")
       .eq("account_id", accountId)
+      .gt("expires_at", nowIso)
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -194,6 +198,18 @@ const Account = () => {
     }
     setInviting(true);
     try {
+      const activePendingInviteCount = pendingInvites.filter(
+        (invite) => new Date(invite.expires_at).getTime() > Date.now()
+      ).length;
+      const nonOwnerTeamCount = teamMembers.filter((member) => member.role !== "owner").length;
+      const inviteSlotsUsed = nonOwnerTeamCount + activePendingInviteCount;
+
+      if (inviteSlotsUsed >= MAX_TEAM_INVITES) {
+        toast.error("You can invite up to 2 team members on this account.");
+        setInviting(false);
+        return;
+      }
+
       // Check if user already exists in profiles
       const { data: existingProfiles } = await supabase
         .from("profiles")
@@ -231,7 +247,11 @@ const Account = () => {
         .single();
 
       if (error) {
-        toast.error("Failed to create invite.");
+        if (error.message?.includes("account invite limit reached")) {
+          toast.error("You can invite up to 2 team members on this account.");
+        } else {
+          toast.error("Failed to create invite.");
+        }
         setInviting(false);
         return;
       }
@@ -345,6 +365,13 @@ const Account = () => {
   const formattedSubscriptionEnd = subscription.subscription_end
     ? new Date(subscription.subscription_end).toLocaleDateString()
     : null;
+  const activePendingInviteCount = pendingInvites.filter(
+    (invite) => new Date(invite.expires_at).getTime() > Date.now()
+  ).length;
+  const nonOwnerTeamCount = teamMembers.filter((member) => member.role !== "owner").length;
+  const inviteSlotsUsed = nonOwnerTeamCount + activePendingInviteCount;
+  const inviteSlotsRemaining = Math.max(0, MAX_TEAM_INVITES - inviteSlotsUsed);
+  const inviteLimitReached = inviteSlotsRemaining === 0;
   const isCancelingSubscription = subscription.subscribed && subscription.cancel_at_period_end;
   const resolvedPlan = getPlanByPriceId(subscription.price_id) || getPlanByInterval(subscription.billing_interval);
   const planLabel = subscription.subscribed
@@ -525,12 +552,18 @@ const Account = () => {
                     value={inviteEmail}
                     onChange={(e) => setInviteEmail(e.target.value)}
                     className="h-10"
+                    disabled={inviteLimitReached}
                   />
-                  <Button onClick={handleInvite} disabled={inviting || !inviteEmail} size="sm">
+                  <Button onClick={handleInvite} disabled={inviting || !inviteEmail || inviteLimitReached} size="sm">
                     {inviting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
                     <span className="ml-1">Invite</span>
                   </Button>
                 </div>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {inviteLimitReached
+                    ? "You have reached your 2-user invite limit."
+                    : `${inviteSlotsUsed} of ${MAX_TEAM_INVITES} collaborative user slots used. ${inviteSlotsRemaining} remaining.`}
+                </p>
               </div>
             )}
 
