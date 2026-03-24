@@ -48,7 +48,7 @@ npm install
 npm run dev
 ```
 
-The Vite dev server runs locally and uses the frontend environment variables defined in `.env`.
+The Vite dev server runs locally and uses frontend environment variables from a local `.env` file.
 
 ## Available Scripts
 
@@ -62,7 +62,7 @@ The Vite dev server runs locally and uses the frontend environment variables def
 
 ## Environment Variables
 
-Current frontend variables are defined in [.env](/Users/johnshirey/Desktop/Replika/sermon-slides-pro-1.0/.env):
+Use `.env.example` as the template for your local `.env` file. The real `.env` should stay local and should not be committed.
 
 - `VITE_SITE_URL`
 - `VITE_STRIPE_PAYMENT_LINK`
