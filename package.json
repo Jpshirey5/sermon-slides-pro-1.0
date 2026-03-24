@@ -8,8 +8,10 @@
     "dev": "vite",
     "build": "vite build",
     "build:dev": "vite build --mode development",
+    "deploy": "bun run build && wrangler deploy",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "preview:cf": "bun run build && wrangler dev"
   },
   "dependencies": {
     "@fontsource/inter": "^5.2.8",
@@ -93,6 +95,7 @@
     "tailwindcss": "^3.4.17",
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.38.0",
-    "vite": "^5.4.19"
+    "vite": "^5.4.19",
+    "wrangler": "4.77.0"
   }
 }
