@@ -13,13 +13,15 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { BookOpen, ArrowLeft, Loader2 } from "lucide-react";
+import { BookOpen, ArrowLeft, Loader2, CheckCircle2, Circle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import PasswordInput from "@/components/auth/PasswordInput";
 import PasswordRequirements from "@/components/auth/PasswordRequirements";
 import { isPasswordStrong } from "@/lib/password";
 import SubscriptionPlanPicker from "@/components/SubscriptionPlanPicker";
 import { getPlanByPriceId, SUBSCRIPTION_PLANS, type BillingInterval } from "@/lib/subscriptionPlans";
+import { logError, trackEvent } from "@/lib/monitoring";
+import { startProductTour } from "@/lib/product-tour";
 
 const US_STATES = [
   "Alabama","Alaska","Arizona","Arkansas","California","Colorado","Connecticut","Delaware","Florida","Georgia",
@@ -71,12 +73,21 @@ const SignUp = () => {
   };
 
   useEffect(() => {
+    trackEvent("signup_viewed", {
+      invited: Boolean(inviteToken),
+      hasPreselectedPlan: Boolean(preselectedPlan),
+      nextPath: nextPath || "/dashboard",
+    });
+  }, [inviteToken, nextPath, preselectedPlan]);
+
+  useEffect(() => {
     if (!inviteToken) return;
 
     const lookupInvite = async () => {
       setInviteLoading(true);
       const { data, error } = await supabase.rpc("get_invite_by_token", { _token: inviteToken });
       if (error || !data || data.length === 0) {
+        trackEvent("invite_lookup_failed", { reason: error?.message || "not_found" });
         showNotice("Invite unavailable", "This invite link is invalid or has expired.");
         setInviteLoading(false);
         return;
@@ -91,10 +102,14 @@ const SignUp = () => {
       setInviteValid(true);
       setInviteOrgName(accountData?.name || "Organization");
       setEmail(invite.email);
+      trackEvent("invite_lookup_succeeded");
       setInviteLoading(false);
     };
 
-    lookupInvite();
+    lookupInvite().catch((error) => {
+      logError(error, { scope: "invite_lookup" });
+      setInviteLoading(false);
+    });
   }, [inviteToken]);
 
   const validateForm = () => {
@@ -102,18 +117,22 @@ const SignUp = () => {
     const trimmedName = fullName.trim();
 
     if (!trimmedName || !normalizedEmail || !password || !confirmPassword) {
+      trackEvent("signup_validation_failed", { reason: "missing_details", invited: inviteValid });
       showNotice("Missing details", "Please fill in all fields.");
       return null;
     }
     if (!inviteValid && (!orgName || !city || !state)) {
+      trackEvent("signup_validation_failed", { reason: "missing_organization_details", invited: inviteValid });
       showNotice("Organization details needed", "Please fill in your organization details.");
       return null;
     }
     if (password !== confirmPassword) {
+      trackEvent("signup_validation_failed", { reason: "password_mismatch", invited: inviteValid });
       showNotice("Passwords do not match", "Please make sure both password fields match before continuing.");
       return null;
     }
     if (!isPasswordStrong(password)) {
+      trackEvent("signup_validation_failed", { reason: "weak_password", invited: inviteValid });
       showNotice("Password requirements", "Your password must meet all listed requirements before you can continue.");
       return null;
     }
@@ -128,6 +147,10 @@ const SignUp = () => {
     const { normalizedEmail, trimmedName } = validated;
     setLoading(true);
     try {
+      trackEvent("signup_submitted", {
+        invited: inviteValid,
+        billingInterval: selectedBillingInterval || preselectedPlan?.id || "none",
+      });
       const metadata: Record<string, string> = { full_name: trimmedName };
       if (inviteValid && inviteToken) {
         metadata.invite_token = inviteToken;
@@ -155,6 +178,10 @@ const SignUp = () => {
       });
 
       if (error) {
+        trackEvent("signup_failed", {
+          invited: inviteValid,
+          reason: error.message,
+        });
         const message = error.message?.toLowerCase() || "";
         if (message.includes("already registered") || message.includes("already exists") || message.includes("user already registered")) {
           showNotice("Email already registered", "This email is already registered. Please log in instead.");
@@ -162,6 +189,12 @@ const SignUp = () => {
           showNotice("Signup error", error.message);
         }
       } else if (!inviteValid) {
+        const newUserId = signUpData.user?.id;
+        if (newUserId) startProductTour(newUserId);
+        trackEvent("signup_succeeded", {
+          invited: false,
+          billingInterval: selectedBillingInterval || preselectedPlan?.id || "none",
+        });
         localStorage.setItem("pending_pro_checkout", "true");
         localStorage.setItem("pending_pro_checkout_email", normalizedEmail);
         localStorage.setItem("pending_pro_checkout_price_id", selectedPlanConfig!.priceId);
@@ -171,6 +204,9 @@ const SignUp = () => {
           () => navigate("/login"),
         );
       } else if (inviteValid) {
+        const newUserId = signUpData.user?.id;
+        if (newUserId) startProductTour(newUserId);
+        trackEvent("signup_succeeded", { invited: true });
         if (signUpData?.session) {
           showNotice("Invite accepted", "Your invite has been accepted. Continue to your dashboard.", () => navigate("/dashboard"));
         } else {
@@ -181,13 +217,19 @@ const SignUp = () => {
           );
         }
       } else {
+        trackEvent("signup_succeeded", { invited: false, nextPath: nextPath || "/dashboard" });
         showNotice(
           "Account created",
           "Check your email to confirm your account, then continue to log in and access your dashboard.",
           () => navigate(nextPath ? `/login?next=${encodeURIComponent(nextPath)}` : "/login"),
         );
       }
-    } catch {
+    } catch (error) {
+      logError(error, {
+        scope: "signup_submit",
+        invited: inviteValid,
+        billingInterval: selectedBillingInterval || preselectedPlan?.id || "none",
+      });
       showNotice("Unexpected error", "An unexpected error occurred. Please try again.");
     } finally {
       setLoading(false);
@@ -230,6 +272,17 @@ const SignUp = () => {
   }
 
   const isEmailLocked = inviteValid;
+  const signupSteps = inviteValid
+    ? [
+        { title: "Create your account", detail: "Set your password and accept the invitation.", complete: true },
+        { title: "Join your organization", detail: `You will be added to ${inviteOrgName || "your organization"}.`, complete: false },
+        { title: "Start building slides", detail: "Open the dashboard and create your first presentation.", complete: false },
+      ]
+    : [
+        { title: "Create your account", detail: "Enter your details and secure your login.", complete: true },
+        { title: "Choose your Pro plan", detail: "Pick monthly or yearly billing before checkout.", complete: Boolean(showPlanSelection || preselectedPlan) },
+        { title: "Confirm email and finish checkout", detail: "We will send you to secure checkout after confirmation.", complete: false },
+      ];
 
   return (
     <div className="app-shell flex flex-col">
@@ -343,6 +396,35 @@ const SignUp = () => {
                 <div className="space-y-2">
                   <Label htmlFor="confirmPassword">Confirm Password</Label>
                   <PasswordInput id="confirmPassword" placeholder="••••••••" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="h-12" required />
+                </div>
+
+                <div className="rounded-xl border border-border/70 bg-white/70 p-4">
+                  <div className="flex items-center justify-between gap-3 mb-3">
+                    <div>
+                      <p className="text-sm font-medium text-foreground">What happens next</p>
+                      <p className="text-xs text-muted-foreground">
+                        {inviteValid ? "Your access is almost ready." : "A short setup flow gets you into the dashboard."}
+                      </p>
+                    </div>
+                    <span className="text-xs font-medium text-primary">
+                      {inviteValid ? "3 steps" : showPlanSelection ? "Plan step active" : "Account step active"}
+                    </span>
+                  </div>
+                  <div className="space-y-3">
+                    {signupSteps.map((step) => (
+                      <div key={step.title} className="flex items-start gap-3">
+                        {step.complete ? (
+                          <CheckCircle2 className="w-4 h-4 text-primary mt-0.5 shrink-0" />
+                        ) : (
+                          <Circle className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+                        )}
+                        <div>
+                          <p className="text-sm font-medium text-foreground">{step.title}</p>
+                          <p className="text-xs text-muted-foreground">{step.detail}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
 
                 <Button variant="hero" className="w-full" size="lg" type="submit" disabled={loading}>
