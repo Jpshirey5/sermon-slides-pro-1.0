@@ -9,7 +9,8 @@ const CTA = () => {
   const [modalOpen, setModalOpen] = useState(false);
 
   return (
-    <section className="py-24 gradient-hero relative overflow-hidden">
+    <section className="py-24 relative overflow-hidden">
+      <div className="absolute inset-0 gradient-warm opacity-95" />
       {/* Background Pattern */}
       <div className="absolute inset-0 opacity-10">
         <div
@@ -24,12 +25,12 @@ const CTA = () => {
       <motion.div
         animate={{ y: [0, -20, 0] }}
         transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
-        className="absolute top-1/4 left-[5%] w-24 h-24 rounded-full bg-white/5 blur-2xl"
+        className="absolute top-1/4 left-[5%] w-24 h-24 rounded-full bg-accent/20 blur-2xl"
       />
       <motion.div
         animate={{ y: [0, 20, 0] }}
         transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
-        className="absolute bottom-1/4 right-[10%] w-32 h-32 rounded-full bg-white/5 blur-2xl"
+        className="absolute bottom-1/4 right-[10%] w-32 h-32 rounded-full bg-primary/20 blur-2xl"
       />
 
       <div className="container mx-auto px-4 relative z-10">
@@ -38,20 +39,20 @@ const CTA = () => {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.5 }}
-          className="text-center max-w-3xl mx-auto"
+          className="text-center max-w-3xl mx-auto glass-panel rounded-2xl p-10 md:p-14"
         >
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 border border-white/20 mb-8">
-            <Sparkles className="w-4 h-4 text-white" />
-            <span className="text-sm font-medium text-white">
+          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-card/85 border border-border/70 mb-8">
+            <Sparkles className="w-4 h-4 text-primary" />
+            <span className="text-sm font-medium text-foreground">
               Create and edit slides for free
             </span>
           </div>
 
-          <h2 className="font-serif text-3xl sm:text-4xl md:text-5xl font-bold text-white mb-6">
+          <h2 className="font-serif text-3xl sm:text-4xl md:text-5xl font-bold text-foreground mb-6">
             Ready to Transform Your Sermon Preparation?
           </h2>
 
-          <p className="text-lg text-white/80 mb-10 max-w-2xl mx-auto">
+          <p className="text-lg text-muted-foreground mb-10 max-w-2xl mx-auto">
             Create beautiful sermon slides in minutes. 
             Pay only $9 when you're ready to export.
           </p>
@@ -62,7 +63,7 @@ const CTA = () => {
               <ArrowRight className="w-5 h-5" />
             </Button>
             <Link to="/login">
-              <Button variant="outline" size="xl" className="border-white/30 text-white hover:bg-white/10 hover:text-white">
+              <Button variant="outline" size="xl">
                 Login
               </Button>
             </Link>

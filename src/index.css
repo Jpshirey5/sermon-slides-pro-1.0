@@ -1,77 +1,58 @@
+@import "@fontsource/inter/400.css";
+@import "@fontsource/inter/500.css";
+@import "@fontsource/inter/600.css";
+@import "@fontsource/inter/700.css";
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-@import "@fontsource/playfair-display/400.css";
-@import "@fontsource/playfair-display/500.css";
-@import "@fontsource/playfair-display/600.css";
-@import "@fontsource/playfair-display/700.css";
-@import "@fontsource/inter/400.css";
-@import "@fontsource/inter/500.css";
-@import "@fontsource/inter/600.css";
-
-/* Sermon Slides Pro Design System
-   A warm, spiritual, professional aesthetic for ministry leaders
-*/
-
 @layer base {
   :root {
-    /* Warm cream background */
-    --background: 40 33% 98%;
-    --foreground: 20 25% 15%;
+    --background: 45 22% 93%;
+    --foreground: 222 20% 11%;
+    --card: 52 24% 95%;
+    --card-foreground: 222 35% 12%;
 
-    /* Cards with subtle warmth */
-    --card: 40 30% 99%;
-    --card-foreground: 20 25% 15%;
+    --popover: 52 24% 95%;
+    --popover-foreground: 222 35% 12%;
 
-    --popover: 40 30% 99%;
-    --popover-foreground: 20 25% 15%;
+    --primary: 40 92% 56%;
+    --primary-foreground: 222 20% 11%;
 
-    /* Deep burgundy/wine primary */
-    --primary: 348 55% 32%;
-    --primary-foreground: 40 33% 98%;
+    --secondary: 45 18% 88%;
+    --secondary-foreground: 222 16% 20%;
 
-    /* Warm stone secondary */
-    --secondary: 30 20% 94%;
-    --secondary-foreground: 20 25% 25%;
+    --muted: 45 14% 87%;
+    --muted-foreground: 220 7% 42%;
 
-    /* Muted warm tones */
-    --muted: 30 15% 92%;
-    --muted-foreground: 20 10% 45%;
+    --accent: 205 46% 54%;
+    --accent-foreground: 222 20% 11%;
 
-    /* Gold accent for spiritual elegance */
-    --accent: 38 70% 50%;
-    --accent-foreground: 20 25% 10%;
-
-    /* Warm destructive */
     --destructive: 0 65% 50%;
-    --destructive-foreground: 40 33% 98%;
+    --destructive-foreground: 210 40% 98%;
 
-    --border: 30 20% 88%;
-    --input: 30 20% 88%;
-    --ring: 348 55% 32%;
+    --border: 45 12% 78%;
+    --input: 45 12% 80%;
+    --ring: 40 92% 56%;
 
-    --radius: 0.75rem;
+    --radius: 0.6rem;
 
-    /* Custom gradients */
-    --gradient-hero: linear-gradient(135deg, hsl(348 55% 32%) 0%, hsl(348 45% 22%) 100%);
-    --gradient-gold: linear-gradient(135deg, hsl(38 70% 50%) 0%, hsl(28 75% 45%) 100%);
-    --gradient-warm: linear-gradient(180deg, hsl(40 33% 98%) 0%, hsl(30 25% 95%) 100%);
+    --gradient-hero: linear-gradient(145deg, hsl(40 92% 56%) 0%, hsl(36 88% 54%) 100%);
+    --gradient-gold: linear-gradient(130deg, hsl(40 92% 56%) 0%, hsl(34 86% 54%) 100%);
+    --gradient-warm: radial-gradient(1200px 600px at 14% -10%, hsl(206 42% 84% / 0.35) 0%, transparent 70%), radial-gradient(900px 500px at 88% 8%, hsl(42 70% 86% / 0.45) 0%, transparent 60%), linear-gradient(180deg, hsl(45 22% 93%) 0%, hsl(42 18% 90%) 100%);
 
-    /* Shadows */
-    --shadow-soft: 0 4px 20px -4px hsl(20 25% 15% / 0.08);
-    --shadow-elevated: 0 8px 30px -8px hsl(20 25% 15% / 0.12);
-    --shadow-glow: 0 0 40px -10px hsl(38 70% 50% / 0.3);
+    --shadow-soft: 0 12px 30px -20px hsl(220 25% 12% / 0.22);
+    --shadow-elevated: 0 18px 44px -22px hsl(220 24% 10% / 0.3);
+    --shadow-glow: 0 0 0 1px hsl(45 70% 98% / 0.7), 0 16px 34px -22px hsl(40 92% 56% / 0.38);
 
-    /* Sidebar */
-    --sidebar-background: 40 30% 97%;
-    --sidebar-foreground: 20 25% 25%;
-    --sidebar-primary: 348 55% 32%;
-    --sidebar-primary-foreground: 40 33% 98%;
-    --sidebar-accent: 30 20% 94%;
-    --sidebar-accent-foreground: 20 25% 25%;
-    --sidebar-border: 30 20% 88%;
-    --sidebar-ring: 348 55% 32%;
+    --sidebar-background: 45 22% 93%;
+    --sidebar-foreground: 222 20% 11%;
+    --sidebar-primary: 40 92% 56%;
+    --sidebar-primary-foreground: 222 20% 11%;
+    --sidebar-accent: 45 18% 88%;
+    --sidebar-accent-foreground: 222 16% 20%;
+    --sidebar-border: 45 12% 78%;
+    --sidebar-ring: 40 92% 56%;
   }
 
   .dark {
@@ -84,7 +65,7 @@
     --popover: 20 18% 12%;
     --popover-foreground: 40 20% 95%;
 
-    --primary: 348 50% 55%;
+    --primary: 226 78% 62%;
     --primary-foreground: 20 20% 8%;
 
     --secondary: 20 15% 18%;
@@ -93,7 +74,7 @@
     --muted: 20 15% 18%;
     --muted-foreground: 30 10% 60%;
 
-    --accent: 38 65% 55%;
+    --accent: 192 80% 58%;
     --accent-foreground: 20 20% 8%;
 
     --destructive: 0 60% 45%;
@@ -105,7 +86,7 @@
 
     --sidebar-background: 20 18% 10%;
     --sidebar-foreground: 40 20% 90%;
-    --sidebar-primary: 348 50% 55%;
+    --sidebar-primary: 226 78% 62%;
     --sidebar-primary-foreground: 20 20% 8%;
     --sidebar-accent: 20 15% 15%;
     --sidebar-accent-foreground: 40 20% 90%;
@@ -121,16 +102,19 @@
 
   body {
     @apply bg-background text-foreground font-sans antialiased;
+    background-image: var(--gradient-warm);
+    min-height: 100vh;
   }
 
   h1, h2, h3, h4, h5, h6 {
-    @apply font-serif;
+    @apply font-sans;
   }
 }
 
 @layer utilities {
   .font-serif {
-    font-family: "Playfair Display", Georgia, serif;
+    font-family: "Inter", system-ui, sans-serif;
+    letter-spacing: -0.02em;
   }
 
   .font-sans {
@@ -159,6 +143,28 @@
 
   .shadow-glow {
     box-shadow: var(--shadow-glow);
+  }
+
+  .glass-panel {
+    background: linear-gradient(150deg, hsl(52 24% 97% / 0.84), hsl(52 24% 94% / 0.72));
+    backdrop-filter: blur(12px);
+    border: 1px solid hsl(45 12% 76% / 0.75);
+    box-shadow: var(--shadow-soft);
+  }
+
+  .grid-noise {
+    background-image:
+      radial-gradient(hsl(42 24% 60% / 0.09) 1px, transparent 1px),
+      linear-gradient(180deg, hsl(45 22% 94% / 0.98), hsl(42 18% 91% / 0.95));
+    background-size: 16px 16px, cover;
+  }
+
+  .app-shell {
+    @apply min-h-screen;
+    background-image:
+      radial-gradient(800px 380px at 8% -2%, hsl(206 60% 80% / 0.35), transparent 72%),
+      radial-gradient(740px 300px at 96% 0%, hsl(42 72% 80% / 0.35), transparent 70%),
+      linear-gradient(180deg, hsl(45 22% 94%) 0%, hsl(42 18% 91%) 100%);
   }
 
   .text-gradient {

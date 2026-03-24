@@ -4,9 +4,7 @@ import {
   FileDown,
   Palette,
   BookOpen,
-  Zap,
   Share2,
-  Upload,
   Type,
 } from "lucide-react";
 
@@ -41,18 +39,18 @@ const features = [
     description:
       "Access a library of beautiful fonts perfect for worship presentations and readability.",
   },
-  {
-    icon: Zap,
-    title: "Drag & Drop Editor",
-    description:
-      "Reorder slides, customize layouts, and perfect your presentation with intuitive controls.",
-  },
-  {
-    icon: Upload,
-    title: "Church Branding",
-    description:
-      "Save your church colors, logos, and preferences for consistent branding across all sermons.",
-  },
+  // {
+  //   icon: Zap,
+  //   title: "Drag & Drop Editor",
+  //   description:
+  //     "Reorder slides, customize layouts, and perfect your presentation with intuitive controls.",
+  // },
+  // {
+  //   icon: Upload,
+  //   title: "Church Branding",
+  //   description:
+  //     "Save your church colors, logos, and preferences for consistent branding across all sermons.",
+  // },
   {
     icon: Share2,
     title: "Easy Sharing",
@@ -63,7 +61,7 @@ const features = [
 
 const Features = () => {
   return (
-    <section id="features" className="py-24 bg-background">
+    <section id="features" className="py-24">
       <div className="container mx-auto px-4">
         {/* Section Header */}
         <motion.div
@@ -87,7 +85,7 @@ const Features = () => {
         </motion.div>
 
         {/* Features Grid */}
-        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="max-w-6xl mx-auto grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {features.map((feature, index) => (
             <motion.div
               key={feature.title}
@@ -95,7 +93,7 @@ const Features = () => {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ duration: 0.5, delay: index * 0.1 }}
-              className="group p-6 rounded-2xl bg-card border border-border hover:border-primary/20 hover:shadow-elevated transition-all duration-300"
+              className="group p-6 rounded-2xl glass-panel hover:border-primary/20 hover:shadow-elevated transition-all duration-300"
             >
               <div className="w-12 h-12 rounded-xl gradient-hero flex items-center justify-center mb-4 group-hover:shadow-glow transition-shadow duration-300">
                 <feature.icon className="w-6 h-6 text-primary-foreground" />

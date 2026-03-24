@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { motion, Reorder } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -19,14 +19,13 @@ import {
   Trash2,
   GripVertical,
   Wand2,
-  ChevronDown,
-  ChevronUp,
   Loader2,
   Book,
 } from "lucide-react";
 import { lookupScripture } from "@/lib/scripture-api";
 import { savePresentation } from "@/lib/presentations";
 import { useAuth } from "@/contexts/AuthContext";
+import { TRANSLATION_OPTIONS, DEFAULT_TRANSLATION } from "@/lib/translations";
 
 interface Scripture {
   reference: string;
@@ -44,28 +43,15 @@ interface SermonPoint {
   scriptures: Scripture[];
 }
 
-const translations = [
-  { code: "KJV", name: "King James Version", language: "English" },
-  { code: "ESV", name: "English Standard Version", language: "English" },
-  { code: "WEB", name: "World English Bible", language: "English" },
-  { code: "ASV", name: "American Standard Version", language: "English" },
-  { code: "AMP", name: "Amplified Bible", language: "English" },
-  { code: "RVR1960", name: "Reina-Valera 1960", language: "Spanish" },
-  { code: "NVI", name: "Nueva Versión Internacional", language: "Spanish" },
-  { code: "LSG", name: "Louis Segond", language: "French" },
-  { code: "LUT", name: "Luther Bible", language: "German" },
-  { code: "ALMEIDA", name: "Almeida Revisada", language: "Portuguese" },
-];
-
 const CreateSermon = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user } = useAuth();
+  const { profile } = useAuth();
   const isFromDashboard = location.pathname.startsWith("/dashboard");
   const editData = (location.state as any)?.editData;
   const editId = (location.state as any)?.editId;
   const [title, setTitle] = useState(editData?.title || "");
-  const [globalTranslation, setGlobalTranslation] = useState(editData?.translation || "KJV");
+  const [globalTranslation, setGlobalTranslation] = useState(editData?.translation || DEFAULT_TRANSLATION);
   const [verseBreakdown, setVerseBreakdown] = useState(editData?.verseBreakdown || "verse-by-verse");
   const [points, setPoints] = useState<SermonPoint[]>(
     editData?.points
@@ -73,38 +59,49 @@ const CreateSermon = () => {
           id: p.id,
           type: p.type || 'point',
           title: p.title,
-          scriptures: p.scriptures.map((s: any) => ({
-            reference: s.reference,
-            text: s.text,
-            verses: s.verses,
-          })),
+          scriptures: (p.type || 'point') === 'verse'
+            ? p.scriptures.map((s: any) => ({
+                reference: s.reference,
+                text: s.text,
+                verses: s.verses,
+              }))
+            : [],
         }))
-      : [{ id: "1", type: "point", title: "", scriptures: [] }]
-  );
-  const [expandedPoints, setExpandedPoints] = useState<string[]>(
-    editData?.points ? editData.points.map((p: any) => p.id) : ["1"]
+      : []
   );
   
   // Track pending lookups with debounce
   const lookupTimeouts = useRef<Record<string, NodeJS.Timeout>>({});
+  const lookupVersions = useRef<Record<string, number>>({});
+  const appliedDefaultRef = useRef(false);
+
+  const clearLookupTimeout = useCallback((key: string) => {
+    if (lookupTimeouts.current[key]) {
+      clearTimeout(lookupTimeouts.current[key]);
+      delete lookupTimeouts.current[key];
+    }
+  }, []);
+
+  useEffect(() => {
+    if (editData?.translation) return;
+    if (appliedDefaultRef.current) return;
+    if (!profile?.default_translation) return;
+    setGlobalTranslation(profile.default_translation);
+    appliedDefaultRef.current = true;
+  }, [profile?.default_translation, editData?.translation]);
 
   const addPoint = () => {
     const newId = String(Date.now());
     setPoints([...points, { id: newId, type: "point", title: "", scriptures: [] }]);
-    setExpandedPoints([...expandedPoints, newId]);
   };
 
   const addVerse = () => {
     const newId = String(Date.now());
     setPoints([...points, { id: newId, type: "verse", title: "", scriptures: [{ reference: "" }] }]);
-    setExpandedPoints([...expandedPoints, newId]);
   };
 
   const removePoint = (id: string) => {
-    if (points.length > 1) {
-      setPoints(points.filter((p) => p.id !== id));
-      setExpandedPoints(expandedPoints.filter((e) => e !== id));
-    }
+    setPoints(points.filter((p) => p.id !== id));
   };
 
   const updatePoint = (id: string, title: string) => {
@@ -128,14 +125,15 @@ const CreateSermon = () => {
   };
 
   // Auto-lookup scripture when reference changes (debounced)
-  const autoLookupScripture = useCallback(async (pointId: string, index: number, reference: string) => {
+  const autoLookupScripture = useCallback(async (pointId: string, index: number, reference: string, translationOverride?: string) => {
     if (!reference.trim()) return;
+    const translationToUse = translationOverride || globalTranslation;
 
     // Clear any existing timeout for this scripture
     const key = `${pointId}-${index}`;
-    if (lookupTimeouts.current[key]) {
-      clearTimeout(lookupTimeouts.current[key]);
-    }
+    clearLookupTimeout(key);
+    const lookupVersion = (lookupVersions.current[key] || 0) + 1;
+    lookupVersions.current[key] = lookupVersion;
 
     // Set loading state
     setPoints(prev =>
@@ -154,7 +152,9 @@ const CreateSermon = () => {
     // Debounce the lookup by 800ms
     lookupTimeouts.current[key] = setTimeout(async () => {
       try {
-        const result = await lookupScripture(reference, globalTranslation);
+        const result = await lookupScripture(reference, translationToUse);
+        if (lookupVersions.current[key] !== lookupVersion) return;
+
         if (result) {
           if (result.error) {
             // Handle error from API
@@ -199,6 +199,7 @@ const CreateSermon = () => {
             );
           }
         } else {
+          if (lookupVersions.current[key] !== lookupVersion) return;
           setPoints(prev =>
             prev.map((p) =>
               p.id === pointId
@@ -218,6 +219,7 @@ const CreateSermon = () => {
           );
         }
       } catch (error) {
+        if (lookupVersions.current[key] !== lookupVersion) return;
         setPoints(prev =>
           prev.map((p) =>
             p.id === pointId
@@ -235,9 +237,11 @@ const CreateSermon = () => {
               : p
           )
         );
+      } finally {
+        clearLookupTimeout(key);
       }
     }, 800);
-  }, [globalTranslation]);
+  }, [clearLookupTimeout, globalTranslation]);
 
   const updateScripture = (
     pointId: string,
@@ -250,7 +254,7 @@ const CreateSermon = () => {
           ? {
               ...p,
               scriptures: p.scriptures.map((s, i) =>
-                i === index ? { ...s, reference, text: undefined } : s
+                i === index ? { ...s, reference, text: undefined, verses: undefined, error: false, errorMessage: undefined } : s
               ),
             }
           : p
@@ -264,9 +268,8 @@ const CreateSermon = () => {
   const removeScripture = (pointId: string, index: number) => {
     // Clear any pending timeout
     const key = `${pointId}-${index}`;
-    if (lookupTimeouts.current[key]) {
-      clearTimeout(lookupTimeouts.current[key]);
-    }
+    clearLookupTimeout(key);
+    delete lookupVersions.current[key];
 
     setPoints(
       points.map((p) =>
@@ -283,23 +286,29 @@ const CreateSermon = () => {
   // Re-lookup all scriptures when global translation changes
   const handleTranslationChange = (newTranslation: string) => {
     setGlobalTranslation(newTranslation);
-    // Re-lookup all scriptures with new translation
-    setTimeout(() => {
-      points.forEach((point) => {
-        point.scriptures.forEach((scripture, index) => {
-          if (scripture.reference.trim()) {
-            autoLookupScripture(point.id, index, scripture.reference);
-          }
-        });
+    // Cancel stale pending lookups before re-querying in the new translation.
+    Object.keys(lookupTimeouts.current).forEach((key) => clearLookupTimeout(key));
+
+    points.forEach((point) => {
+      point.scriptures.forEach((scripture, index) => {
+        if (scripture.reference.trim()) {
+          autoLookupScripture(point.id, index, scripture.reference, newTranslation);
+        }
       });
-    }, 100);
+    });
   };
 
-  const toggleExpanded = (id: string) => {
-    setExpandedPoints((prev) =>
-      prev.includes(id) ? prev.filter((e) => e !== id) : [...prev, id]
-    );
-  };
+  useEffect(() => {
+    return () => {
+      Object.keys(lookupTimeouts.current).forEach((key) => clearLookupTimeout(key));
+    };
+  }, [clearLookupTimeout]);
+
+  const hasValidContent = points.some((point) =>
+    point.type === "point"
+      ? point.title.trim().length > 0
+      : point.scriptures.some((scripture) => scripture.reference.trim().length > 0)
+  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -318,11 +327,6 @@ const CreateSermon = () => {
         });
       } else if (point.title) {
         slideCount++; // Point slide
-        point.scriptures.forEach(s => {
-          if (s.reference && s.text) {
-            slideCount++;
-          }
-        });
       }
     });
     
@@ -342,11 +346,13 @@ const CreateSermon = () => {
           id: p.id,
           type: p.type,
           title: p.title,
-          scriptures: p.scriptures.map(s => ({
-            reference: s.reference,
-            text: s.text,
-            verses: s.verses,
-          })),
+          scriptures: p.type === "verse"
+            ? p.scriptures.map(s => ({
+                reference: s.reference,
+                text: s.text,
+                verses: s.verses,
+              }))
+            : [],
         })),
       },
     });
@@ -360,9 +366,9 @@ const CreateSermon = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="app-shell">
       {/* Header */}
-      <header className="border-b border-border bg-card sticky top-0 z-50">
+      <header className="border-b border-border/60 bg-white/65 backdrop-blur-md sticky top-0 z-50">
         <div className="container mx-auto px-4">
           <div className="flex items-center justify-between h-16">
             {/* Back */}
@@ -377,20 +383,20 @@ const CreateSermon = () => {
             </Link>
 
             {/* Logo */}
-            <div className="flex items-center gap-2">
+            <Link to="/" className="flex items-center gap-2 hover:opacity-90 transition-opacity">
               <div className="w-8 h-8 rounded-lg gradient-hero flex items-center justify-center">
                 <BookOpen className="w-4 h-4 text-primary-foreground" />
               </div>
               <span className="font-serif text-lg font-semibold text-foreground">
-                SermonSlides
+                Sermon Slide Pro
               </span>
-            </div>
+            </Link>
 
             {/* Generate */}
             <Button
               variant="hero"
               onClick={handleSubmit}
-              disabled={!title || points.every((p) => p.type === 'point' ? !p.title : !p.scriptures.some(s => s.reference.trim()))}
+              disabled={!title.trim() || !hasValidContent}
             >
               <Wand2 className="w-4 h-4" />
               <span className="hidden sm:inline">Generate Slides</span>
@@ -416,7 +422,7 @@ const CreateSermon = () => {
 
           <form onSubmit={handleSubmit} className="space-y-8">
             {/* Basic Info */}
-            <div className="p-6 rounded-2xl bg-card border border-border space-y-6">
+            <div className="p-6 rounded-2xl glass-panel space-y-6">
               <h2 className="font-serif text-xl font-semibold text-foreground">
                 Sermon Details
               </h2>
@@ -448,7 +454,7 @@ const CreateSermon = () => {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {translations.map((t) => (
+                      {TRANSLATION_OPTIONS.map((t) => (
                         <SelectItem key={t.code} value={t.code}>
                           <span className="font-medium">{t.code}</span>
                           <span className="text-muted-foreground ml-2">
@@ -496,7 +502,7 @@ const CreateSermon = () => {
                 <Reorder.Item
                   key={point.id}
                   value={point}
-                  className="p-6 rounded-2xl bg-card border border-border"
+                  className="p-6 rounded-2xl glass-panel"
                 >
                 {/* Point Header */}
                   <div className="flex items-start gap-4">
@@ -518,18 +524,7 @@ const CreateSermon = () => {
                               onChange={(e) => updatePoint(point.id, e.target.value)}
                               className="h-12 flex-1"
                             />
-                            <button
-                              type="button"
-                              onClick={() => toggleExpanded(point.id)}
-                              className="p-2 text-muted-foreground hover:text-foreground"
-                            >
-                              {expandedPoints.includes(point.id) ? (
-                                <ChevronUp className="w-5 h-5" />
-                              ) : (
-                                <ChevronDown className="w-5 h-5" />
-                              )}
-                            </button>
-                            {points.length > 1 && (
+                            {points.length > 0 && (
                               <button
                                 type="button"
                                 onClick={() => removePoint(point.id)}
@@ -539,81 +534,6 @@ const CreateSermon = () => {
                               </button>
                             )}
                           </div>
-
-                          {/* Scriptures */}
-                          {expandedPoints.includes(point.id) && (
-                            <div className="pl-4 border-l-2 border-border space-y-4">
-                              <p className="text-sm text-muted-foreground">
-                                Supporting Scriptures (optional) — verses auto-populate using {globalTranslation}
-                              </p>
-
-                              {point.scriptures.map((scripture, scriptureIndex) => (
-                                <div
-                                  key={scriptureIndex}
-                                  className="space-y-2"
-                                >
-                                  <div className="flex items-center gap-3">
-                                    <div className="relative flex-1">
-                                      <Input
-                                        type="text"
-                                        placeholder="e.g., John 3:16"
-                                        value={scripture.reference}
-                                        onChange={(e) =>
-                                          updateScripture(
-                                            point.id,
-                                            scriptureIndex,
-                                            e.target.value
-                                          )
-                                        }
-                                        className="pr-10"
-                                      />
-                                      {scripture.isLoading && (
-                                        <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                                          <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
-                                        </div>
-                                      )}
-                                    </div>
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        removeScripture(point.id, scriptureIndex)
-                                      }
-                                      className="p-2 text-muted-foreground hover:text-destructive"
-                                    >
-                                      <Trash2 className="w-4 h-4" />
-                                    </button>
-                                  </div>
-                                  {scripture.error && scripture.errorMessage && (
-                                    <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/30">
-                                      <p className="text-sm text-destructive">
-                                        {scripture.errorMessage}
-                                      </p>
-                                    </div>
-                                  )}
-                                  {scripture.text && !scripture.error && (
-                                    <div className="p-3 rounded-lg bg-muted/50 border border-border">
-                                      <p className="text-sm text-muted-foreground italic">
-                                        "{scripture.text}"
-                                      </p>
-                                      <p className="text-xs text-muted-foreground mt-1">
-                                        — {scripture.reference} ({globalTranslation})
-                                      </p>
-                                    </div>
-                                  )}
-                                </div>
-                              ))}
-
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => addScripture(point.id)}
-                              >
-                                <Plus className="w-4 h-4" />
-                                Add Scripture
-                              </Button>
-                            </div>
-                          )}
                         </div>
                       </>
                     ) : (
@@ -626,7 +546,7 @@ const CreateSermon = () => {
 
                         <div className="flex-1 space-y-4">
                           <div className="flex items-center justify-end">
-                            {points.length > 1 && (
+                            {points.length > 0 && (
                               <button
                                 type="button"
                                 onClick={() => removePoint(point.id)}
@@ -731,7 +651,7 @@ const CreateSermon = () => {
                 type="submit"
                 variant="hero"
                 size="lg"
-                disabled={!title || points.every((p) => p.type === 'point' ? !p.title : !p.scriptures.some(s => s.reference.trim()))}
+                disabled={!title.trim() || !hasValidContent}
               >
                 <Wand2 className="w-5 h-5" />
                 Generate Slides

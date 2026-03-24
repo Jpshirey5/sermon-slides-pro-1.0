@@ -1,0 +1,109 @@
+export const PENDING_SERMON_KEY = "pending_payment_sermon_id";
+export const PENDING_EXPORT_CONTEXT_KEY = "pending_payment_context_v1";
+export const PENDING_EXPORT_SNAPSHOT_KEY = "pending_payment_snapshot_v1";
+const WINDOW_PENDING_EXPORT_PREFIX = "__ssp_pending_export__:";
+
+interface PendingExportContext {
+  sermonId: string;
+  createdAt: number;
+}
+
+export interface PendingExportSnapshot {
+  sermonId: string;
+  title: string;
+  slides: any[];
+  createdAt: number;
+}
+
+export function setPendingExportContext(sermonId: string) {
+  if (typeof window === "undefined") return;
+  const payload: PendingExportContext = {
+    sermonId,
+    createdAt: Date.now(),
+  };
+  const serialized = JSON.stringify(payload);
+  localStorage.setItem(PENDING_SERMON_KEY, sermonId);
+  localStorage.setItem(PENDING_EXPORT_CONTEXT_KEY, serialized);
+  sessionStorage.setItem(PENDING_EXPORT_CONTEXT_KEY, serialized);
+}
+
+export function setPendingExportSnapshot(snapshot: PendingExportSnapshot) {
+  if (typeof window === "undefined") return;
+  const serialized = JSON.stringify(snapshot);
+  localStorage.setItem(PENDING_EXPORT_SNAPSHOT_KEY, serialized);
+  sessionStorage.setItem(PENDING_EXPORT_SNAPSHOT_KEY, serialized);
+  // Keep a cross-origin fallback for Stripe round-trips in the same tab.
+  window.name = `${WINDOW_PENDING_EXPORT_PREFIX}${serialized}`;
+}
+
+export function getPendingExportSermonId(): string | null {
+  if (typeof window === "undefined") return null;
+
+  const direct = localStorage.getItem(PENDING_SERMON_KEY);
+  if (direct) return direct;
+
+  const fromLocal = localStorage.getItem(PENDING_EXPORT_CONTEXT_KEY);
+  if (fromLocal) {
+    try {
+      return (JSON.parse(fromLocal) as PendingExportContext).sermonId || null;
+    } catch {
+      return null;
+    }
+  }
+
+  const fromSession = sessionStorage.getItem(PENDING_EXPORT_CONTEXT_KEY);
+  if (fromSession) {
+    try {
+      return (JSON.parse(fromSession) as PendingExportContext).sermonId || null;
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
+}
+
+export function getPendingExportSnapshot(): PendingExportSnapshot | null {
+  if (typeof window === "undefined") return null;
+
+  const fromLocal = localStorage.getItem(PENDING_EXPORT_SNAPSHOT_KEY);
+  if (fromLocal) {
+    try {
+      return JSON.parse(fromLocal) as PendingExportSnapshot;
+    } catch {
+      // Continue fallback lookup
+    }
+  }
+
+  const fromSession = sessionStorage.getItem(PENDING_EXPORT_SNAPSHOT_KEY);
+  if (fromSession) {
+    try {
+      return JSON.parse(fromSession) as PendingExportSnapshot;
+    } catch {
+      // Continue fallback lookup
+    }
+  }
+
+  if (window.name.startsWith(WINDOW_PENDING_EXPORT_PREFIX)) {
+    const payload = window.name.slice(WINDOW_PENDING_EXPORT_PREFIX.length);
+    try {
+      return JSON.parse(payload) as PendingExportSnapshot;
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
+}
+
+export function clearPendingExportContext() {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(PENDING_SERMON_KEY);
+  localStorage.removeItem(PENDING_EXPORT_CONTEXT_KEY);
+  localStorage.removeItem(PENDING_EXPORT_SNAPSHOT_KEY);
+  sessionStorage.removeItem(PENDING_EXPORT_CONTEXT_KEY);
+  sessionStorage.removeItem(PENDING_EXPORT_SNAPSHOT_KEY);
+  if (window.name.startsWith(WINDOW_PENDING_EXPORT_PREFIX)) {
+    window.name = "";
+  }
+}

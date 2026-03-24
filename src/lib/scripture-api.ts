@@ -99,9 +99,9 @@ const bookMappings: Record<string, string> = {
   'revelation': 'REV', 'rev': 'REV', 'revelations': 'REV',
 };
 
-// Complete translation to Bible ID mappings for API.Bible
-// Free translations available without API key restrictions
-const translationBibleIds: Record<string, string> = {
+// Translation to Bible ID mappings for API.Bible.
+// Custom translations can be provided via env vars.
+const translationBibleIds: Record<string, string | undefined> = {
   // Free English translations
   'KJV': 'de4e12af7f28f599-02',
   'ASV': '06125adad2d5898a-01',
@@ -109,6 +109,10 @@ const translationBibleIds: Record<string, string> = {
   'BBE': '65eec8e0b60e656b-01',
   'DARBY': '478f6a31d80ce67f-01',
   'YLT': 'f72b840c855f362c-04',
+  // New translations (set these in .env for your API.Bible app)
+  'CSB': import.meta.env.VITE_BIBLE_ID_CSB,
+  'NKJV': import.meta.env.VITE_BIBLE_ID_NKJV,
+  'NIV': import.meta.env.VITE_BIBLE_ID_NIV,
   // ESV is handled separately via edge function — not listed here
 };
 
@@ -288,19 +292,10 @@ export async function lookupScripture(
   const formattedRef = parsed.verseEnd 
     ? `${parsed.book} ${parsed.chapter}:${parsed.verseStart}-${parsed.verseEnd}`
     : `${parsed.book} ${parsed.chapter}:${parsed.verseStart}`;
-
-  // First try fallback for common verses (faster, no API needed)
-  const fallbackText = getFallbackVerse(bookCode, parsed.chapter, parsed.verseStart, parsed.verseEnd, translation);
-  if (fallbackText) {
-    return {
-      text: fallbackText,
-      reference: formattedRef,
-      translation,
-    };
-  }
+  const requestedTranslation = translation.toUpperCase();
 
   // ESV: route through Supabase Edge Function
-  if (translation === 'ESV') {
+  if (requestedTranslation === 'ESV') {
     try {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
       const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
@@ -320,7 +315,7 @@ export async function lookupScripture(
           return {
             text: data.text,
             reference: data.canonical || formattedRef,
-            translation: 'ESV',
+            translation: requestedTranslation,
             verses: data.verses,
           };
         }
@@ -330,15 +325,62 @@ export async function lookupScripture(
     }
   }
 
-  // Try API.Bible for free translations
-  const bibleId = translationBibleIds[translation] || translationBibleIds['WEB'];
+  // Try API.Bible (requires VITE_BIBLE_API_KEY for non-ESV translations)
+  const bibleApiKey = import.meta.env.VITE_BIBLE_API_KEY;
+  const bibleApiBaseUrl = import.meta.env.VITE_BIBLE_API_BASE_URL || 'https://rest.api.bible/v1';
+  const bibleId = translationBibleIds[requestedTranslation];
   
-  try {
+  if (bibleApiKey && bibleId) {
     const verseId = parsed.verseEnd 
       ? `${bookCode}.${parsed.chapter}.${parsed.verseStart}-${bookCode}.${parsed.chapter}.${parsed.verseEnd}`
       : `${bookCode}.${parsed.chapter}.${parsed.verseStart}`;
-    
-    // Use the API.Bible endpoint
+
+    try {
+      const response = await fetch(
+        `${bibleApiBaseUrl}/bibles/${bibleId}/passages/${verseId}?content-type=text&include-notes=false&include-titles=false&include-chapter-numbers=false&include-verse-numbers=true`,
+        {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+            'api-key': bibleApiKey,
+          },
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        const passageText = cleanText(data?.data?.content || '');
+        if (passageText) {
+          return {
+            text: passageText,
+            reference: data?.data?.reference || formattedRef,
+            translation: requestedTranslation,
+          };
+        }
+      }
+    } catch (error) {
+      console.log('API.Bible lookup failed, trying fallback APIs...');
+    }
+  }
+
+  // Try fallback for common verses if endpoint data was unavailable
+  const fallbackText = getFallbackVerse(bookCode, parsed.chapter, parsed.verseStart, parsed.verseEnd, requestedTranslation);
+  if (fallbackText) {
+    return {
+      text: fallbackText,
+      reference: formattedRef,
+      translation: requestedTranslation,
+    };
+  }
+
+  try {
+    // bible-api.com is primarily KJV; avoid silent incorrect translation fallback
+    // when a specific translation endpoint exists.
+    if (requestedTranslation !== 'KJV' && requestedTranslation !== 'WEB') {
+      throw new Error('Skip KJV-only fallback for requested translation');
+    }
+
+    // Generic fallback source
     const response = await fetch(
       `https://bible-api.com/${encodeURIComponent(reference)}`,
       {
@@ -359,17 +401,22 @@ export async function lookupScripture(
         return {
           text: cleanText(data.text),
           reference: data.reference || formattedRef,
-          translation: data.translation_name || translation,
+          translation: requestedTranslation,
           verses,
         };
       }
     }
   } catch (error) {
-    console.log('Primary API failed, trying fallback...');
+    console.log('Primary fallback API failed, trying secondary...');
   }
 
   // Try bolls.life API as secondary fallback
   try {
+    // Secondary fallback is KJV-backed; avoid incorrect translation substitution.
+    if (requestedTranslation !== 'KJV' && requestedTranslation !== 'WEB') {
+      throw new Error('Skip KJV fallback for requested translation');
+    }
+
     const verseQuery = parsed.verseEnd 
       ? `${parsed.verseStart}-${parsed.verseEnd}`
       : `${parsed.verseStart}`;
@@ -395,7 +442,7 @@ export async function lookupScripture(
         return {
           text,
           reference: formattedRef,
-          translation: 'KJV',
+          translation: requestedTranslation,
           verses,
         };
       }
@@ -408,7 +455,7 @@ export async function lookupScripture(
   return {
     text: '',
     reference: formattedRef,
-    translation,
+    translation: requestedTranslation,
     error: true,
     errorMessage: `Could not find "${reference}". The verse may not exist or there may be a network issue. Please check the chapter and verse numbers.`,
   };

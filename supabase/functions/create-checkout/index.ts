@@ -30,6 +30,18 @@ serve(async (req) => {
 
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) throw new Error("No authorization header");
+    let requestedPriceId: string | undefined;
+    try {
+      const body = await req.json();
+      if (typeof body?.priceId === "string") {
+        const trimmedPriceId = body.priceId.trim();
+        if (trimmedPriceId.startsWith("price_")) {
+          requestedPriceId = trimmedPriceId;
+        }
+      }
+    } catch {
+      // No JSON body provided; use default price.
+    }
 
     const token = authHeader.replace("Bearer ", "");
 
@@ -84,6 +96,8 @@ serve(async (req) => {
     });
 
     const origin = req.headers.get("origin") || "https://sermonslides.app";
+    const checkoutPriceId = requestedPriceId || "price_1TAr39P2Yr0z0IcssSAqGZ8n";
+    logStep("Using checkout price", { checkoutPriceId });
 
     if (existingSubs.data.length > 0) {
       logStep("Already subscribed, redirecting to dashboard");
@@ -95,7 +109,7 @@ serve(async (req) => {
 
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
-      line_items: [{ price: "price_1SqEzyP2Yr0z0IcsN8lN68kU", quantity: 1 }],
+      line_items: [{ price: checkoutPriceId, quantity: 1 }],
       mode: "subscription",
       success_url: `${origin}/dashboard?checkout=success`,
       cancel_url: `${origin}/account`,

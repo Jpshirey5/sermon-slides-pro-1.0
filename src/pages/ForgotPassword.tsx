@@ -36,20 +36,20 @@ const ForgotPassword = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
-      <header className="border-b border-border bg-card">
+    <div className="app-shell flex flex-col">
+      <header className="border-b border-border/60 bg-white/65 backdrop-blur-md">
         <div className="container mx-auto px-4">
           <div className="flex items-center justify-between h-16">
             <Link to="/login" className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors">
               <ArrowLeft className="w-5 h-5" />
               <span className="hidden sm:inline">Back to Login</span>
             </Link>
-            <div className="flex items-center gap-2">
+            <Link to="/" className="flex items-center gap-2 hover:opacity-90 transition-opacity">
               <div className="w-8 h-8 rounded-lg gradient-hero flex items-center justify-center">
                 <BookOpen className="w-4 h-4 text-primary-foreground" />
               </div>
-              <span className="font-serif text-lg font-semibold text-foreground">SermonSlides</span>
-            </div>
+              <span className="font-serif text-lg font-semibold text-foreground">Sermon Slide Pro</span>
+            </Link>
             <div className="w-20" />
           </div>
         </div>
@@ -57,7 +57,7 @@ const ForgotPassword = () => {
 
       <main className="flex-1 flex items-center justify-center px-4">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }} className="w-full max-w-md">
-          <div className="rounded-2xl bg-card border border-border p-8 shadow-elevated">
+          <div className="rounded-2xl glass-panel p-8 shadow-elevated">
             <div className="text-center mb-8">
               <h1 className="font-serif text-2xl font-bold text-foreground mb-2">Reset Password</h1>
               <p className="text-muted-foreground">Enter your email to receive a reset link</p>

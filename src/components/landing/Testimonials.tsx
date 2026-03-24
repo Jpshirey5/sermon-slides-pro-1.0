@@ -4,7 +4,7 @@ import { Star } from "lucide-react";
 const testimonials = [
   {
     quote:
-      "SermonSlides has transformed our Sunday services. What used to take hours now takes minutes. The ProPresenter export is flawless.",
+      "Sermon Slide Pro has transformed our Sunday services. What used to take hours now takes minutes. The ProPresenter export is flawless.",
     author: "Pastor David Chen",
     role: "Senior Pastor, Grace Community Church",
     avatar: "DC",
@@ -27,7 +27,7 @@ const testimonials = [
 
 const Testimonials = () => {
   return (
-    <section id="testimonials" className="py-24 bg-background">
+    <section id="testimonials" className="py-24">
       <div className="container mx-auto px-4">
         {/* Section Header */}
         <motion.div
@@ -58,7 +58,7 @@ const Testimonials = () => {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ duration: 0.5, delay: index * 0.1 }}
-              className="p-8 rounded-2xl bg-card border border-border"
+              className="p-8 rounded-2xl glass-panel"
             >
               {/* Stars */}
               <div className="flex gap-1 mb-4">

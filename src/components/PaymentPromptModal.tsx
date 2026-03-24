@@ -1,36 +1,44 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Download, CreditCard, Check, ArrowRight } from "lucide-react";
-
-const PENDING_SERMON_KEY = "pending_payment_sermon_id";
+import { setPendingExportContext } from "@/lib/payPerExport";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 interface PaymentPromptModalProps {
   isOpen: boolean;
   onClose: () => void;
   sermonId: string;
   onPaymentComplete: () => void;
+  prepareForCheckout?: () => Promise<void> | void;
 }
 
 export function PaymentPromptModal({
   isOpen,
   onClose,
   sermonId,
+  prepareForCheckout,
 }: PaymentPromptModalProps) {
-  const handlePayClick = () => {
-    // Save the sermon ID to localStorage so we can redirect back after payment
-    localStorage.setItem(PENDING_SERMON_KEY, sermonId);
-    
-    // Get the payment link from environment
-    const paymentLink = import.meta.env.VITE_STRIPE_PAYMENT_LINK;
-    
-    if (!paymentLink || paymentLink === "https://buy.stripe.com/YOUR_PAYMENT_LINK") {
-      console.error("Stripe Payment Link not configured");
-      alert("Payment is not configured yet. Please contact support.");
+  const handlePayClick = async () => {
+    try {
+      await prepareForCheckout?.();
+      setPendingExportContext(sermonId);
+
+      const { data, error } = await supabase.functions.invoke("create-guest-checkout", {
+        body: { origin: window.location.origin, sermonId },
+      });
+
+      if (error || !data?.url) {
+        throw new Error(error?.message || data?.error || "Could not start checkout");
+      }
+
+      window.location.href = data.url;
+    } catch (err) {
+      console.error("Guest checkout failed:", err);
+      const msg = err instanceof Error ? err.message : "Could not start checkout. Please try again.";
+      toast.error(msg);
       return;
     }
-    
-    // Navigate to Stripe Payment Link in same tab
-    window.location.href = paymentLink;
   };
 
   return (
@@ -65,10 +73,6 @@ export function PaymentPromptModal({
             <li className="flex items-center gap-2">
               <Check className="w-4 h-4 text-primary" />
               ProPresenter 7 (.probundle) format
-            </li>
-            <li className="flex items-center gap-2">
-              <Check className="w-4 h-4 text-primary" />
-              Plain text (.txt) format
             </li>
             <li className="flex items-center gap-2">
               <Check className="w-4 h-4 text-primary" />

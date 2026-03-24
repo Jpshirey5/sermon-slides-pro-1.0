@@ -14,18 +14,54 @@ serve(async (req) => {
   try {
     const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
     if (!stripeKey) throw new Error("STRIPE_SECRET_KEY is not set");
+    const payPerPriceId =
+      Deno.env.get("STRIPE_PAY_PER_SERMON_PRICE_ID") ||
+      Deno.env.get("STRIPE_PAY_PER_EXPORT_PRICE_ID");
 
-    const { origin } = await req.json();
-    const siteOrigin = origin || req.headers.get("origin") || "https://sermonslides.com";
+    const { origin, sermonId } = await req.json();
+    const siteOrigin = origin || req.headers.get("origin") || "http://localhost:8080";
+    const successUrl = `${siteOrigin}/payment-success?sermonId=${encodeURIComponent(sermonId || "")}&session_id={CHECKOUT_SESSION_ID}`;
+    const cancelUrl = sermonId
+      ? `${siteOrigin}/editor/${encodeURIComponent(sermonId)}`
+      : `${siteOrigin}/create`;
 
     const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
+    const metadata = sermonId ? { sermon_id: sermonId } : undefined;
 
-    const session = await stripe.checkout.sessions.create({
-      mode: "subscription",
-      line_items: [{ price: "price_1SqEzyP2Yr0z0IcsN8lN68kU", quantity: 1 }],
-      success_url: `${siteOrigin}/signup?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${siteOrigin}/`,
-    });
+    let session: Stripe.Checkout.Session;
+    try {
+      if (payPerPriceId) {
+        session = await stripe.checkout.sessions.create({
+          mode: "payment",
+          line_items: [{ price: payPerPriceId, quantity: 1 }],
+          success_url: successUrl,
+          cancel_url: cancelUrl,
+          metadata,
+        });
+      } else {
+        throw new Error("No pay-per price secret set, using inline fallback.");
+      }
+    } catch (priceError) {
+      console.error("[CREATE-GUEST-CHECKOUT] Price checkout failed, using inline price fallback:", priceError);
+      // Fallback to inline one-time $9 payment so flow still works.
+      session = await stripe.checkout.sessions.create({
+        mode: "payment",
+        line_items: [{
+          price_data: {
+            currency: "usd",
+            unit_amount: 900,
+            product_data: {
+              name: "Sermon Slide Pro - Pay Per Sermon Export",
+              description: "One-time unlock for this presentation export",
+            },
+          },
+          quantity: 1,
+        }],
+        success_url: successUrl,
+        cancel_url: cancelUrl,
+        metadata,
+      });
+    }
 
     return new Response(JSON.stringify({ url: session.url }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

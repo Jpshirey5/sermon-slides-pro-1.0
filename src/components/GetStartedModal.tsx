@@ -3,8 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { FileText, Crown, ArrowRight, Loader2 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
-import { toast } from "sonner";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface GetStartedModalProps {
   open: boolean;
@@ -13,6 +12,7 @@ interface GetStartedModalProps {
 
 const GetStartedModal = ({ open, onOpenChange }: GetStartedModalProps) => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [proLoading, setProLoading] = useState(false);
 
   const handlePayPerSermon = () => {
@@ -20,22 +20,11 @@ const GetStartedModal = ({ open, onOpenChange }: GetStartedModalProps) => {
     navigate("/create");
   };
 
-  const handleGoPro = async () => {
+  const handleGoPro = () => {
     setProLoading(true);
-    try {
-      const { data, error } = await supabase.functions.invoke("create-guest-checkout", {
-        body: { origin: window.location.origin },
-      });
-      if (error || !data?.url) {
-        toast.error("Could not start checkout. Please try again.");
-        return;
-      }
-      window.location.href = data.url;
-    } catch {
-      toast.error("An error occurred. Please try again.");
-    } finally {
-      setProLoading(false);
-    }
+    onOpenChange(false);
+    navigate(user ? "/account" : "/signup?plan=pro");
+    setProLoading(false);
   };
 
   return (
@@ -60,7 +49,7 @@ const GetStartedModal = ({ open, onOpenChange }: GetStartedModalProps) => {
               Pay Per Sermon
             </h3>
             <p className="text-sm text-muted-foreground mb-4">
-              Create slides for free. Pay $9 only when you export.
+              Create for free. Pay only when you export.
             </p>
             <span className="inline-flex items-center gap-1 text-sm font-medium text-primary group-hover:gap-2 transition-all">
               Start Creating <ArrowRight className="w-4 h-4" />
@@ -83,7 +72,7 @@ const GetStartedModal = ({ open, onOpenChange }: GetStartedModalProps) => {
               Go Pro
             </h3>
             <p className="text-sm text-muted-foreground mb-4">
-              $30/month — unlimited exports, dashboard & more.
+              Create an account, and unlock your full potential.
             </p>
             {proLoading ? (
               <Loader2 className="w-5 h-5 animate-spin text-primary" />

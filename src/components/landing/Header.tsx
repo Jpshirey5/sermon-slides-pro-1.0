@@ -4,9 +4,11 @@ import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Menu, X, BookOpen } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import GetStartedModal from "@/components/GetStartedModal";
 
 const Header = () => {
   const [isOpen, setIsOpen] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
   const { user } = useAuth();
 
   return (
@@ -14,21 +16,23 @@ const Header = () => {
       initial={{ y: -20, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
       transition={{ duration: 0.5 }}
-      className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-lg border-b border-border"
+      className="fixed top-4 left-0 right-0 z-50"
     >
-      <div className="container mx-auto px-4">
-        <div className="flex items-center justify-between h-16">
+      <div className="mx-auto max-w-6xl px-4">
+        <div className="glass-panel rounded-full px-3 sm:px-5 flex items-center justify-between h-14 border border-border/75 shadow-elevated">
           <Link to="/" className="flex items-center gap-2">
-            <div className="w-10 h-10 rounded-lg gradient-hero flex items-center justify-center">
-              <BookOpen className="w-5 h-5 text-primary-foreground" />
+            <div className="w-8 h-8 rounded-full gradient-hero flex items-center justify-center shadow-glow">
+              <BookOpen className="w-4 h-4 text-primary-foreground" />
             </div>
-            <span className="font-serif text-xl font-semibold text-foreground">SermonSlides</span>
+            <span className="font-serif text-base md:text-lg font-semibold text-foreground">Sermon Slide Pro</span>
           </Link>
 
           <nav className="hidden md:flex items-center gap-8">
-            <a href="#features" className="text-muted-foreground hover:text-foreground transition-colors">Features</a>
-            <a href="#pricing" className="text-muted-foreground hover:text-foreground transition-colors">Pricing</a>
-            <a href="#testimonials" className="text-muted-foreground hover:text-foreground transition-colors">Testimonials</a>
+            <a href="#features" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Features</a>
+            <a href="#testimonials" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Testimonials</a>
+            <a href="#pricing" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Pricing</a>
+            <Link to="/contact" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Contact</Link>
+            <Link to="/trust-center" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Trust Center</Link>
           </nav>
 
           <div className="hidden md:flex items-center gap-3">
@@ -39,7 +43,7 @@ const Header = () => {
               </>
             ) : (
               <>
-                <Link to="/create"><Button variant="hero">Get Started</Button></Link>
+                <Button variant="hero" onClick={() => setModalOpen(true)}>Get Started</Button>
                 <Link to="/login"><Button variant="outline">Login</Button></Link>
               </>
             )}
@@ -51,11 +55,13 @@ const Header = () => {
         </div>
 
         {isOpen && (
-          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="md:hidden py-4 border-t border-border">
+          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="md:hidden mt-2 glass-panel rounded-2xl py-4 px-4 border border-border/60">
             <nav className="flex flex-col gap-4">
               <a href="#features" className="text-muted-foreground hover:text-foreground transition-colors" onClick={() => setIsOpen(false)}>Features</a>
               <a href="#pricing" className="text-muted-foreground hover:text-foreground transition-colors" onClick={() => setIsOpen(false)}>Pricing</a>
               <a href="#testimonials" className="text-muted-foreground hover:text-foreground transition-colors" onClick={() => setIsOpen(false)}>Testimonials</a>
+              <Link to="/trust-center" className="text-muted-foreground hover:text-foreground transition-colors" onClick={() => setIsOpen(false)}>Trust Center</Link>
+              <Link to="/contact" className="text-muted-foreground hover:text-foreground transition-colors" onClick={() => setIsOpen(false)}>Contact</Link>
               <div className="flex flex-col gap-2 pt-4 border-t border-border">
                 {user ? (
                   <>
@@ -64,7 +70,16 @@ const Header = () => {
                   </>
                 ) : (
                   <>
-                    <Link to="/create" onClick={() => setIsOpen(false)}><Button variant="hero" className="w-full">Get Started</Button></Link>
+                    <Button
+                      variant="hero"
+                      className="w-full"
+                      onClick={() => {
+                        setIsOpen(false);
+                        setModalOpen(true);
+                      }}
+                    >
+                      Get Started
+                    </Button>
                     <Link to="/login" onClick={() => setIsOpen(false)}><Button variant="outline" className="w-full">Login</Button></Link>
                   </>
                 )}
@@ -73,6 +88,7 @@ const Header = () => {
           </motion.div>
         )}
       </div>
+      <GetStartedModal open={modalOpen} onOpenChange={setModalOpen} />
     </motion.header>
   );
 };

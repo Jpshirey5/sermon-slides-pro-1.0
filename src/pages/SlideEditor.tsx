@@ -7,13 +7,21 @@ import { BookOpen, ArrowLeft, Download, Play, GripVertical, Plus, Type, Palette,
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { BackgroundPicker } from "@/components/BackgroundPicker";
 import { exportToPowerPoint, SlideData } from "@/lib/export-pptx";
-import { exportAsProBundle, exportAsPlainText, validateSlidesForExport } from "@/services/proPresenterExport";
+import { exportAsProBundle, validateSlidesForExport } from "@/services/proPresenterExport";
 import { splitVerseText } from "@/lib/scripture-api";
 import { ExportOptionsModal } from "@/components/ExportOptionsModal";
 import { PaymentPromptModal } from "@/components/PaymentPromptModal";
 import { toast } from "sonner";
-import { getPresentation, SermonPresentation, saveEditorSlides as saveEditorSlidesToDb, getEditorSlides as getEditorSlidesFromDb } from "@/lib/presentations";
+import { getEditorPresentationState, SermonPresentation, saveEditorSlides as saveEditorSlidesToDb } from "@/lib/presentations";
 import { useAuth } from "@/contexts/AuthContext";
+import { clearPendingExportContext, setPendingExportSnapshot } from "@/lib/payPerExport";
+import {
+  deleteStoredBackground,
+  fileToDataUrl,
+  isStorageBackground,
+  resolveBackgroundImages,
+  uploadPresentationBackground,
+} from "@/lib/background-assets";
 
 // Microsoft Word standard fonts - alphabetically ordered
 const fonts = ["Arial", "Arial Black", "Book Antiqua", "Calibri", "Cambria", "Candara", "Century Gothic", "Comic Sans MS", "Consolas", "Constantia", "Corbel", "Courier New", "Franklin Gothic Medium", "Garamond", "Georgia", "Gill Sans MT", "Impact", "Lucida Console", "Lucida Sans Unicode", "Palatino Linotype", "Segoe UI", "Tahoma", "Times New Roman", "Trebuchet MS", "Verdana"];
@@ -207,7 +215,7 @@ const SlideEditor = () => {
   const { id } = useParams();
   const location = useLocation();
   const editorNavigate = useNavigate();
-  const { subscription } = useAuth();
+  const { subscription, accountId, user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [slides, setSlides] = useState<SlideData[]>(defaultSlides);
   const [selectedSlide, setSelectedSlide] = useState(0);
@@ -218,6 +226,8 @@ const SlideEditor = () => {
   const [isDragging, setIsDragging] = useState(false);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const [resolvedBackgroundImages, setResolvedBackgroundImages] = useState<Record<string, string>>({});
+  const [isPresentationLoading, setIsPresentationLoading] = useState(true);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
   // Payment state
@@ -265,37 +275,79 @@ const SlideEditor = () => {
 
   // Load presentation data - check for saved editor slides first
   useEffect(() => {
+    let cancelled = false;
+
     const loadData = async () => {
+      setIsPresentationLoading(true);
       if (id && id !== "new") {
-        // First, try to load saved editor slides from Supabase
-        const savedEditorSlides = await getEditorSlidesFromDb(id);
-        if (savedEditorSlides && savedEditorSlides.length > 0 && savedEditorSlides[0]?.id) {
-          setSlides(savedEditorSlides);
-          setHistory([savedEditorSlides]);
+        const presentationState = await getEditorPresentationState(id);
+        if (cancelled) return;
+
+        if (presentationState) {
+          setPresentationTitle(presentationState.title);
+
+          const generatedPresentation: SermonPresentation | null = presentationState.formData
+            ? {
+                id: presentationState.id,
+                title: presentationState.title,
+                date: presentationState.createdAt?.split("T")[0] || new Date().toISOString().split("T")[0],
+                slides: presentationState.editorSlides?.length || 0,
+                lastModified: presentationState.updatedAt
+                  ? new Date(presentationState.updatedAt).toLocaleDateString()
+                  : new Date().toLocaleDateString(),
+                scripture_reference: presentationState.scriptureReference,
+                data: presentationState.formData,
+              }
+            : null;
+
+          const initialSlides =
+            presentationState.editorSlides && presentationState.editorSlides.length > 0 && presentationState.editorSlides[0]?.id
+              ? presentationState.editorSlides
+              : generatedPresentation
+                ? generateSlidesFromData(generatedPresentation)
+                : defaultSlides;
+
+          setSlides(initialSlides);
+          setHistory([initialSlides]);
           setHistoryIndex(0);
-          
-          // Get title from presentation
-          const presentation = await getPresentation(id);
-          if (presentation) {
-            setPresentationTitle(presentation.title);
-          }
-        } else {
-          // No saved editor slides, generate from presentation data
-          const presentation = await getPresentation(id);
-          if (presentation) {
-            setPresentationTitle(presentation.title);
-            const generatedSlides = generateSlidesFromData(presentation);
-            if (generatedSlides.length > 0) {
-              setSlides(generatedSlides);
-              setHistory([generatedSlides]);
-              setHistoryIndex(0);
-            }
+
+          const backgroundRefs = Array.from(
+            new Set(
+              initialSlides
+                .map((slide) => slide.backgroundImage)
+                .filter((image): image is string => Boolean(image))
+            )
+          );
+
+          if (backgroundRefs.length > 0) {
+            void resolveBackgroundImages(backgroundRefs).then((resolvedByImage) => {
+              if (cancelled) return;
+              const bySlideId = Object.fromEntries(
+                initialSlides
+                  .map((slide) => {
+                    const original = slide.backgroundImage;
+                    const resolved = original ? resolvedByImage[original] : "";
+                    return resolved ? [slide.id, resolved] : null;
+                  })
+                  .filter((entry): entry is [string, string] => Boolean(entry))
+              );
+              setResolvedBackgroundImages(bySlideId);
+            });
+          } else {
+            setResolvedBackgroundImages({});
           }
         }
       }
+      if (cancelled) return;
       isInitialLoadRef.current = false;
+      setIsPresentationLoading(false);
     };
-    loadData();
+
+    void loadData();
+
+    return () => {
+      cancelled = true;
+    };
   }, [id]);
   const currentSlide = slides[selectedSlide];
   
@@ -334,6 +386,44 @@ const SlideEditor = () => {
       }
     };
   }, [slides, id]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const resolveBackgrounds = async () => {
+      const backgroundRefs = Array.from(
+        new Set(
+          slides
+            .map((slide) => slide.backgroundImage)
+            .filter((image): image is string => Boolean(image))
+        )
+      );
+
+      if (backgroundRefs.length === 0) {
+        if (!cancelled) {
+          setResolvedBackgroundImages({});
+        }
+        return;
+      }
+
+      const resolvedByImage = await resolveBackgroundImages(backgroundRefs);
+      const entries = slides.map((slide) => {
+        const resolved = slide.backgroundImage ? resolvedByImage[slide.backgroundImage] : "";
+        return [slide.id, resolved || ""] as const;
+      });
+
+      if (cancelled) return;
+      setResolvedBackgroundImages(
+        Object.fromEntries(entries.filter(([, value]) => value))
+      );
+    };
+
+    void resolveBackgrounds();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [slides]);
   
   // Update history when slides change (but not during undo/redo)
   useEffect(() => {
@@ -507,7 +597,7 @@ const SlideEditor = () => {
     }
   };
   
-  const handleExport = async (format: "pptx" | "probundle" | "txt") => {
+  const handleExport = async (format: "pptx" | "probundle") => {
     // Validate slides before export
     const validation = validateSlidesForExport(slides);
     if (!validation.isValid) {
@@ -529,12 +619,8 @@ const SlideEditor = () => {
         toast.success("ProPresenter file exported successfully!", {
           description: `${slides.length} slides exported to ${presentationTitle}.probundle`
         });
-      } else if (format === "txt") {
-        exportAsPlainText(slides, presentationTitle);
-        toast.success("Plain text file exported successfully!", {
-          description: `${slides.length} slides exported to ${presentationTitle}.txt`
-        });
       }
+      clearPendingExportContext();
       setShowExportModal(false);
     } catch (error) {
       console.error("Export error:", error);
@@ -547,13 +633,73 @@ const SlideEditor = () => {
     }
   };
 
+  const prepareForCheckout = async () => {
+    if (!id || id === "new") return;
+    await saveEditorSlidesToDb(id, slides);
+    setPendingExportSnapshot({
+      sermonId: id,
+      title: presentationTitle,
+      slides,
+      createdAt: Date.now(),
+    });
+  };
+
+  const getRenderableBackgroundImage = (slide: SlideData) =>
+    resolvedBackgroundImages[slide.id] || slide.backgroundImage;
+
+  const cleanupRemovedStorageBackgrounds = (previousSlides: SlideData[], nextSlides: SlideData[]) => {
+    const nextRefs = new Set(
+      nextSlides
+        .map((slide) => slide.backgroundImage)
+        .filter((image): image is string => Boolean(image) && isStorageBackground(image))
+    );
+
+    const refsToDelete = new Set(
+      previousSlides
+        .map((slide) => slide.backgroundImage)
+        .filter((image): image is string => Boolean(image) && isStorageBackground(image) && !nextRefs.has(image))
+    );
+
+    refsToDelete.forEach((image) => {
+      void deleteStoredBackground(image);
+    });
+  };
+
   // Apply to ALL slides
   const handleBackgroundChange = (background: string, backgroundImage?: string) => {
-    setSlides(slides.map(slide => ({
+    const nextSlides = slides.map(slide => ({
       ...slide,
       background,
       backgroundImage
-    })));
+    }));
+
+    cleanupRemovedStorageBackgrounds(slides, nextSlides);
+    setSlides(nextSlides);
+  };
+
+  const handleBackgroundUpload = async (file: File) => {
+    if (!id || id === "new") {
+      throw new Error("Please save the presentation before uploading a custom background.");
+    }
+
+    let backgroundImage: string;
+    if (user && accountId) {
+      try {
+        backgroundImage = await uploadPresentationBackground({
+          file,
+          accountId,
+          presentationId: id,
+          slideId: currentSlide.id,
+        });
+      } catch (error) {
+        console.warn("Falling back to embedded background image after storage upload failure:", error);
+        backgroundImage = await fileToDataUrl(file);
+      }
+    } else {
+      backgroundImage = await fileToDataUrl(file);
+    }
+
+    handleBackgroundChange(currentSlide.background, backgroundImage);
   };
 
   // Apply to ALL slides
@@ -658,13 +804,14 @@ const SlideEditor = () => {
     }
   };
   if (isPreviewMode) {
+    const currentSlideBackgroundImage = getRenderableBackgroundImage(currentSlide);
     return <div className="fixed inset-0 z-50 flex items-center justify-center bg-cover bg-center" style={{
-      background: currentSlide.backgroundImage ? `url(${currentSlide.backgroundImage})` : currentSlide.background,
+      background: currentSlideBackgroundImage ? `url(${currentSlideBackgroundImage})` : currentSlide.background,
       backgroundSize: 'cover',
       backgroundPosition: 'center'
     }} onClick={() => setIsPreviewMode(false)}>
         {/* Dark overlay for images */}
-        {currentSlide.backgroundImage && <div className="absolute inset-0 bg-black/40" />}
+        {currentSlideBackgroundImage && <div className="absolute inset-0 bg-black/40" />}
         
         <div className="absolute top-4 right-4 flex gap-2 z-10">
           <Button variant="outline" className="bg-white/10 border-white/20 text-white hover:bg-white/20" onClick={e => {
@@ -736,6 +883,19 @@ const SlideEditor = () => {
         </div>
       </div>;
   }
+  if (isPresentationLoading) {
+    return <div className="h-screen bg-background flex flex-col overflow-hidden">
+      <header className="h-14 border-b border-border bg-card flex-shrink-0" />
+      <div className="flex-1 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-10 h-10 rounded-xl gradient-hero flex items-center justify-center mx-auto mb-4">
+            <BookOpen className="w-5 h-5 text-primary-foreground" />
+          </div>
+          <p className="text-sm text-muted-foreground">Opening presentation...</p>
+        </div>
+      </div>
+    </div>;
+  }
   return <div className="h-screen bg-background flex flex-col overflow-hidden">
       {/* Header - Fixed height */}
       <header className="h-14 border-b border-border bg-card flex-shrink-0">
@@ -749,12 +909,14 @@ const SlideEditor = () => {
 
             {/* Title + Paid Badge + Save Indicator */}
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg gradient-hero flex items-center justify-center">
-                <BookOpen className="w-4 h-4 text-primary-foreground" />
-              </div>
-              <span className="font-serif text-lg font-semibold text-foreground">
-                {presentationTitle}
-              </span>
+              <Link to="/" className="flex items-center gap-3 hover:opacity-90 transition-opacity">
+                <div className="w-8 h-8 rounded-lg gradient-hero flex items-center justify-center">
+                  <BookOpen className="w-4 h-4 text-primary-foreground" />
+                </div>
+                <span className="font-serif text-lg font-semibold text-foreground">
+                  {presentationTitle}
+                </span>
+              </Link>
               
               {/* Paid Badge - shows when export is unlocked */}
               {isExportUnlocked && (
@@ -807,10 +969,10 @@ const SlideEditor = () => {
               
               {id && id !== "new" && (
                 <Button variant="outline" onClick={async () => {
-                  const presentation = await getPresentation(id);
-                  if (presentation?.data) {
+                  const presentation = await getEditorPresentationState(id);
+                  if (presentation?.formData) {
                     const target = location.state?.from === "dashboard" ? '/dashboard/create' : '/create';
-                    editorNavigate(target, { state: { editData: presentation.data, editId: id } });
+                    editorNavigate(target, { state: { editData: presentation.formData, editId: id } });
                   } else {
                     toast.error("Original sermon form data not found.");
                   }
@@ -953,7 +1115,7 @@ const SlideEditor = () => {
                         <div 
                           className="absolute inset-0"
                           style={{
-                            background: slide.backgroundImage ? `url(${slide.backgroundImage})` : slide.background,
+                            background: getRenderableBackgroundImage(slide) ? `url(${getRenderableBackgroundImage(slide)})` : slide.background,
                             backgroundSize: 'cover',
                             backgroundPosition: 'center'
                           }}
@@ -991,6 +1153,9 @@ const SlideEditor = () => {
         <main className="flex-1 flex flex-col overflow-hidden min-h-0">
           {/* Slide Preview - Fixed region, centered */}
           <div className="flex-1 flex items-center justify-center p-4 bg-muted/30 min-h-0 overflow-hidden">
+            {(() => {
+              const currentSlideBackgroundImage = getRenderableBackgroundImage(currentSlide);
+              return (
             <motion.div key={selectedSlide} initial={{
             opacity: 0,
             scale: 0.95
@@ -1018,7 +1183,7 @@ const SlideEditor = () => {
                 <div 
                   className="absolute inset-0 bg-cover bg-center"
                   style={{
-                    background: currentSlide.backgroundImage ? `url(${currentSlide.backgroundImage})` : currentSlide.background,
+                    background: currentSlideBackgroundImage ? `url(${currentSlideBackgroundImage})` : currentSlide.background,
                     backgroundSize: 'cover',
                     backgroundPosition: 'center'
                   }}
@@ -1026,7 +1191,7 @@ const SlideEditor = () => {
               )}
               
               {/* Dark overlay for images */}
-              {currentSlide.backgroundImage && <div className="absolute inset-0 bg-black/30" />}
+              {currentSlideBackgroundImage && <div className="absolute inset-0 bg-black/30" />}
               
               <div className="text-center max-w-2xl px-6 relative z-10 w-full flex flex-col items-center justify-center" style={{
               lineHeight: currentSlide.lineSpacing || 1.5
@@ -1065,6 +1230,8 @@ const SlideEditor = () => {
                 {currentSlide.type === "blank" && <p className="text-muted-foreground text-sm">Blank Slide</p>}
               </div>
             </motion.div>
+              );
+            })()}
           </div>
 
           {/* Toolbar - Fixed at bottom, always visible */}
@@ -1125,7 +1292,12 @@ const SlideEditor = () => {
               </div>
 
               {/* Background */}
-              <BackgroundPicker currentBackground={currentSlide.background} currentBackgroundImage={currentSlide.backgroundImage} onBackgroundChange={handleBackgroundChange} />
+              <BackgroundPicker
+                currentBackground={currentSlide.background}
+                currentBackgroundImage={currentSlide.backgroundImage}
+                onBackgroundChange={handleBackgroundChange}
+                onBackgroundUpload={handleBackgroundUpload}
+              />
 
               {/* Navigation */}
               <div className="flex items-center gap-1.5">
@@ -1162,6 +1334,7 @@ const SlideEditor = () => {
         onClose={() => setShowPaymentModal(false)}
         sermonId={id || ""}
         onPaymentComplete={handlePaymentComplete}
+        prepareForCheckout={prepareForCheckout}
       />
       
       {/* Export Options Modal */}

@@ -1,11 +1,17 @@
-import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, useCallback, ReactNode, useRef } from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
+import {
+  clearStoredLogoutReason,
+  getStoredLogoutReason,
+  setStoredLogoutReason,
+} from "@/lib/session-security";
 
 interface Profile {
   id: string;
   full_name: string | null;
   email: string | null;
+  default_translation: string | null;
   plan_tier: string | null;
   subscription_status: string | null;
   stripe_customer_id: string | null;
@@ -16,7 +22,12 @@ interface Profile {
 interface SubscriptionInfo {
   subscribed: boolean;
   product_id: string | null;
+  price_id: string | null;
+  billing_interval: "month" | "year" | null;
+  plan_label: string | null;
   subscription_end: string | null;
+  cancel_at_period_end: boolean;
+  subscription_status: string | null;
 }
 
 interface AuthContextType {
@@ -27,7 +38,7 @@ interface AuthContextType {
   subscription: SubscriptionInfo;
   subscriptionChecked: boolean;
   accountId: string | null;
-  signOut: () => Promise<void>;
+  signOut: (options?: { userInitiated?: boolean }) => Promise<void>;
   refreshProfile: () => Promise<void>;
   checkSubscription: () => Promise<void>;
 }
@@ -50,8 +61,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [subscription, setSubscription] = useState<SubscriptionInfo>({
     subscribed: false,
     product_id: null,
+    price_id: null,
+    billing_interval: null,
+    plan_label: null,
     subscription_end: null,
+    cancel_at_period_end: false,
+    subscription_status: null,
   });
+  const userInitiatedSignOutRef = useRef(false);
+  const lastUserIdRef = useRef<string | null>(null);
 
   const fetchProfile = async (userId: string) => {
     const { data } = await supabase
@@ -85,7 +103,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setSubscription({
           subscribed: data.subscribed || false,
           product_id: data.product_id || null,
+          price_id: data.price_id || null,
+          billing_interval: data.billing_interval || null,
+          plan_label: data.plan_label || null,
           subscription_end: data.subscription_end || null,
+          cancel_at_period_end: data.cancel_at_period_end || false,
+          subscription_status: data.subscription_status || null,
         });
       }
     } catch (err) {
@@ -103,14 +126,28 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const signOut = async () => {
+  const signOut = async (options?: { userInitiated?: boolean }) => {
+    const userInitiated = options?.userInitiated ?? true;
+    userInitiatedSignOutRef.current = userInitiated;
+    if (userInitiated) {
+      clearStoredLogoutReason();
+    }
     await supabase.auth.signOut();
     setUser(null);
     setSession(null);
     setProfile(null);
     setAccountId(null);
     setSubscriptionChecked(false);
-    setSubscription({ subscribed: false, product_id: null, subscription_end: null });
+    setSubscription({
+      subscribed: false,
+      product_id: null,
+      price_id: null,
+      billing_interval: null,
+      plan_label: null,
+      subscription_end: null,
+      cancel_at_period_end: false,
+      subscription_status: null,
+    });
   };
 
   useEffect(() => {
@@ -129,12 +166,29 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           setProfile(null);
           setAccountId(null);
           setSubscriptionChecked(false);
-          setSubscription({ subscribed: false, product_id: null, subscription_end: null });
+          setSubscription({
+            subscribed: false,
+            product_id: null,
+            price_id: null,
+            billing_interval: null,
+            plan_label: null,
+            subscription_end: null,
+            cancel_at_period_end: false,
+            subscription_status: null,
+          });
         }
 
         if (event === "SIGNED_OUT") {
+          if (lastUserIdRef.current && !userInitiatedSignOutRef.current && !getStoredLogoutReason()) {
+            setStoredLogoutReason("security");
+          }
           setProfile(null);
           setAccountId(null);
+          lastUserIdRef.current = null;
+          userInitiatedSignOutRef.current = false;
+        } else if (newSession?.user?.id) {
+          lastUserIdRef.current = newSession.user.id;
+          userInitiatedSignOutRef.current = false;
         }
         setLoading(false);
       }
@@ -144,10 +198,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setSession(initialSession);
       setUser(initialSession?.user ?? null);
       if (initialSession?.user) {
+        lastUserIdRef.current = initialSession.user.id;
         fetchProfile(initialSession.user.id);
         fetchAccountId(initialSession.user.id);
         checkSubscription();
       } else {
+        lastUserIdRef.current = null;
         setSubscriptionChecked(true);
       }
       setLoading(false);

@@ -1,4 +1,5 @@
 import pptxgen from 'pptxgenjs';
+import { resolveBackgroundImageSource } from '@/lib/background-assets';
 
 export interface SlideData {
   id: string;
@@ -78,10 +79,10 @@ export async function exportToPowerPoint(
   const pptx = new pptxgen();
 
   // Set presentation properties
-  pptx.author = 'SermonSlides Pro';
+  pptx.author = 'Sermon Slide Pro';
   pptx.title = title;
   pptx.subject = 'Sermon Presentation';
-  pptx.company = 'SermonSlides Pro';
+  pptx.company = 'Sermon Slide Pro';
 
   // Set 16:9 widescreen layout (standard for presentations)
   pptx.defineLayout({ name: 'WIDESCREEN', width: 13.33, height: 7.5 });
@@ -97,7 +98,10 @@ export async function exportToPowerPoint(
     // Apply background - try image first, then color
     if (slideData.backgroundImage) {
       try {
-        const base64Image = await fetchImageAsBase64(slideData.backgroundImage);
+        const resolvedBackgroundImage = await resolveBackgroundImageSource(slideData.backgroundImage);
+        const base64Image = resolvedBackgroundImage
+          ? await fetchImageAsBase64(resolvedBackgroundImage)
+          : null;
         if (base64Image) {
           slide.background = { data: base64Image };
         } else {

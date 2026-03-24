@@ -59,7 +59,7 @@ const ProtectedRoute = ({ children, allowUnsubscribed = false }: ProtectedRouteP
     return () => { cancelled = true; };
   }, [isAuthCallback, tokenHash, authType, searchParams, setSearchParams]);
 
-  if (loading || authFinalizing || !subscriptionChecked) {
+  if (loading || authFinalizing) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
@@ -78,24 +78,29 @@ const ProtectedRoute = ({ children, allowUnsubscribed = false }: ProtectedRouteP
     return <Navigate to="/login" replace />;
   }
 
-  // No more auto-redirect to Stripe. If unsubscribed and not allowed, show message.
-  if (!subscription.subscribed && !allowUnsubscribed) {
+  if (!subscriptionChecked) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4 text-center max-w-md px-4">
-          <div className="w-12 h-12 rounded-xl gradient-hero flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 rounded-xl gradient-hero flex items-center justify-center animate-pulse">
             <BookOpen className="w-6 h-6 text-primary-foreground" />
           </div>
-          <h2 className="font-serif text-xl font-semibold text-foreground">Subscription Required</h2>
-          <p className="text-muted-foreground">
-            You need an active Pro subscription to access the dashboard. Visit our homepage to subscribe.
-          </p>
-          <a href="/#pricing" className="text-primary hover:underline font-medium">
-            View Pricing
-          </a>
+          <p className="text-muted-foreground">Loading...</p>
         </div>
       </div>
     );
+  }
+
+  const pendingProCheckout = typeof window !== "undefined" && localStorage.getItem("pending_pro_checkout") === "true";
+  if (!subscription.subscribed && !allowUnsubscribed && pendingProCheckout) {
+    const pendingPriceId = localStorage.getItem("pending_pro_checkout_price_id");
+    const params = new URLSearchParams({ startCheckout: "pro" });
+    if (pendingPriceId) params.set("priceId", pendingPriceId);
+    return <Navigate to={`/checkout-redirect?${params.toString()}`} replace />;
+  }
+
+  if (!subscription.subscribed && !allowUnsubscribed) {
+    return <Navigate to="/account?requiredSubscription=1" replace />;
   }
 
   return <>{children}</>;
