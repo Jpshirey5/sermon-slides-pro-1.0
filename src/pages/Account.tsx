@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { TRANSLATION_OPTIONS, DEFAULT_TRANSLATION } from "@/lib/translations";
 import SubscriptionPlanPicker from "@/components/SubscriptionPlanPicker";
 import { getPlanByInterval, getPlanByPriceId, type BillingInterval } from "@/lib/subscriptionPlans";
+import { getSiteUrl } from "@/lib/site-url";
 
 interface TeamMember {
   id: string;
@@ -141,7 +142,7 @@ const Account = () => {
           token: invite.token,
           org_name: orgName,
           invited_by_name: profile?.full_name || "A team member",
-          site_url: window.location.origin,
+          site_url: getSiteUrl(),
         },
       });
 
@@ -263,7 +264,7 @@ const Account = () => {
           token: invite.token,
           org_name: orgName,
           invited_by_name: profile?.full_name || "A team member",
-          site_url: window.location.origin,
+          site_url: getSiteUrl(),
         },
       });
 
