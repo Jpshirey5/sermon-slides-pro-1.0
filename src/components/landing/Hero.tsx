@@ -67,7 +67,7 @@ const Hero = () => {
             className="flex flex-col sm:flex-row items-center justify-center gap-4"
           >
             <Button variant="hero" size="xl" onClick={() => setModalOpen(true)}>
-              Get Started Free
+              Get Started
               <ArrowRight className="w-5 h-5" />
             </Button>
             <Link to="/login">
@@ -87,7 +87,7 @@ const Hero = () => {
               Trusted by churches worldwide
             </p>
             <div className="flex flex-wrap items-center justify-center gap-8 opacity-60">
-              {["Bell Shoals Church", "First Baptist of Brandon", "Fellowship Church", "New Life Fellowship", "Calvary Chapel"].map((church, i) => (
+              {["Bell Shoals Church", "First Baptist of Brandon", "Fellowship Church", "New Life Fellowship"].map((church, i) => (
                 <span key={i} className="font-serif text-lg text-foreground/70">
                   {church}
                 </span>

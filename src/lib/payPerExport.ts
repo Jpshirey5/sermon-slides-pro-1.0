@@ -3,6 +3,16 @@ export const PENDING_EXPORT_CONTEXT_KEY = "pending_payment_context_v1";
 export const PENDING_EXPORT_SNAPSHOT_KEY = "pending_payment_snapshot_v1";
 const WINDOW_PENDING_EXPORT_PREFIX = "__ssp_pending_export__:";
 
+function trySetStorage(storage: Storage, key: string, value: string) {
+  try {
+    storage.setItem(key, value);
+    return true;
+  } catch (error) {
+    console.warn(`Failed to persist ${key} in storage:`, error);
+    return false;
+  }
+}
+
 interface PendingExportContext {
   sermonId: string;
   createdAt: number;
@@ -30,8 +40,11 @@ export function setPendingExportContext(sermonId: string) {
 export function setPendingExportSnapshot(snapshot: PendingExportSnapshot) {
   if (typeof window === "undefined") return;
   const serialized = JSON.stringify(snapshot);
-  localStorage.setItem(PENDING_EXPORT_SNAPSHOT_KEY, serialized);
-  sessionStorage.setItem(PENDING_EXPORT_SNAPSHOT_KEY, serialized);
+
+  localStorage.removeItem(PENDING_EXPORT_SNAPSHOT_KEY);
+  // Large slide payloads can exceed localStorage quota, especially for guest sessions
+  // that already keep presentation state there. Prefer session storage and window.name.
+  trySetStorage(sessionStorage, PENDING_EXPORT_SNAPSHOT_KEY, serialized);
   // Keep a cross-origin fallback for Stripe round-trips in the same tab.
   window.name = `${WINDOW_PENDING_EXPORT_PREFIX}${serialized}`;
 }
@@ -66,15 +79,6 @@ export function getPendingExportSermonId(): string | null {
 export function getPendingExportSnapshot(): PendingExportSnapshot | null {
   if (typeof window === "undefined") return null;
 
-  const fromLocal = localStorage.getItem(PENDING_EXPORT_SNAPSHOT_KEY);
-  if (fromLocal) {
-    try {
-      return JSON.parse(fromLocal) as PendingExportSnapshot;
-    } catch {
-      // Continue fallback lookup
-    }
-  }
-
   const fromSession = sessionStorage.getItem(PENDING_EXPORT_SNAPSHOT_KEY);
   if (fromSession) {
     try {
@@ -88,6 +92,15 @@ export function getPendingExportSnapshot(): PendingExportSnapshot | null {
     const payload = window.name.slice(WINDOW_PENDING_EXPORT_PREFIX.length);
     try {
       return JSON.parse(payload) as PendingExportSnapshot;
+    } catch {
+      return null;
+    }
+  }
+
+  const fromLocal = localStorage.getItem(PENDING_EXPORT_SNAPSHOT_KEY);
+  if (fromLocal) {
+    try {
+      return JSON.parse(fromLocal) as PendingExportSnapshot;
     } catch {
       return null;
     }

@@ -19,7 +19,7 @@ import PasswordInput from "@/components/auth/PasswordInput";
 import PasswordRequirements from "@/components/auth/PasswordRequirements";
 import { isPasswordStrong } from "@/lib/password";
 import SubscriptionPlanPicker from "@/components/SubscriptionPlanPicker";
-import { getPlanByPriceId, SUBSCRIPTION_PLANS, type BillingInterval } from "@/lib/subscriptionPlans";
+import { getPlanById, getPlanByPriceId, type SubscriptionPlanId } from "@/lib/subscriptionPlans";
 import { logError, trackEvent } from "@/lib/monitoring";
 import { startProductTour } from "@/lib/product-tour";
 import { buildAppUrl } from "@/lib/site-url";
@@ -55,7 +55,7 @@ const SignUp = () => {
   const [state, setState] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPlanSelection, setShowPlanSelection] = useState(false);
-  const [planLoading, setPlanLoading] = useState<BillingInterval | null>(null);
+  const [planLoading, setPlanLoading] = useState<SubscriptionPlanId | null>(null);
   const [notice, setNotice] = useState<SignupNotice | null>(null);
 
   // Invite state
@@ -141,7 +141,7 @@ const SignUp = () => {
     return { normalizedEmail, trimmedName };
   };
 
-  const createAccount = async (selectedBillingInterval?: BillingInterval) => {
+  const createAccount = async (selectedPlanId?: SubscriptionPlanId) => {
     const validated = validateForm();
     if (!validated) return;
 
@@ -150,7 +150,7 @@ const SignUp = () => {
     try {
       trackEvent("signup_submitted", {
         invited: inviteValid,
-        billingInterval: selectedBillingInterval || preselectedPlan?.id || "none",
+        billingInterval: selectedPlanId || preselectedPlan?.id || "none",
       });
       const metadata: Record<string, string> = { full_name: trimmedName };
       if (inviteValid && inviteToken) {
@@ -162,7 +162,7 @@ const SignUp = () => {
         metadata.org_state = state;
       }
 
-      const selectedPlanConfig = selectedBillingInterval ? SUBSCRIPTION_PLANS[selectedBillingInterval] : preselectedPlan;
+      const selectedPlanConfig = selectedPlanId ? getPlanById(selectedPlanId) : preselectedPlan;
       if (!inviteValid) {
         metadata.signup_intent = "checkout";
         if (selectedPlanConfig?.priceId) {
@@ -197,14 +197,14 @@ const SignUp = () => {
         if (newUserId) startProductTour(newUserId);
         trackEvent("signup_succeeded", {
           invited: false,
-          billingInterval: selectedBillingInterval || preselectedPlan?.id || "none",
+          billingInterval: selectedPlanId || preselectedPlan?.id || "none",
         });
         localStorage.setItem("pending_pro_checkout", "true");
         localStorage.setItem("pending_pro_checkout_email", normalizedEmail);
         localStorage.setItem("pending_pro_checkout_price_id", selectedPlanConfig!.priceId);
         showNotice(
           "Confirm your email",
-          "Your account has been created. Confirm your email to continue to secure Pro checkout.",
+          "Your account has been created. Confirm your email to continue to secure subscription checkout.",
           () => navigate("/login"),
         );
       } else if (inviteValid) {
@@ -232,7 +232,7 @@ const SignUp = () => {
       logError(error, {
         scope: "signup_submit",
         invited: inviteValid,
-        billingInterval: selectedBillingInterval || preselectedPlan?.id || "none",
+        billingInterval: selectedPlanId || preselectedPlan?.id || "none",
       });
       showNotice("Unexpected error", "An unexpected error occurred. Please try again.");
     } finally {
@@ -259,9 +259,9 @@ const SignUp = () => {
     setShowPlanSelection(true);
   };
 
-  const handleSelectPlan = async (interval: BillingInterval) => {
-    setPlanLoading(interval);
-    await createAccount(interval);
+  const handleSelectPlan = async (planId: SubscriptionPlanId) => {
+    setPlanLoading(planId);
+    await createAccount(planId);
   };
 
   if (inviteLoading) {
@@ -284,7 +284,7 @@ const SignUp = () => {
       ]
     : [
         { title: "Create your account", detail: "Enter your details and secure your login.", complete: true },
-        { title: "Choose your Pro plan", detail: "Pick monthly or yearly billing before checkout.", complete: Boolean(showPlanSelection || preselectedPlan) },
+        { title: "Choose your plan", detail: "Pick Pro, Team, or Enterprise with monthly or annual billing.", complete: Boolean(showPlanSelection || preselectedPlan) },
         { title: "Confirm email and finish checkout", detail: "We will send you to secure checkout after confirmation.", complete: false },
       ];
 
@@ -321,24 +321,24 @@ const SignUp = () => {
                   ? `You've been invited to join ${inviteOrgName}`
                   : showPlanSelection
                   ? "Choose your billing plan to finish setting up your account."
-                  : "Create your account to continue to secure Pro checkout."}
+                  : "Create your account to continue to secure subscription checkout."}
               </p>
             </div>
 
             {!inviteValid && !showPlanSelection && (
               <div className="rounded-lg bg-primary/5 border border-primary/20 p-3 mb-6">
                 <p className="text-sm text-foreground font-medium">Paid account setup</p>
-                <p className="text-xs text-muted-foreground mt-1">All new accounts require a Pro subscription. After you confirm your email, we’ll send you to secure checkout.</p>
+                <p className="text-xs text-muted-foreground mt-1">All new accounts require a subscription. After you confirm your email, we’ll send you to secure checkout.</p>
               </div>
             )}
 
             {showPlanSelection ? (
               <div className="space-y-4">
                 <SubscriptionPlanPicker
-                  title="Choose Your Pro Plan"
-                  description="Select monthly or yearly billing to finish creating your account."
+                  title="Choose Your Plan"
+                  description="Select Pro, Team, or Enterprise with monthly or annual billing to finish creating your account."
                   onSelectPlan={handleSelectPlan}
-                  loadingInterval={planLoading}
+                  loadingPlanId={planLoading}
                 />
                 <Button variant="outline" className="w-full" onClick={() => setShowPlanSelection(false)} disabled={loading}>
                   Back to Account Details

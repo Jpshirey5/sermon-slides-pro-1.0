@@ -11,6 +11,33 @@ const logStep = (step: string, details?: any) => {
   console.log(`[CREATE-CHECKOUT] ${step}${details ? ` - ${JSON.stringify(details)}` : ''}`);
 };
 
+const getAllowedPriceIds = () => {
+  const priceIds = [
+    Deno.env.get("STRIPE_PRICE_PRO_MONTHLY"),
+    Deno.env.get("STRIPE_PRICE_PRO_ANNUAL"),
+    Deno.env.get("STRIPE_PRICE_TEAM_MONTHLY"),
+    Deno.env.get("STRIPE_PRICE_TEAM_ANNUAL"),
+    Deno.env.get("STRIPE_PRICE_ENTERPRISE_MONTHLY"),
+    Deno.env.get("STRIPE_PRICE_ENTERPRISE_ANNUAL"),
+  ].filter((value): value is string => Boolean(value && value.startsWith("price_")));
+
+  if (priceIds.length === 0) {
+    priceIds.push(
+      "price_1TEfgIP2Yr0z0IcsX2VXk6wJ",
+      "price_1TEfi2P2Yr0z0Icsnod1blF1",
+      "price_1TEfggP2Yr0z0IcsHHgS6kye",
+      "price_1TEfjmP2Yr0z0IcsXW3ZujSG",
+      "price_1TEfhaP2Yr0z0IcsGlDJJyu7",
+      "price_1TEfkDP2Yr0z0IcsUhXwzh9z"
+    );
+  }
+
+  return priceIds;
+};
+
+const getDefaultCheckoutPriceId = () =>
+  Deno.env.get("STRIPE_PRICE_PRO_MONTHLY") || "price_1TEfgIP2Yr0z0IcsX2VXk6wJ";
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -95,8 +122,14 @@ serve(async (req) => {
       limit: 1,
     });
 
+    const allowedPriceIds = getAllowedPriceIds();
     const origin = req.headers.get("origin") || "https://sermonslides.app";
-    const checkoutPriceId = requestedPriceId || "price_1TAr39P2Yr0z0IcssSAqGZ8n";
+    const checkoutPriceId = requestedPriceId || getDefaultCheckoutPriceId();
+
+    if (!allowedPriceIds.includes(checkoutPriceId)) {
+      throw new Error("Unsupported subscription price selected");
+    }
+
     logStep("Using checkout price", { checkoutPriceId });
 
     if (existingSubs.data.length > 0) {
@@ -113,7 +146,7 @@ serve(async (req) => {
       mode: "subscription",
       success_url: `${origin}/dashboard?checkout=success`,
       cancel_url: `${origin}/account`,
-      metadata: { account_id: accountId },
+      metadata: { account_id: accountId, price_id: checkoutPriceId },
     });
 
     logStep("Checkout session created", { sessionId: session.id });

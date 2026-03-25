@@ -11,10 +11,12 @@ import { exportAsProBundle, validateSlidesForExport } from "@/services/proPresen
 import { splitVerseText } from "@/lib/scripture-api";
 import { ExportOptionsModal } from "@/components/ExportOptionsModal";
 import { PaymentPromptModal } from "@/components/PaymentPromptModal";
+import { SubscriptionUpsellModal } from "@/components/SubscriptionUpsellModal";
 import { toast } from "sonner";
 import { getEditorPresentationState, SermonPresentation, saveEditorSlides as saveEditorSlidesToDb } from "@/lib/presentations";
 import { useAuth } from "@/contexts/AuthContext";
 import { clearPendingExportContext, setPendingExportSnapshot } from "@/lib/payPerExport";
+import { getPlanById, type SubscriptionPlanId } from "@/lib/subscriptionPlans";
 import {
   deleteStoredBackground,
   fileToDataUrl,
@@ -241,12 +243,14 @@ const SlideEditor = () => {
   });
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
+  const [showUpsellModal, setShowUpsellModal] = useState(false);
   
   // Undo/Redo history
   const [history, setHistory] = useState<SlideData[][]>([defaultSlides]);
   const [historyIndex, setHistoryIndex] = useState(0);
   const isUndoRedoRef = useRef(false);
   const isInitialLoadRef = useRef(true);
+  const upsellSessionKey = id && id !== "new" ? `export_upsell_seen:${id}` : null;
 
   // Handle payment return from Stripe embedded checkout (fallback for return_url)
   useEffect(() => {
@@ -259,10 +263,21 @@ const SlideEditor = () => {
       searchParams.delete('payment');
       searchParams.delete('session_id');
       setSearchParams(searchParams, { replace: true });
-      setShowExportModal(true);
-      toast.success('Payment successful! Choose your export format.');
+      const shouldShowUpsell =
+        !subscription.subscribed &&
+        upsellSessionKey &&
+        sessionStorage.getItem(upsellSessionKey) !== "true";
+
+      if (shouldShowUpsell) {
+        sessionStorage.setItem(upsellSessionKey, "true");
+        setShowUpsellModal(true);
+        setShowExportModal(false);
+      } else {
+        setShowExportModal(true);
+      }
+      toast.success('Payment successful! Your export is unlocked.');
     }
-  }, [searchParams, setSearchParams, id]);
+  }, [searchParams, setSearchParams, id, subscription.subscribed, upsellSessionKey]);
 
   // Handle successful payment from embedded checkout
   const handlePaymentComplete = () => {
@@ -274,6 +289,35 @@ const SlideEditor = () => {
       setShowExportModal(true);
       toast.success('Payment successful! Choose your export format.');
     }
+  };
+
+  const handleDismissUpsell = () => {
+    if (upsellSessionKey) {
+      sessionStorage.setItem(upsellSessionKey, "true");
+    }
+    setShowUpsellModal(false);
+  };
+
+  const handleContinueFromUpsell = () => {
+    handleDismissUpsell();
+    setShowExportModal(true);
+  };
+
+  const handleUpsellSelectPlan = (planId: SubscriptionPlanId) => {
+    const plan = getPlanById(planId);
+    if (!plan) return;
+    if (upsellSessionKey) {
+      sessionStorage.setItem(upsellSessionKey, "true");
+    }
+
+    const params = new URLSearchParams({ priceId: plan.priceId });
+    if (user) {
+      params.set("startCheckout", "pro");
+      editorNavigate(`/account?${params.toString()}`);
+      return;
+    }
+
+    editorNavigate(`/signup?${params.toString()}`);
   };
 
 
@@ -1404,6 +1448,11 @@ const SlideEditor = () => {
         onClose={() => setShowExportModal(false)}
         onExport={handleExport}
         isExporting={isExporting}
+      />
+      <SubscriptionUpsellModal
+        isOpen={showUpsellModal}
+        onContinue={handleContinueFromUpsell}
+        onSelectPlan={handleUpsellSelectPlan}
       />
       {user && (
         <ProductTour

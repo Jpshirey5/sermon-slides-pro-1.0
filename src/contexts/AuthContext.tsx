@@ -23,8 +23,9 @@ interface SubscriptionInfo {
   subscribed: boolean;
   product_id: string | null;
   price_id: string | null;
-  billing_interval: "month" | "year" | null;
+  billing_interval: "monthly" | "annual" | null;
   plan_label: string | null;
+  plan_tier: string | null;
   subscription_end: string | null;
   cancel_at_period_end: boolean;
   subscription_status: string | null;
@@ -64,6 +65,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     price_id: null,
     billing_interval: null,
     plan_label: null,
+    plan_tier: null,
     subscription_end: null,
     cancel_at_period_end: false,
     subscription_status: null,
@@ -106,6 +108,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           price_id: data.price_id || null,
           billing_interval: data.billing_interval || null,
           plan_label: data.plan_label || null,
+          plan_tier: data.plan_tier || null,
           subscription_end: data.subscription_end || null,
           cancel_at_period_end: data.cancel_at_period_end || false,
           subscription_status: data.subscription_status || null,
@@ -144,6 +147,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       price_id: null,
       billing_interval: null,
       plan_label: null,
+      plan_tier: null,
       subscription_end: null,
       cancel_at_period_end: false,
       subscription_status: null,
@@ -172,6 +176,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             price_id: null,
             billing_interval: null,
             plan_label: null,
+            plan_tier: null,
             subscription_end: null,
             cancel_at_period_end: false,
             subscription_status: null,
