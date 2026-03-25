@@ -24,12 +24,13 @@ import {
   Book,
 } from "lucide-react";
 import { lookupScripture } from "@/lib/scripture-api";
-import { savePresentation } from "@/lib/presentations";
+import { savePresentationWithSlides } from "@/lib/presentations";
 import { useAuth } from "@/contexts/AuthContext";
 import { TRANSLATION_OPTIONS, DEFAULT_TRANSLATION } from "@/lib/translations";
 import { logError, trackEvent } from "@/lib/monitoring";
 import ProductTour, { type ProductTourStep } from "@/components/ProductTour";
 import { consumeCreateTourPrompt, readProductTourState, setProductTourStage } from "@/lib/product-tour";
+import { generateSlidesFromPresentation } from "@/lib/slide-generation";
 
 interface Scripture {
   reference: string;
@@ -350,50 +351,40 @@ const CreateSermon = () => {
       translation: globalTranslation,
     });
     
-    // Use editId if re-editing, otherwise generate new ID
     const presentationId = editId || crypto.randomUUID();
-    
-    // Calculate slide count
-    let slideCount = 1; // Title slide
-    points.forEach(point => {
-      if (point.type === 'verse') {
-        point.scriptures.forEach(s => {
-          if (s.reference && s.text) {
-            slideCount++;
-          }
-        });
-      } else if (point.title) {
-        slideCount++; // Point slide
-      }
-    });
-    
-    // Save presentation data to Supabase
+
+    const presentationPayload = {
+      id: presentationId,
+      title: title,
+      date: new Date().toISOString().split("T")[0],
+      slides: 0,
+      lastModified: "Just now",
+      data: {
+        title,
+        date: new Date().toISOString().split("T")[0],
+        verseBreakdown,
+        translation: globalTranslation,
+        points: points.map((p) => ({
+          id: p.id,
+          type: p.type,
+          title: p.title,
+          scriptures: p.type === "verse"
+            ? p.scriptures.map((s) => ({
+                reference: s.reference,
+                text: s.text,
+                verses: s.verses,
+              }))
+            : [],
+        })),
+      },
+    };
+
+    const generatedSlides = generateSlidesFromPresentation(presentationPayload);
+    const slideCount = generatedSlides.length;
+    presentationPayload.slides = slideCount;
+
     try {
-      const savedId = await savePresentation({
-        id: presentationId,
-        title: title,
-        date: new Date().toISOString().split('T')[0],
-        slides: slideCount,
-        lastModified: 'Just now',
-        data: {
-          title,
-          date: new Date().toISOString().split('T')[0],
-          verseBreakdown,
-          translation: globalTranslation,
-          points: points.map(p => ({
-            id: p.id,
-            type: p.type,
-            title: p.title,
-            scriptures: p.type === "verse"
-              ? p.scriptures.map(s => ({
-                  reference: s.reference,
-                  text: s.text,
-                  verses: s.verses,
-                }))
-              : [],
-          })),
-        },
-      });
+      const savedId = await savePresentationWithSlides(presentationPayload, generatedSlides);
       
       if (savedId) {
         if (user) {
