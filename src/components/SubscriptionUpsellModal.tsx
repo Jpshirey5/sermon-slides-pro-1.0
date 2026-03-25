@@ -13,6 +13,12 @@ export function SubscriptionUpsellModal({
   onContinue,
   onSelectPlan,
 }: SubscriptionUpsellModalProps) {
+  const getUserCountLabel = (maxAdditionalUsers: number | null) => {
+    if (maxAdditionalUsers === null) return "Unlimited users";
+    if (maxAdditionalUsers <= 0) return "1 user";
+    return `Up to ${maxAdditionalUsers + 1} users`;
+  };
+
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onContinue()}>
       <DialogContent className="sm:max-w-3xl">
@@ -27,6 +33,9 @@ export function SubscriptionUpsellModal({
           {PLAN_FAMILIES.map((family) => (
             <div key={family.tier} className="rounded-2xl border border-border/70 bg-white/70 p-4">
               <h3 className="font-serif text-lg font-semibold text-foreground">{family.planName}</h3>
+              <p className="text-sm font-medium text-foreground/80 mt-1">
+                {getUserCountLabel(family.monthly.maxAdditionalUsers)}
+              </p>
               <p className="text-xs text-muted-foreground mt-1 mb-4">{family.description}</p>
               <div className="space-y-2">
                 {[family.monthly, family.annual].map((plan) => (

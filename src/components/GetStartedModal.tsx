@@ -15,12 +15,12 @@ const GetStartedModal = ({ open, onOpenChange }: GetStartedModalProps) => {
   const { user } = useAuth();
   const [proLoading, setProLoading] = useState(false);
 
-  const handlePayPerSermon = () => {
+  const handlePayPerExport = () => {
     onOpenChange(false);
     navigate("/create");
   };
 
-  const handleGoPro = () => {
+  const handleAccountSetup = () => {
     setProLoading(true);
     onOpenChange(false);
     navigate(user ? "/account" : "/signup");
@@ -37,28 +37,26 @@ const GetStartedModal = ({ open, onOpenChange }: GetStartedModalProps) => {
         </DialogHeader>
 
         <div className="grid sm:grid-cols-2 gap-4 p-6 pt-2">
-          {/* Pay Per Sermon */}
           <button
-            onClick={handlePayPerSermon}
+            onClick={handlePayPerExport}
             className="group relative flex flex-col items-center text-center rounded-xl border border-border bg-card p-6 hover:border-primary/40 hover:shadow-soft transition-all"
           >
             <div className="w-12 h-12 rounded-xl bg-secondary flex items-center justify-center mb-4">
               <FileText className="w-6 h-6 text-foreground" />
             </div>
             <h3 className="font-serif text-lg font-semibold text-foreground mb-1">
-              Pay Per Sermon
+              Pay Per Export
             </h3>
             <p className="text-sm text-muted-foreground mb-4">
-              Create for free. Pay only when you export.
+              Create your presentation first and pay only when you are ready to export.
             </p>
             <span className="inline-flex items-center gap-1 text-sm font-medium text-primary group-hover:gap-2 transition-all">
               Start Creating <ArrowRight className="w-4 h-4" />
             </span>
           </button>
 
-          {/* Go Pro */}
           <button
-            onClick={handleGoPro}
+            onClick={handleAccountSetup}
             disabled={proLoading}
             className="group relative flex flex-col items-center text-center rounded-xl border-2 border-primary bg-card p-6 hover:shadow-glow transition-all disabled:opacity-70"
           >
@@ -69,16 +67,16 @@ const GetStartedModal = ({ open, onOpenChange }: GetStartedModalProps) => {
               <Crown className="w-6 h-6 text-primary-foreground" />
             </div>
             <h3 className="font-serif text-lg font-semibold text-foreground mb-1">
-              Subscribe
+              Account Setup
             </h3>
             <p className="text-sm text-muted-foreground mb-4">
-              Choose Pro, Team, or Enterprise and unlock unlimited use.
+              Choose Pro, Team, or Enterprise and unlock the full account experience.
             </p>
             {proLoading ? (
               <Loader2 className="w-5 h-5 animate-spin text-primary" />
             ) : (
               <span className="inline-flex items-center gap-1 text-sm font-medium text-primary group-hover:gap-2 transition-all">
-                Subscribe Now <ArrowRight className="w-4 h-4" />
+                Continue <ArrowRight className="w-4 h-4" />
               </span>
             )}
           </button>

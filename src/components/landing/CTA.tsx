@@ -44,7 +44,7 @@ const CTA = () => {
           <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-card/85 border border-border/70 mb-8">
             <Sparkles className="w-4 h-4 text-primary" />
             <span className="text-sm font-medium text-foreground">
-              Create and edit slides for free
+              Built for Pro, Team, and Enterprise workflows
             </span>
           </div>
 
@@ -53,13 +53,12 @@ const CTA = () => {
           </h2>
 
           <p className="text-lg text-muted-foreground mb-10 max-w-2xl mx-auto">
-            Create beautiful sermon slides in minutes. 
-            Pay only $9 when you're ready to export.
+            Choose the plan that fits your ministry, then create, edit, and export sermon slides with one modern workflow.
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <Button variant="gold" size="xl" onClick={() => setModalOpen(true)}>
-              Get Started Free
+              Get Started
               <ArrowRight className="w-5 h-5" />
             </Button>
             <Link to="/login">

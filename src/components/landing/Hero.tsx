@@ -67,7 +67,7 @@ const Hero = () => {
             className="flex flex-col sm:flex-row items-center justify-center gap-4"
           >
             <Button variant="hero" size="xl" onClick={() => setModalOpen(true)}>
-              Get Started Free
+              Get Started
               <ArrowRight className="w-5 h-5" />
             </Button>
             <Link to="/login">
