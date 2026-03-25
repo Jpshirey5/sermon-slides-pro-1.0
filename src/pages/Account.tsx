@@ -13,7 +13,7 @@ import { useSearchParams } from "react-router-dom";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { TRANSLATION_OPTIONS, DEFAULT_TRANSLATION } from "@/lib/translations";
 import SubscriptionPlanPicker from "@/components/SubscriptionPlanPicker";
-import { getPlanByInterval, getPlanByPriceId, type BillingInterval } from "@/lib/subscriptionPlans";
+import { getPlanById, getPlanByPriceId, getPlanCapacityByTier, type SubscriptionPlanId } from "@/lib/subscriptionPlans";
 import { getSiteUrl } from "@/lib/site-url";
 
 interface TeamMember {
@@ -32,8 +32,6 @@ interface PendingInvite {
   expires_at: string;
 }
 
-const MAX_TEAM_INVITES = 2;
-
 const Account = () => {
   const navigate = useNavigate();
   const { user, profile, subscription, refreshProfile, signOut, checkSubscription, accountId } = useAuth();
@@ -43,7 +41,7 @@ const Account = () => {
   const [savingDefaultTranslation, setSavingDefaultTranslation] = useState(false);
   const [portalLoading, setPortalLoading] = useState(false);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
-  const [requiredPlanLoading, setRequiredPlanLoading] = useState<BillingInterval | null>(null);
+  const [requiredPlanLoading, setRequiredPlanLoading] = useState<SubscriptionPlanId | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
 
   // Team state
@@ -205,8 +203,14 @@ const Account = () => {
       const nonOwnerTeamCount = teamMembers.filter((member) => member.role !== "owner").length;
       const inviteSlotsUsed = nonOwnerTeamCount + activePendingInviteCount;
 
-      if (inviteSlotsUsed >= MAX_TEAM_INVITES) {
-        toast.error("You can invite up to 2 team members on this account.");
+      if (!capacity.isUnlimited && (capacity.maxAdditionalUsers ?? 0) === 0) {
+        toast.error("Your current plan does not include additional collaborative users.");
+        setInviting(false);
+        return;
+      }
+
+      if (!capacity.isUnlimited && inviteSlotsUsed >= (capacity.maxAdditionalUsers ?? 0)) {
+        toast.error("You can invite up to 2 additional users on the Team plan.");
         setInviting(false);
         return;
       }
@@ -249,7 +253,7 @@ const Account = () => {
 
       if (error) {
         if (error.message?.includes("account invite limit reached")) {
-          toast.error("You can invite up to 2 team members on this account.");
+          toast.error(error.details || "You have reached your plan's invite limit.");
         } else {
           toast.error("Failed to create invite.");
         }
@@ -352,10 +356,10 @@ const Account = () => {
     navigate("/exit-survey");
   };
 
-  const handleSelectRequiredPlan = async (interval: BillingInterval) => {
-    const requestedPlan = getPlanByInterval(interval);
+  const handleSelectRequiredPlan = async (planId: SubscriptionPlanId) => {
+    const requestedPlan = getPlanById(planId);
     if (!requestedPlan) return;
-    setRequiredPlanLoading(interval);
+    setRequiredPlanLoading(planId);
     try {
       await handleUpgrade(false, requestedPlan.priceId);
     } finally {
@@ -370,13 +374,17 @@ const Account = () => {
     (invite) => new Date(invite.expires_at).getTime() > Date.now()
   ).length;
   const nonOwnerTeamCount = teamMembers.filter((member) => member.role !== "owner").length;
+  const resolvedPlan = getPlanByPriceId(subscription.price_id);
+  const activePlanTier = subscription.plan_tier || resolvedPlan?.tier || "free";
+  const capacity = getPlanCapacityByTier(activePlanTier);
   const inviteSlotsUsed = nonOwnerTeamCount + activePendingInviteCount;
-  const inviteSlotsRemaining = Math.max(0, MAX_TEAM_INVITES - inviteSlotsUsed);
-  const inviteLimitReached = inviteSlotsRemaining === 0;
+  const inviteSlotsRemaining = capacity.isUnlimited
+    ? null
+    : Math.max(0, (capacity.maxAdditionalUsers ?? 0) - inviteSlotsUsed);
+  const inviteLimitReached = capacity.isUnlimited ? false : (inviteSlotsRemaining ?? 0) === 0;
   const isCancelingSubscription = subscription.subscribed && subscription.cancel_at_period_end;
-  const resolvedPlan = getPlanByPriceId(subscription.price_id) || getPlanByInterval(subscription.billing_interval);
   const planLabel = subscription.subscribed
-    ? subscription.plan_label || resolvedPlan?.badgeLabel || "Pro"
+    ? resolvedPlan?.label || subscription.plan_label || "Pro"
     : "No active subscription";
   const statusLabel = isCancelingSubscription
     ? "Cancelled"
@@ -395,7 +403,7 @@ const Account = () => {
       localStorage.removeItem("pending_pro_checkout");
       localStorage.removeItem("pending_pro_checkout_email");
       localStorage.removeItem("pending_pro_checkout_price_id");
-      toast.success("Subscription activated! Welcome to Pro.");
+      toast.success("Subscription activated!");
       const next = new URLSearchParams(searchParams.toString());
       next.delete("checkout");
       setSearchParams(next, { replace: true });
@@ -562,8 +570,12 @@ const Account = () => {
                 </div>
                 <p className="mt-2 text-xs text-muted-foreground">
                   {inviteLimitReached
-                    ? "You have reached your 2-user invite limit."
-                    : `${inviteSlotsUsed} of ${MAX_TEAM_INVITES} collaborative user slots used. ${inviteSlotsRemaining} remaining.`}
+                    ? activePlanTier === "pro" || activePlanTier === "free"
+                      ? "Your current plan does not include additional collaborative users."
+                      : "You have reached your Team plan invite limit."
+                    : capacity.isUnlimited
+                    ? "Enterprise currently supports broader team access."
+                    : `${inviteSlotsUsed} of ${capacity.maxAdditionalUsers} collaborative user slots used. ${inviteSlotsRemaining} remaining.`}
                 </p>
               </div>
             )}
@@ -625,9 +637,17 @@ const Account = () => {
                 <div>
                   <span className="text-muted-foreground">Billing: </span>
                   <span className="text-foreground">
+                    {resolvedPlan ? resolvedPlan.displayPrice : "Pro"}
+                  </span>
+                </div>
+              )}
+              {subscription.subscribed && (
+                <div>
+                  <span className="text-muted-foreground">Interval: </span>
+                  <span className="text-foreground">
                     {resolvedPlan
-                      ? `${resolvedPlan.displayPrice} ${resolvedPlan.id === "year" ? "yearly" : "monthly"}`
-                      : "Pro"}
+                      ? resolvedPlan.interval === "annual" ? "Annual" : "Monthly"
+                      : "Unavailable"}
                   </span>
                 </div>
               )}
@@ -668,14 +688,14 @@ const Account = () => {
                     <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
                       <p className="text-sm text-foreground font-medium">Subscription required</p>
                       <p className="text-xs text-muted-foreground mt-1">
-                        Choose a monthly or yearly Pro plan to activate your account and continue.
+                        Choose Pro, Team, or Enterprise with monthly or annual billing to activate your account and continue.
                       </p>
                     </div>
                     <SubscriptionPlanPicker
                       title="Choose Your Plan"
-                      description="Select the billing option you want to use for this account."
+                      description="Select the plan and billing interval you want to use for this account."
                       onSelectPlan={handleSelectRequiredPlan}
-                      loadingInterval={requiredPlanLoading}
+                      loadingPlanId={requiredPlanLoading}
                     />
                   </div>
                 )}

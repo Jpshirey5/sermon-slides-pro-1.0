@@ -11,10 +11,26 @@ const logStep = (step: string, details?: any) => {
   console.log(`[CHECK-SUBSCRIPTION] ${step}${details ? ` - ${JSON.stringify(details)}` : ''}`);
 };
 
-const resolvePlanLabel = (interval: string | null) => {
-  if (interval === "month") return "Pro Monthly";
-  if (interval === "year") return "Pro Yearly";
-  return null;
+const PLAN_BY_PRICE_ID = new Map<string, { planTier: string; planLabel: string; billingInterval: "monthly" | "annual"; maxAdditionalUsers: number | null }>(
+  [
+    [Deno.env.get("STRIPE_PRICE_PRO_MONTHLY"), { planTier: "pro", planLabel: "Pro", billingInterval: "monthly", maxAdditionalUsers: 0 }],
+    [Deno.env.get("STRIPE_PRICE_PRO_ANNUAL"), { planTier: "pro", planLabel: "Pro", billingInterval: "annual", maxAdditionalUsers: 0 }],
+    [Deno.env.get("STRIPE_PRICE_TEAM_MONTHLY"), { planTier: "team", planLabel: "Team", billingInterval: "monthly", maxAdditionalUsers: 2 }],
+    [Deno.env.get("STRIPE_PRICE_TEAM_ANNUAL"), { planTier: "team", planLabel: "Team", billingInterval: "annual", maxAdditionalUsers: 2 }],
+    [Deno.env.get("STRIPE_PRICE_ENTERPRISE_MONTHLY"), { planTier: "enterprise", planLabel: "Enterprise", billingInterval: "monthly", maxAdditionalUsers: null }],
+    [Deno.env.get("STRIPE_PRICE_ENTERPRISE_ANNUAL"), { planTier: "enterprise", planLabel: "Enterprise", billingInterval: "annual", maxAdditionalUsers: null }],
+    ["price_1TEfgIP2Yr0z0IcsX2VXk6wJ", { planTier: "pro", planLabel: "Pro", billingInterval: "monthly", maxAdditionalUsers: 0 }],
+    ["price_1TEfi2P2Yr0z0Icsnod1blF1", { planTier: "pro", planLabel: "Pro", billingInterval: "annual", maxAdditionalUsers: 0 }],
+    ["price_1TEfggP2Yr0z0IcsHHgS6kye", { planTier: "team", planLabel: "Team", billingInterval: "monthly", maxAdditionalUsers: 2 }],
+    ["price_1TEfjmP2Yr0z0IcsXW3ZujSG", { planTier: "team", planLabel: "Team", billingInterval: "annual", maxAdditionalUsers: 2 }],
+    ["price_1TEfhaP2Yr0z0IcsGlDJJyu7", { planTier: "enterprise", planLabel: "Enterprise", billingInterval: "monthly", maxAdditionalUsers: null }],
+    ["price_1TEfkDP2Yr0z0IcsUhXwzh9z", { planTier: "enterprise", planLabel: "Enterprise", billingInterval: "annual", maxAdditionalUsers: null }],
+  ].filter((entry): entry is [string, { planTier: string; planLabel: string; billingInterval: "monthly" | "annual"; maxAdditionalUsers: number | null }] => Boolean(entry[0]))
+);
+
+const resolvePlanMetadata = (priceId: string | null) => {
+  if (!priceId) return null;
+  return PLAN_BY_PRICE_ID.get(priceId) || null;
 };
 
 serve(async (req) => {
@@ -158,8 +174,10 @@ serve(async (req) => {
     const hasActiveSub = Boolean(currentSubscription);
     let productId = null;
     let priceId = null;
-    let billingInterval: "month" | "year" | null = null;
+    let billingInterval: "monthly" | "annual" | null = null;
     let planLabel = null;
+    let planTier = "free";
+    let maxAdditionalUsers: number | null = 0;
     let subscriptionEnd = null;
     let cancelAtPeriodEnd = false;
     let subscriptionStatus = account?.subscription_status || "inactive";
@@ -169,9 +187,19 @@ serve(async (req) => {
       const endTimestamp = sub.current_period_end;
       productId = sub.items.data[0].price.product;
       priceId = sub.items.data[0].price.id;
-      const recurringInterval = sub.items.data[0].price.recurring?.interval;
-      billingInterval = recurringInterval === "month" || recurringInterval === "year" ? recurringInterval : null;
-      planLabel = resolvePlanLabel(billingInterval);
+      const resolvedPlan = resolvePlanMetadata(priceId);
+      if (resolvedPlan) {
+        billingInterval = resolvedPlan.billingInterval;
+        planLabel = resolvedPlan.planLabel;
+        planTier = resolvedPlan.planTier;
+        maxAdditionalUsers = resolvedPlan.maxAdditionalUsers;
+      } else {
+        const recurringInterval = sub.items.data[0].price.recurring?.interval;
+        billingInterval = recurringInterval === "year" ? "annual" : recurringInterval === "month" ? "monthly" : null;
+        planLabel = "Pro";
+        planTier = "pro";
+        maxAdditionalUsers = 0;
+      }
       cancelAtPeriodEnd = Boolean(sub.cancel_at_period_end);
       subscriptionStatus = cancelAtPeriodEnd ? "canceled" : sub.status;
 
@@ -228,6 +256,9 @@ serve(async (req) => {
       await supabaseClient
         .from("accounts")
         .update({
+          plan_tier: planTier,
+          billing_interval: billingInterval,
+          max_additional_users: maxAdditionalUsers,
           subscription_status: sub.status === "trialing" ? "trialing" : "active",
           stripe_customer_id: customerId,
           stripe_subscription_id: sub.id,
@@ -238,7 +269,12 @@ serve(async (req) => {
       logStep("No active subscription");
       await supabaseClient
         .from("accounts")
-        .update({ subscription_status: "inactive" })
+        .update({
+          plan_tier: "free",
+          billing_interval: null,
+          max_additional_users: 0,
+          subscription_status: "inactive",
+        })
         .eq("id", accountId);
       subscriptionStatus = "inactive";
     }
@@ -249,6 +285,7 @@ serve(async (req) => {
       price_id: priceId,
       billing_interval: billingInterval,
       plan_label: planLabel,
+      plan_tier: planTier,
       subscription_end: subscriptionEnd,
       cancel_at_period_end: cancelAtPeriodEnd,
       subscription_status: subscriptionStatus,

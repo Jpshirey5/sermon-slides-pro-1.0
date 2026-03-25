@@ -109,10 +109,13 @@ export type Database = {
       }
       accounts: {
         Row: {
+          billing_interval: string | null
           city: string | null
           created_at: string
           id: string
+          max_additional_users: number | null
           name: string
+          plan_tier: string | null
           state: string | null
           stripe_customer_id: string | null
           stripe_subscription_id: string | null
@@ -121,10 +124,13 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          billing_interval?: string | null
           city?: string | null
           created_at?: string
           id?: string
+          max_additional_users?: number | null
           name?: string
+          plan_tier?: string | null
           state?: string | null
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
@@ -133,10 +139,13 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          billing_interval?: string | null
           city?: string | null
           created_at?: string
           id?: string
+          max_additional_users?: number | null
           name?: string
+          plan_tier?: string | null
           state?: string | null
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null

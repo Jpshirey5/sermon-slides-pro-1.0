@@ -15,6 +15,7 @@ serve(async (req) => {
     const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
     if (!stripeKey) throw new Error("STRIPE_SECRET_KEY is not set");
     const payPerPriceId =
+      Deno.env.get("STRIPE_PRICE_ONE_TIME_EXPORT") ||
       Deno.env.get("STRIPE_PAY_PER_SERMON_PRICE_ID") ||
       Deno.env.get("STRIPE_PAY_PER_EXPORT_PRICE_ID");
 
@@ -43,13 +44,13 @@ serve(async (req) => {
       }
     } catch (priceError) {
       console.error("[CREATE-GUEST-CHECKOUT] Price checkout failed, using inline price fallback:", priceError);
-      // Fallback to inline one-time $9 payment so flow still works.
+      // Fallback to inline one-time $12 payment so flow still works.
       session = await stripe.checkout.sessions.create({
         mode: "payment",
         line_items: [{
           price_data: {
             currency: "usd",
-            unit_amount: 900,
+            unit_amount: 1200,
             product_data: {
               name: "Sermon Slide Pro - Pay Per Sermon Export",
               description: "One-time unlock for this presentation export",

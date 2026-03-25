@@ -23,7 +23,7 @@ const GetStartedModal = ({ open, onOpenChange }: GetStartedModalProps) => {
   const handleGoPro = () => {
     setProLoading(true);
     onOpenChange(false);
-    navigate(user ? "/account" : "/signup?plan=pro");
+    navigate(user ? "/account" : "/signup");
     setProLoading(false);
   };
 
@@ -69,10 +69,10 @@ const GetStartedModal = ({ open, onOpenChange }: GetStartedModalProps) => {
               <Crown className="w-6 h-6 text-primary-foreground" />
             </div>
             <h3 className="font-serif text-lg font-semibold text-foreground mb-1">
-              Go Pro
+              Subscribe
             </h3>
             <p className="text-sm text-muted-foreground mb-4">
-              Create an account, and unlock your full potential.
+              Choose Pro, Team, or Enterprise and unlock unlimited use.
             </p>
             {proLoading ? (
               <Loader2 className="w-5 h-5 animate-spin text-primary" />
