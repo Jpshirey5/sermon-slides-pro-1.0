@@ -18,6 +18,9 @@ verify_jwt = false
 [functions.esv-lookup]
 verify_jwt = false
 
+[functions.scripture-lookup]
+verify_jwt = false
+
 [functions.create-guest-checkout]
 verify_jwt = false
 

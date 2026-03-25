@@ -69,17 +69,14 @@ Use `.env.example` as the template for your local `.env` file. The real `.env` s
 - `VITE_SUPABASE_PROJECT_ID`
 - `VITE_SUPABASE_PUBLISHABLE_KEY`
 - `VITE_SUPABASE_URL`
-- `VITE_BIBLE_API_BASE_URL`
-- `VITE_BIBLE_API_KEY`
-- `VITE_BIBLE_ID_CSB`
-- `VITE_BIBLE_ID_NIV`
-- `VITE_BIBLE_ID_NKJV`
 
 Notes:
 
 - `VITE_*` variables are exposed to the frontend bundle and should only contain public values.
 - Supabase service-role keys, Stripe secrets, Resend API keys, webhook secrets, and similar credentials should not live in the frontend `.env`.
 - Secrets for Edge Functions should be configured in Supabase or your deployment environment.
+- Bible provider secrets now belong in Supabase Edge Function secrets, not frontend `VITE_*` variables.
+- For scripture lookup, configure `BIBLE_API_KEY`, optional `BIBLE_API_BASE_URL`, optional `BIBLE_ID_CSB`, `BIBLE_ID_NIV`, `BIBLE_ID_NKJV`, and `ESV_API_KEY` in Supabase.
 - `VITE_SITE_URL` should match the canonical app URL used for auth-related redirects in production.
 
 ## Auth and Billing Notes

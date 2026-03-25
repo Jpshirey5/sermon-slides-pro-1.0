@@ -8,7 +8,6 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { BackgroundPicker } from "@/components/BackgroundPicker";
 import { exportToPowerPoint, SlideData } from "@/lib/export-pptx";
 import { exportAsProBundle, validateSlidesForExport } from "@/services/proPresenterExport";
-import { splitVerseText } from "@/lib/scripture-api";
 import { ExportOptionsModal } from "@/components/ExportOptionsModal";
 import { PaymentPromptModal } from "@/components/PaymentPromptModal";
 import { SubscriptionUpsellModal } from "@/components/SubscriptionUpsellModal";
@@ -26,6 +25,7 @@ import {
 } from "@/lib/background-assets";
 import { logError, trackEvent } from "@/lib/monitoring";
 import ProductTour, { type ProductTourStep } from "@/components/ProductTour";
+import { generateSlidesFromPresentation } from "@/lib/slide-generation";
 
 // Microsoft Word standard fonts - alphabetically ordered
 const fonts = ["Arial", "Arial Black", "Book Antiqua", "Calibri", "Cambria", "Candara", "Century Gothic", "Comic Sans MS", "Consolas", "Constantia", "Corbel", "Courier New", "Franklin Gothic Medium", "Garamond", "Georgia", "Gill Sans MT", "Impact", "Lucida Console", "Lucida Sans Unicode", "Palatino Linotype", "Segoe UI", "Tahoma", "Times New Roman", "Trebuchet MS", "Verdana"];
@@ -87,110 +87,6 @@ const lineSpacingOptions = [{
   value: "3",
   label: "3.0 (Triple)"
 }];
-
-// Generate slides from sermon data
-function generateSlidesFromData(presentation: SermonPresentation): SlideData[] {
-  const slides: SlideData[] = [];
-  const defaultBackground = "transparent";
-  const defaultFont = "Georgia";
-  const defaultColor = "#FFFFFF";
-  const defaultLineSpacing = 1.5;
-
-  // Title slide
-  slides.push({
-    id: `title-${Date.now()}`,
-    type: 'title',
-    content: {
-      title: presentation.data?.title || presentation.title,
-      subtitle: presentation.data?.date ? `${new Date(presentation.data.date).toLocaleDateString('en-US', {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-      })}` : new Date(presentation.date).toLocaleDateString('en-US', {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-      })
-    },
-    background: defaultBackground,
-    fontFamily: defaultFont,
-    textColor: defaultColor,
-    lineSpacing: defaultLineSpacing
-  });
-
-  // Generate slides for each point
-  if (presentation.data?.points) {
-    presentation.data.points.forEach((point) => {
-      const isVerseType = point.type === 'verse';
-      
-      if (!isVerseType && point.title) {
-        // Point slide
-        slides.push({
-          id: `point-${point.id}`,
-          type: 'point',
-          content: {
-            title: point.title,
-            subtitle: ''
-          },
-          background: defaultBackground,
-          fontFamily: defaultFont,
-          textColor: defaultColor,
-          lineSpacing: defaultLineSpacing
-        });
-      }
-
-      // Scripture slides (for both point and verse types)
-      if (isVerseType || point.title) {
-        point.scriptures.forEach((scripture, sIndex) => {
-          if (scripture.reference && scripture.text) {
-            const isVerseByVerse = presentation.data?.verseBreakdown === 'verse-by-verse';
-            
-            if (isVerseByVerse) {
-              const verseList = scripture.verses && scripture.verses.length > 0
-                ? scripture.verses.map(v => {
-                    const parsed = scripture.reference.match(/^(.+?\s+\d+):/);
-                    const bookChapter = parsed ? parsed[1] : scripture.reference;
-                    return { text: v.text, reference: `${bookChapter}:${v.verse}` };
-                  })
-                : splitVerseText(scripture.text, scripture.reference);
-              
-              verseList.forEach((verse, vIndex) => {
-                slides.push({
-                  id: `scripture-${point.id}-${sIndex}-${vIndex}`,
-                  type: 'scripture',
-                  content: {
-                    scripture: `"${verse.text}"`,
-                    reference: `${verse.reference} (${presentation.data?.translation || 'KJV'})`
-                  },
-                  background: defaultBackground,
-                  fontFamily: defaultFont,
-                  textColor: defaultColor,
-                  lineSpacing: defaultLineSpacing
-                });
-              });
-            } else {
-              slides.push({
-                id: `scripture-${point.id}-${sIndex}`,
-                type: 'scripture',
-                content: {
-                  scripture: `"${scripture.text}"`,
-                  reference: `${scripture.reference} (${presentation.data?.translation || 'KJV'})`
-                },
-                background: defaultBackground,
-                fontFamily: defaultFont,
-                textColor: defaultColor,
-                lineSpacing: defaultLineSpacing
-              });
-            }
-          }
-        });
-      }
-    });
-  }
-  return slides;
-}
 
 // Default mock slides for new presentations
 const defaultSlides: SlideData[] = [{
@@ -352,7 +248,7 @@ const SlideEditor = () => {
             presentationState.editorSlides && presentationState.editorSlides.length > 0 && presentationState.editorSlides[0]?.id
               ? presentationState.editorSlides
               : generatedPresentation
-                ? generateSlidesFromData(generatedPresentation)
+                ? generateSlidesFromPresentation(generatedPresentation)
                 : defaultSlides;
 
           setSlides(initialSlides);

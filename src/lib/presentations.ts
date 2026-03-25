@@ -226,6 +226,80 @@ export async function savePresentation(presentation: SermonPresentation): Promis
   }
 }
 
+export async function savePresentationWithSlides(
+  presentation: SermonPresentation,
+  editorSlides: any[]
+): Promise<string | null> {
+  const { data: { user } } = await supabase.auth.getUser();
+  const wrapper: SlidesWrapper = {
+    formData: presentation.data,
+    editorSlides,
+  };
+
+  if (!user) {
+    const store = readGuestSermons();
+    const existing = store[presentation.id];
+    const now = new Date().toISOString();
+
+    store[presentation.id] = {
+      id: presentation.id,
+      title: presentation.title,
+      scripture_reference: presentation.scripture_reference || null,
+      slides: wrapper as any,
+      created_at: existing?.created_at || now,
+      updated_at: now,
+    };
+    writeGuestSermons(store);
+    return presentation.id;
+  }
+
+  const accountId = await getUserAccountId();
+  if (!accountId) {
+    return saveGuestPresentation(presentation);
+  }
+
+  const { data: existing } = await supabase
+    .from("sermons")
+    .select("id")
+    .eq("id", presentation.id)
+    .maybeSingle();
+
+  if (existing) {
+    const { error } = await supabase
+      .from("sermons")
+      .update({
+        title: presentation.title,
+        slides: wrapper as any,
+        scripture_reference: presentation.scripture_reference || null,
+      })
+      .eq("id", presentation.id);
+
+    if (error) {
+      console.error("Failed to update sermon with slides:", error);
+      return null;
+    }
+    return presentation.id;
+  }
+
+  const { data, error } = await supabase
+    .from("sermons")
+    .insert({
+      title: presentation.title,
+      account_id: accountId,
+      created_by_user_id: user.id,
+      slides: wrapper as any,
+      scripture_reference: presentation.scripture_reference || null,
+    })
+    .select("id")
+    .single();
+
+  if (error) {
+    console.error("Failed to save sermon with slides:", error);
+    return null;
+  }
+  return data.id;
+}
+
 export async function deletePresentation(id: string): Promise<void> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) {
