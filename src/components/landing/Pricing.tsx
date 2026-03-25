@@ -38,7 +38,7 @@ const Pricing = () => {
             Simple, Transparent Pricing
           </h2>
           <p className="text-lg text-muted-foreground">
-            Subscribe to unlock unlimited exports, saved presentations, and team access.
+            Subscribe to unlock unlimited exports, saved presentations, and the right collaboration access for your team.
           </p>
         </motion.div>
 
@@ -103,14 +103,12 @@ const Pricing = () => {
             const plan = billingInterval === "monthly" ? family.monthly : family.annual;
             const isFeatured = family.tier === "team";
             const features = [
-              family.tier === "team"
-                ? "Includes up to 2 additional users via invites"
-                : family.tier === "enterprise"
-                ? "Unlimited users"
-                : "Built for one user",
-              "Unlimited sermon creation",
+              family.inviteCapacityLabel,
+              "Unlimited presentation creation",
               "Unlimited exports",
               "Saved presentations",
+              "Easy-to-use editor",
+              "Access to new features",
             ];
 
             return (

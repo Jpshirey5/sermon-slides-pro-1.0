@@ -628,7 +628,7 @@ const SlideEditor = () => {
     {
       targetId: "editor-preview",
       title: "This is your live slide preview",
-      description: "Edit text directly in the canvas and move through the deck to check how each slide will look.",
+      description: "Edit text directly in the canvas and move through the presentation to check how each slide will look.",
     },
     {
       targetId: "editor-styles",
@@ -638,7 +638,7 @@ const SlideEditor = () => {
     {
       targetId: "editor-export-button",
       title: "Export from this button",
-      description: "When the deck is ready, export PowerPoint or ProPresenter here.",
+      description: "When the presentation is ready, export PowerPoint or ProPresenter here.",
     },
     {
       title: "You are ready to use the platform",

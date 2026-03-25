@@ -28,12 +28,12 @@ const PaymentSuccess = () => {
           const today = new Date().toISOString().split("T")[0];
           await savePresentation({
             id: pendingSermonId,
-            title: snapshot.title || "Sermon Presentation",
+            title: snapshot.title || "Presentation",
             date: today,
             slides: Array.isArray(snapshot.slides) ? snapshot.slides.length : 0,
             lastModified: "Just now",
             data: {
-              title: snapshot.title || "Sermon Presentation",
+              title: snapshot.title || "Presentation",
               date: today,
               translation: "KJV",
               verseBreakdown: "full-verses",
@@ -58,12 +58,12 @@ const PaymentSuccess = () => {
         const today = new Date().toISOString().split("T")[0];
         const restoredId = await savePresentation({
           id: snapshot.sermonId,
-          title: snapshot.title || "Sermon Presentation",
+          title: snapshot.title || "Presentation",
           date: today,
           slides: Array.isArray(snapshot.slides) ? snapshot.slides.length : 0,
           lastModified: "Just now",
           data: {
-            title: snapshot.title || "Sermon Presentation",
+            title: snapshot.title || "Presentation",
             date: today,
             translation: "KJV",
             verseBreakdown: "full-verses",
@@ -82,7 +82,7 @@ const PaymentSuccess = () => {
 
       trackEvent("payment_restore_failed");
       setError(
-        "Payment succeeded, but we could not restore your presentation automatically. Use Return to Create and regenerate your slides."
+        "Payment succeeded, but we could not restore your presentation automatically. Return to the creator and regenerate your slides."
       );
     };
 
@@ -90,7 +90,7 @@ const PaymentSuccess = () => {
       logError(error, { scope: "payment_success_restore" });
       trackEvent("payment_restore_failed", { reason: "exception" });
       setError(
-        "Payment succeeded, but we could not restore your presentation automatically. Use Return to Create and regenerate your slides."
+        "Payment succeeded, but we could not restore your presentation automatically. Return to the creator and regenerate your slides."
       );
     });
   }, [navigate, searchParams]);
@@ -109,7 +109,7 @@ const PaymentSuccess = () => {
               onClick={() => navigate("/create", { replace: true })}
               className="inline-flex items-center justify-center rounded-full px-5 h-11 bg-primary text-primary-foreground font-medium hover:opacity-90"
             >
-              Return to Create
+              Return to Creator
             </button>
             <button
               onClick={() => navigate("/dashboard", { replace: true })}

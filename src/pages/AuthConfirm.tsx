@@ -107,7 +107,7 @@ const AuthConfirm = () => {
             <Loader2 className="w-6 h-6 animate-spin text-primary mx-auto mb-4" />
             <h1 className="font-serif text-2xl font-bold text-foreground mb-2">Confirming your email</h1>
             <p className="text-muted-foreground">
-              Please wait while we verify your account and get you into the right next step.
+              Please wait while we verify your account and send you to the right next step.
             </p>
           </>
         ) : (
@@ -116,7 +116,7 @@ const AuthConfirm = () => {
             <p className="text-muted-foreground mb-6">{errorMessage}</p>
             <div className="flex flex-col sm:flex-row gap-3 justify-center">
               <Button asChild variant="hero">
-                <Link to="/login">Go to Login</Link>
+                <Link to="/login">Go to Log In</Link>
               </Button>
               <Button asChild variant="outline">
                 <Link to="/signup">Back to Sign Up</Link>

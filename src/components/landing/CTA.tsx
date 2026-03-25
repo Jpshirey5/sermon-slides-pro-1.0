@@ -49,11 +49,11 @@ const CTA = () => {
           </div>
 
           <h2 className="font-serif text-3xl sm:text-4xl md:text-5xl font-bold text-foreground mb-6">
-            Ready to Transform Your Sermon Preparation?
+            Ready to Create Your Next Presentation?
           </h2>
 
           <p className="text-lg text-muted-foreground mb-10 max-w-2xl mx-auto">
-            Choose the plan that fits your ministry, then create, edit, and export sermon slides with one modern workflow.
+            Choose the plan that fits your ministry, then create, edit, and export presentation slides with one modern workflow.
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
@@ -63,7 +63,7 @@ const CTA = () => {
             </Button>
             <Link to="/login">
               <Button variant="outline" size="xl">
-                Login
+                Log In
               </Button>
             </Link>
           </div>

@@ -83,7 +83,7 @@ const CheckoutRedirect = () => {
         <Loader2 className="w-6 h-6 animate-spin text-primary" />
         <h1 className="font-serif text-2xl font-semibold text-foreground">Preparing Checkout</h1>
         <p className="text-muted-foreground">
-          Please wait while we securely redirect you to Stripe.
+          Please wait while we securely redirect you to Stripe to activate your subscription.
         </p>
       </div>
     </div>

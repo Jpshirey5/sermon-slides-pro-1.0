@@ -30,6 +30,7 @@ export interface PlanFamilyConfig {
   planName: "Pro" | "Team" | "Enterprise";
   audience: string;
   description: string;
+  inviteCapacityLabel: string;
   monthly: SubscriptionPlanConfig;
   annual: SubscriptionPlanConfig;
 }
@@ -47,17 +48,17 @@ const PLAN_DETAILS: Record<PlanTier, { planName: "Pro" | "Team" | "Enterprise"; 
   pro: {
     planName: "Pro",
     audience: "For the Solo User",
-    description: "Best for one person building and exporting sermons each week.",
+    description: "This plan does not support additional users",
   },
   team: {
     planName: "Team",
     audience: "For Teams up to 3 Users",
-    description: "Includes up to 2 additional users through invites for collaborative teams.",
+    description: "Supports up to 2 additional users",
   },
   enterprise: {
     planName: "Enterprise",
     audience: "For Organizations with Unlimited Users",
-    description: "Built for broader staff access with room for future organization controls.",
+    description: "Supports unlimited users",
   },
 };
 
@@ -137,6 +138,7 @@ export const PLAN_FAMILIES: PlanFamilyConfig[] = [
     planName: "Pro",
     audience: PLAN_DETAILS.pro.audience,
     description: PLAN_DETAILS.pro.description,
+    inviteCapacityLabel: PLAN_DETAILS.pro.description,
     monthly: SUBSCRIPTION_PLANS.pro_monthly,
     annual: SUBSCRIPTION_PLANS.pro_annual,
   },
@@ -145,6 +147,7 @@ export const PLAN_FAMILIES: PlanFamilyConfig[] = [
     planName: "Team",
     audience: PLAN_DETAILS.team.audience,
     description: PLAN_DETAILS.team.description,
+    inviteCapacityLabel: PLAN_DETAILS.team.description,
     monthly: SUBSCRIPTION_PLANS.team_monthly,
     annual: SUBSCRIPTION_PLANS.team_annual,
   },
@@ -153,6 +156,7 @@ export const PLAN_FAMILIES: PlanFamilyConfig[] = [
     planName: "Enterprise",
     audience: PLAN_DETAILS.enterprise.audience,
     description: PLAN_DETAILS.enterprise.description,
+    inviteCapacityLabel: PLAN_DETAILS.enterprise.description,
     monthly: SUBSCRIPTION_PLANS.enterprise_monthly,
     annual: SUBSCRIPTION_PLANS.enterprise_annual,
   },
