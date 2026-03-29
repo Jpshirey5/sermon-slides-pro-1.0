@@ -69,18 +69,19 @@ Use `.env.example` as the template for your local `.env` file. The real `.env` s
 - `VITE_SUPABASE_PROJECT_ID`
 - `VITE_SUPABASE_PUBLISHABLE_KEY`
 - `VITE_SUPABASE_URL`
+- Optional: `VITE_SCRIPTURE_API_BASE_URL` for pointing the frontend at a Cloudflare Worker API during local development
 
 Notes:
 
 - `VITE_*` variables are exposed to the frontend bundle and should only contain public values.
 - Supabase service-role keys, Stripe secrets, Resend API keys, webhook secrets, and similar credentials should not live in the frontend `.env`.
-- Secrets for Edge Functions should be configured in Supabase or your deployment environment.
-- Bible provider secrets now belong in Supabase Edge Function secrets, not frontend `VITE_*` variables.
-- For scripture lookup, configure `BIBLE_API_KEY`, optional `BIBLE_API_BASE_URL`, optional `BIBLE_ID_CSB`, `BIBLE_ID_NIV`, `BIBLE_ID_NKJV`, and `ESV_API_KEY` in Supabase.
-- The frontend only needs public Supabase settings to call the `scripture-lookup` function. It should not contain Bible API keys.
+- Secrets for server-side API calls should be configured in your server runtime, not in frontend `VITE_*` variables.
+- Bible provider secrets now belong in Cloudflare Worker secrets for production scripture lookup.
+- The frontend only needs public app config to call the server-side scripture lookup route. It should not contain Bible API keys.
 - `VITE_SITE_URL` should match the canonical app URL used for auth-related redirects in production.
+- In Cloudflare production, scripture lookup is served from the Worker route `/api/scripture-lookup`.
 
-Example Supabase secret setup:
+Legacy Supabase secret setup for the existing fallback functions:
 
 ```sh
 npx supabase secrets set \
@@ -103,6 +104,38 @@ npx supabase secrets set \
 ## Deployment
 
 This project is deployed as a Vite app with Cloudflare Wrangler.
+
+Cloudflare Worker production requirements:
+
+- Set `ESV_API_KEY` as a Worker secret
+- Set `BIBLE_API_KEY` as a Worker secret
+- Create a KV namespace and bind it as `BIBLE_CONFIG` in `wrangler.jsonc`
+- Store a `bible-config` JSON document in that namespace with non-secret provider config
+
+Example local Worker secrets file:
+
+```sh
+cp .dev.vars.example .dev.vars
+```
+
+Example KV payload:
+
+```json
+{
+  "apiBibleBaseUrl": "https://rest.api.bible/v1",
+  "translationBibleIds": {
+    "CSB": "a556c5305ee15c3f-01",
+    "NIV": "78a9f6124f344018-01",
+    "NKJV": "63097d2a0a2f7db3-01"
+  }
+}
+```
+
+Example KV upload:
+
+```sh
+npx wrangler kv key put bible-config --binding BIBLE_CONFIG --path ./worker/bible-config.example.json
+```
 
 Typical deploy flow:
 
