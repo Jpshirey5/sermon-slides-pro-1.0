@@ -92,7 +92,7 @@ const Login = () => {
                 <BookOpen className="w-7 h-7 text-primary-foreground" />
               </div>
               <h1 className="font-serif text-2xl font-bold text-foreground mb-2">Welcome Back</h1>
-              <p className="text-muted-foreground">Sign in to access your dashboard</p>
+              <p className="text-muted-foreground">Log in to access your dashboard</p>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-5">

@@ -43,7 +43,7 @@ const ForgotPassword = () => {
           <div className="flex items-center justify-between h-16">
             <Link to="/login" className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors">
               <ArrowLeft className="w-5 h-5" />
-              <span className="hidden sm:inline">Back to Login</span>
+              <span className="hidden sm:inline">Back to Log In</span>
             </Link>
             <Link to="/" className="flex items-center gap-2 hover:opacity-90 transition-opacity">
               <div className="w-8 h-8 rounded-lg gradient-hero flex items-center justify-center">
@@ -67,7 +67,7 @@ const ForgotPassword = () => {
             {sent ? (
               <div className="text-center space-y-4">
                 <p className="text-foreground">Check your email for the reset link.</p>
-                <Link to="/login"><Button variant="outline">Back to Login</Button></Link>
+                <Link to="/login"><Button variant="outline">Back to Log In</Button></Link>
               </div>
             ) : (
               <form onSubmit={handleSubmit} className="space-y-5">

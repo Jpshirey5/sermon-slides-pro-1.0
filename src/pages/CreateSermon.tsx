@@ -421,7 +421,7 @@ const CreateSermon = () => {
     {
       targetId: "create-sermon-title",
       title: "Start with the sermon title",
-      description: "Name the presentation here. This title carries into your saved deck and editor.",
+      description: "Name the presentation here. This title carries into your saved presentation and editor.",
     },
     {
       targetId: "create-sermon-translation",
@@ -436,7 +436,7 @@ const CreateSermon = () => {
     {
       targetId: "create-sermon-generate",
       title: "Generate slides when ready",
-      description: "When your outline looks right, generate the deck. The tour will continue in the editor after that.",
+      description: "When your outline looks right, generate the slides. The tour will continue in the editor after that.",
       nextStage: "editor",
       nextLabel: "Got it",
     },
@@ -493,7 +493,7 @@ const CreateSermon = () => {
             Create New Presentation
           </h1>
           <p className="text-muted-foreground mb-8">
-            Enter your sermon details and we'll generate beautiful slides for
+            Enter your sermon details and we'll generate presentation slides for
             you.
           </p>
 
@@ -506,7 +506,7 @@ const CreateSermon = () => {
                     <p className="text-sm font-semibold uppercase tracking-[0.18em]">Next Step</p>
                   </div>
                   <h2 className="font-serif text-2xl font-semibold text-foreground">
-                    You're ready. Try the builder and generate your slides.
+                    You're ready. Try the creator and generate your slides.
                   </h2>
                   <p className="text-sm text-muted-foreground">
                     Fill in your sermon details, build the outline, and then generate slides to continue the tour in the editor.
@@ -527,7 +527,7 @@ const CreateSermon = () => {
                     }}
                   >
                     <Wand2 className="w-4 h-4" />
-                    Try the Builder
+                    Open the Creator
                   </Button>
                 </div>
               </div>
@@ -543,7 +543,7 @@ const CreateSermon = () => {
 
               <div className="grid sm:grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <Label htmlFor="title">Sermon Title</Label>
+                  <Label htmlFor="title">Presentation Title</Label>
                   <Input
                     ref={titleInputRef}
                     data-tour-id="create-sermon-title"
@@ -744,7 +744,7 @@ const CreateSermon = () => {
               <div className="flex justify-center gap-4 pt-2">
                 <Button type="button" variant="outline" onClick={addPoint} className="flex-1 max-w-xs">
                   <Plus className="w-4 h-4" />
-                  Add Sermon Point
+                    Add Point
                 </Button>
                 <Button type="button" variant="outline" onClick={addVerse} className="flex-1 max-w-xs">
                   <Book className="w-4 h-4" />

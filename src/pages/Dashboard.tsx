@@ -106,7 +106,7 @@ const Dashboard = () => {
     {
       targetId: "dashboard-create-button",
       title: "Start from the creator",
-      description: "This button opens the guided sermon builder where you add your title, points, and verses.",
+      description: "This button opens the guided creator where you add your title, points, and verses.",
     },
     {
       targetId: "dashboard-presentations-section",
@@ -216,8 +216,8 @@ const Dashboard = () => {
                 </h2>
                 <p className="text-muted-foreground text-sm mb-6 max-w-xl">
                   {hasPresentations
-                    ? "Jump back into the creator to build a new deck with automatic scripture lookup and export-ready slides."
-                    : "Create, edit, and export sermon slides from one place whenever you are ready."}
+                    ? "Jump back into the creator to build a new presentation with automatic scripture lookup and export-ready slides."
+                    : "Create, edit, and export presentation slides from one place whenever you are ready."}
                 </p>
                 <div className="flex flex-col gap-3 w-full sm:w-auto sm:flex-row">
                   <Link to="/dashboard/create">

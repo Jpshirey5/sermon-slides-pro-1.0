@@ -13,7 +13,7 @@ serve(async (req) => {
   }
 
   try {
-    const ESV_API_KEY = Deno.env.get("ESV_API_KEY");
+    const ESV_API_KEY = Deno.env.get("ESV_API_KEY") || Deno.env.get("VITE_ESV_API_KEY");
     if (!ESV_API_KEY) {
       throw new Error("ESV_API_KEY not configured");
     }

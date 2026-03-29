@@ -204,13 +204,13 @@ const Account = () => {
       const inviteSlotsUsed = nonOwnerTeamCount + activePendingInviteCount;
 
       if (!capacity.isUnlimited && (capacity.maxAdditionalUsers ?? 0) === 0) {
-        toast.error("Your current plan does not include additional collaborative users.");
+        toast.error("This plan does not support additional users.");
         setInviting(false);
         return;
       }
 
       if (!capacity.isUnlimited && inviteSlotsUsed >= (capacity.maxAdditionalUsers ?? 0)) {
-        toast.error("You can invite up to 2 additional users on the Team plan.");
+        toast.error("Supports up to 2 additional users.");
         setInviting(false);
         return;
       }
@@ -571,11 +571,11 @@ const Account = () => {
                 <p className="mt-2 text-xs text-muted-foreground">
                   {inviteLimitReached
                     ? activePlanTier === "pro" || activePlanTier === "free"
-                      ? "Your current plan does not include additional collaborative users."
-                      : "You have reached your Team plan invite limit."
+                      ? "This plan does not support additional users."
+                      : "Supports up to 2 additional users."
                     : capacity.isUnlimited
-                    ? "Enterprise currently supports broader team access."
-                    : `${inviteSlotsUsed} of ${capacity.maxAdditionalUsers} collaborative user slots used. ${inviteSlotsRemaining} remaining.`}
+                    ? "Supports unlimited users."
+                    : "Supports up to 2 additional users."}
                 </p>
               </div>
             )}

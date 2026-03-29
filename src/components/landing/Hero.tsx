@@ -45,7 +45,7 @@ const Hero = () => {
             className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-serif font-bold text-foreground leading-[1.05] tracking-tight mb-6"
           >
             Turn Sermon Notes Into{" "}
-            <span className="text-gradient">Broadcast-Ready Slides</span>{" "}
+            <span className="text-gradient">Presentation-Ready Slides</span>{" "}
             Faster
           </motion.h1>
 
@@ -56,7 +56,7 @@ const Hero = () => {
             className="text-lg sm:text-xl text-muted-foreground max-w-3xl mx-auto mb-10"
           >
             A polished workspace for ministry teams. Generate, edit, and export
-            sermon presentations to PowerPoint and ProPresenter with a clean,
+            presentations to PowerPoint and ProPresenter with a clean,
             modern flow.
           </motion.p>
 
@@ -72,7 +72,7 @@ const Hero = () => {
             </Button>
             <Link to="/login">
               <Button variant="outline" size="xl">
-                Login
+                Log In
               </Button>
             </Link>
           </motion.div>
@@ -112,7 +112,7 @@ const Hero = () => {
             <div className="absolute inset-0 bg-gradient-to-t from-background/60 to-transparent flex items-end justify-center pb-8">
               <div className="text-center">
                 <h3 className="font-serif text-2xl font-semibold text-foreground mb-2">
-                  Beautiful Sermon Presentations
+                  Beautiful Presentation Slides
                 </h3>
                 <p className="text-muted-foreground">
                   Ready for PowerPoint & ProPresenter

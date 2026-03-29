@@ -44,7 +44,7 @@ const Header = () => {
             ) : (
               <>
                 <Button variant="hero" onClick={() => setModalOpen(true)}>Get Started</Button>
-                <Link to="/login"><Button variant="outline">Login</Button></Link>
+                <Link to="/login"><Button variant="outline">Log In</Button></Link>
               </>
             )}
           </div>
@@ -80,7 +80,7 @@ const Header = () => {
                     >
                       Get Started
                     </Button>
-                    <Link to="/login" onClick={() => setIsOpen(false)}><Button variant="outline" className="w-full">Login</Button></Link>
+                    <Link to="/login" onClick={() => setIsOpen(false)}><Button variant="outline" className="w-full">Log In</Button></Link>
                   </>
                 )}
               </div>
