@@ -69,17 +69,17 @@ Use `.env.example` as the template for your local `.env` file. The real `.env` s
 - `VITE_SUPABASE_PROJECT_ID`
 - `VITE_SUPABASE_PUBLISHABLE_KEY`
 - `VITE_SUPABASE_URL`
-- Optional: `VITE_SCRIPTURE_API_BASE_URL` for pointing the frontend at a Cloudflare Worker API during local development
+- Optional: `VITE_SCRIPTURE_API_BASE_URL` for explicitly pointing the frontend at a Cloudflare Worker API during local development or staged validation
 
 Notes:
 
 - `VITE_*` variables are exposed to the frontend bundle and should only contain public values.
 - Supabase service-role keys, Stripe secrets, Resend API keys, webhook secrets, and similar credentials should not live in the frontend `.env`.
 - Secrets for server-side API calls should be configured in your server runtime, not in frontend `VITE_*` variables.
-- Bible provider secrets now belong in Cloudflare Worker secrets for production scripture lookup.
-- The frontend only needs public app config to call the server-side scripture lookup route. It should not contain Bible API keys.
+- The production app currently uses the Supabase `scripture-lookup` function as the stable scripture backend.
+- The Cloudflare Worker scripture route is kept in the repo for staged validation and future cutover, not as the default production path.
+- The frontend only needs public app config to call the active server-side scripture lookup route. It should not contain Bible API keys.
 - `VITE_SITE_URL` should match the canonical app URL used for auth-related redirects in production.
-- In Cloudflare production, scripture lookup is served from the Worker route `/api/scripture-lookup`.
 
 Legacy Supabase secret setup for the existing fallback functions:
 
@@ -105,7 +105,12 @@ npx supabase secrets set \
 
 This project is deployed as a Vite app with Cloudflare Wrangler.
 
-Cloudflare Worker production requirements:
+Current production scripture path:
+
+- The frontend calls the Supabase `scripture-lookup` Edge Function by default.
+- To test the Cloudflare Worker explicitly, set `VITE_SCRIPTURE_API_BASE_URL` so the frontend targets the Worker route `/api/scripture-lookup`.
+
+Cloudflare Worker validation requirements:
 
 - Set `ESV_API_KEY` as a Worker secret
 - Set `BIBLE_API_KEY` as a Worker secret
