@@ -344,10 +344,12 @@ async function handleScriptureLookup(request: Request, env: Env): Promise<Respon
           }>();
           const passageText = cleanText(data.data?.content || "");
           if (passageText) {
+            const verses = extractVerses(data.data?.content || "");
             return jsonResponse({
               text: passageText,
               reference: data.data?.reference || formattedRef,
               translation: requestedTranslation,
+              verses: verses.length > 0 ? verses : undefined,
             });
           }
         } else {
@@ -362,6 +364,77 @@ async function handleScriptureLookup(request: Request, env: Env): Promise<Respon
           error: String(error),
         });
       }
+    }
+
+    try {
+      if (requestedTranslation !== "KJV" && requestedTranslation !== "WEB") {
+        throw new Error("Skip KJV-only fallback for requested translation");
+      }
+
+      const response = await fetch(`https://bible-api.com/${encodeURIComponent(String(reference))}`, {
+        method: "GET",
+        headers: { Accept: "application/json" },
+      });
+
+      if (response.ok) {
+        const data = await response.json<{
+          text?: string;
+          reference?: string;
+          verses?: Array<{ text: string; verse: number }>;
+        }>();
+        if (data.text) {
+          const verses = data.verses?.map((verse) => ({
+            text: cleanText(verse.text),
+            verse: verse.verse,
+          }));
+          return jsonResponse({
+            text: cleanText(data.text),
+            reference: data.reference || formattedRef,
+            translation: requestedTranslation,
+            verses,
+          });
+        }
+      }
+    } catch (error) {
+      console.error("worker_scripture_lookup_bible_api_fallback_exception", {
+        reference: formattedRef,
+        translation: requestedTranslation,
+        error: String(error),
+      });
+    }
+
+    try {
+      if (requestedTranslation !== "KJV" && requestedTranslation !== "WEB") {
+        throw new Error("Skip KJV fallback for requested translation");
+      }
+
+      const verseQuery = parsed.verseEnd ? `${parsed.verseStart}-${parsed.verseEnd}` : `${parsed.verseStart}`;
+      const response = await fetch(`https://bolls.life/get-text/KJV/${bookCode}/${parsed.chapter}/${verseQuery}/`, {
+        method: "GET",
+        headers: { Accept: "application/json" },
+      });
+
+      if (response.ok) {
+        const data = await response.json<Array<{ text: string; verse?: number }>>();
+        if (Array.isArray(data) && data.length > 0) {
+          const verses = data.map((verse, index) => ({
+            text: cleanText(verse.text),
+            verse: verse.verse ?? (parsed.verseStart + index),
+          }));
+          return jsonResponse({
+            text: verses.map((verse) => verse.text).join(" "),
+            reference: formattedRef,
+            translation: requestedTranslation,
+            verses,
+          });
+        }
+      }
+    } catch (error) {
+      console.error("worker_scripture_lookup_bolls_fallback_exception", {
+        reference: formattedRef,
+        translation: requestedTranslation,
+        error: String(error),
+      });
     }
 
     const fallback = getFallbackVerse(
@@ -385,19 +458,17 @@ async function handleScriptureLookup(request: Request, env: Env): Promise<Respon
       reference: formattedRef,
       translation: requestedTranslation,
       error: true,
-      errorMessage: requestedTranslation === "ESV"
-        ? "ESV lookup is not configured. Add the ESV API key to your Worker secrets."
-        : "Scripture lookup is not configured for this translation. Verify your Worker secrets and KV config.",
-    }, 500);
+      errorMessage: `Could not find "${reference}". The verse may not exist or there may be a network issue. Please check the chapter and verse numbers.`,
+    }, 404);
   } catch (error) {
-    console.error("worker_scripture_lookup_exception", error);
-    return jsonResponse({
-      text: "",
-      reference: "",
-      translation: "KJV",
-      error: true,
-      errorMessage: "Could not process scripture lookup request.",
-    }, 500);
+    console.error("worker_scripture_lookup_exception", { error: String(error) });
+    return new Response(JSON.stringify({ error: "Unexpected server error." }), {
+      status: 500,
+      headers: {
+        ...corsHeaders,
+        "Content-Type": "application/json",
+      },
+    });
   }
 }
 
