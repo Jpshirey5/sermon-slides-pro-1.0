@@ -220,7 +220,7 @@ serve(async (req) => {
       : `${parsed.book} ${parsed.chapter}:${parsed.verseStart}`;
 
     if (requestedTranslation === "ESV") {
-      const esvApiKey = Deno.env.get("ESV_API_KEY");
+      const esvApiKey = Deno.env.get("ESV_API_KEY") || Deno.env.get("VITE_ESV_API_KEY");
       if (esvApiKey) {
         try {
           const params = new URLSearchParams({
