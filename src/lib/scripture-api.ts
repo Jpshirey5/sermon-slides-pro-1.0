@@ -35,15 +35,6 @@ function getScriptureLookupEndpoint(): { url: string; headers: Record<string, st
     };
   }
 
-  if (import.meta.env.PROD) {
-    return {
-      url: "/api/scripture-lookup",
-      headers: {
-        "Content-Type": "application/json",
-      },
-    };
-  }
-
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
   const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
