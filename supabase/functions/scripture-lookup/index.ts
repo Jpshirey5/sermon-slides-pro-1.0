@@ -145,11 +145,11 @@ function getFallbackVerse(bookCode: string, chapter: number, verseStart: number,
 function envBibleId(translation: string): string | undefined {
   switch (translation) {
     case "CSB":
-      return Deno.env.get("BIBLE_ID_CSB") || Deno.env.get("VITE_BIBLE_ID_CSB") || undefined;
+      return Deno.env.get("BIBLE_ID_CSB") || undefined;
     case "NKJV":
-      return Deno.env.get("BIBLE_ID_NKJV") || Deno.env.get("VITE_BIBLE_ID_NKJV") || undefined;
+      return Deno.env.get("BIBLE_ID_NKJV") || undefined;
     case "NIV":
-      return Deno.env.get("BIBLE_ID_NIV") || Deno.env.get("VITE_BIBLE_ID_NIV") || undefined;
+      return Deno.env.get("BIBLE_ID_NIV") || undefined;
     default:
       return undefined;
   }
@@ -220,7 +220,7 @@ serve(async (req) => {
       : `${parsed.book} ${parsed.chapter}:${parsed.verseStart}`;
 
     if (requestedTranslation === "ESV") {
-      const esvApiKey = Deno.env.get("ESV_API_KEY") || Deno.env.get("VITE_ESV_API_KEY");
+      const esvApiKey = Deno.env.get("ESV_API_KEY");
       if (esvApiKey) {
         try {
           const params = new URLSearchParams({
@@ -273,8 +273,8 @@ serve(async (req) => {
       }
     }
 
-    const bibleApiKey = Deno.env.get("BIBLE_API_KEY") || Deno.env.get("VITE_BIBLE_API_KEY");
-    const bibleApiBaseUrl = Deno.env.get("BIBLE_API_BASE_URL") || Deno.env.get("VITE_BIBLE_API_BASE_URL") || "https://rest.api.bible/v1";
+    const bibleApiKey = Deno.env.get("BIBLE_API_KEY");
+    const bibleApiBaseUrl = Deno.env.get("BIBLE_API_BASE_URL") || "https://rest.api.bible/v1";
     const bibleId = getTranslationBibleId(requestedTranslation);
 
     if (bibleApiKey && bibleId) {

@@ -77,7 +77,20 @@ Notes:
 - Secrets for Edge Functions should be configured in Supabase or your deployment environment.
 - Bible provider secrets now belong in Supabase Edge Function secrets, not frontend `VITE_*` variables.
 - For scripture lookup, configure `BIBLE_API_KEY`, optional `BIBLE_API_BASE_URL`, optional `BIBLE_ID_CSB`, `BIBLE_ID_NIV`, `BIBLE_ID_NKJV`, and `ESV_API_KEY` in Supabase.
+- The frontend only needs public Supabase settings to call the `scripture-lookup` function. It should not contain Bible API keys.
 - `VITE_SITE_URL` should match the canonical app URL used for auth-related redirects in production.
+
+Example Supabase secret setup:
+
+```sh
+npx supabase secrets set \
+  BIBLE_API_KEY=your-api-bible-key \
+  BIBLE_API_BASE_URL=https://rest.api.bible/v1 \
+  BIBLE_ID_CSB=your-csb-bible-id \
+  BIBLE_ID_NIV=your-niv-bible-id \
+  BIBLE_ID_NKJV=your-nkjv-bible-id \
+  ESV_API_KEY=your-esv-api-key
+```
 
 ## Auth and Billing Notes
 
