@@ -25,16 +25,6 @@ export function parseScriptureReference(reference: string): {
 }
 
 function getScriptureLookupEndpoint(): { url: string; headers: Record<string, string> } | null {
-  const workerApiBaseUrl = (import.meta.env.VITE_SCRIPTURE_API_BASE_URL || "").trim();
-  if (workerApiBaseUrl) {
-    return {
-      url: new URL("/api/scripture-lookup", workerApiBaseUrl).toString(),
-      headers: {
-        "Content-Type": "application/json",
-      },
-    };
-  }
-
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
   const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 

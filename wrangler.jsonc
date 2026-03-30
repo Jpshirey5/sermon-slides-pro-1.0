@@ -3,20 +3,11 @@
   "name": "sermon-slides-pro",
   "main": "worker/index.ts",
   "compatibility_date": "2026-03-24",
-  "kv_namespaces": [
-    {
-      "binding": "BIBLE_CONFIG",
-      "id": "ac109a8b25c44520b1c713046fda2e5a",
-    }
-  ],
   "observability": {
     "enabled": true
   },
   "assets": {
     "directory": "./dist",
-    "not_found_handling": "single-page-application",
-    "run_worker_first": [
-      "/api/*"
-    ]
+    "not_found_handling": "single-page-application"
   }
 }

@@ -69,19 +69,17 @@ Use `.env.example` as the template for your local `.env` file. The real `.env` s
 - `VITE_SUPABASE_PROJECT_ID`
 - `VITE_SUPABASE_PUBLISHABLE_KEY`
 - `VITE_SUPABASE_URL`
-- Optional: `VITE_SCRIPTURE_API_BASE_URL` for explicitly pointing the frontend at a Cloudflare Worker API during local development or staged validation
 
 Notes:
 
 - `VITE_*` variables are exposed to the frontend bundle and should only contain public values.
 - Supabase service-role keys, Stripe secrets, Resend API keys, webhook secrets, and similar credentials should not live in the frontend `.env`.
 - Secrets for server-side API calls should be configured in your server runtime, not in frontend `VITE_*` variables.
-- The production app currently uses the Supabase `scripture-lookup` function as the stable scripture backend.
-- The Cloudflare Worker scripture route is kept in the repo for staged validation and future cutover, not as the default production path.
-- The frontend only needs public app config to call the active server-side scripture lookup route. It should not contain Bible API keys.
+- Scripture lookup uses the Supabase `scripture-lookup` Edge Function in both local development and production.
+- The frontend only needs public Supabase app config to call the scripture lookup route. It should not contain Bible API keys.
 - `VITE_SITE_URL` should match the canonical app URL used for auth-related redirects in production.
 
-Legacy Supabase secret setup for the existing fallback functions:
+Supabase scripture function secret setup:
 
 ```sh
 npx supabase secrets set \
@@ -105,42 +103,11 @@ npx supabase secrets set \
 
 This project is deployed as a Vite app with Cloudflare Wrangler.
 
-Current production scripture path:
+Scripture lookup backend:
 
-- The frontend calls the Supabase `scripture-lookup` Edge Function by default.
-- To test the Cloudflare Worker explicitly, set `VITE_SCRIPTURE_API_BASE_URL` so the frontend targets the Worker route `/api/scripture-lookup`.
-
-Cloudflare Worker validation requirements:
-
-- Set `ESV_API_KEY` as a Worker secret
-- Set `BIBLE_API_KEY` as a Worker secret
-- Create a KV namespace and bind it as `BIBLE_CONFIG` in `wrangler.jsonc`
-- Store a `bible-config` JSON document in that namespace with non-secret provider config
-
-Example local Worker secrets file:
-
-```sh
-cp .dev.vars.example .dev.vars
-```
-
-Example KV payload:
-
-```json
-{
-  "apiBibleBaseUrl": "https://rest.api.bible/v1",
-  "translationBibleIds": {
-    "CSB": "a556c5305ee15c3f-01",
-    "NIV": "78a9f6124f344018-01",
-    "NKJV": "63097d2a0a2f7db3-01"
-  }
-}
-```
-
-Example KV upload:
-
-```sh
-npx wrangler kv key put bible-config --binding BIBLE_CONFIG --path ./worker/bible-config.example.json
-```
+- The frontend always calls the Supabase `scripture-lookup` Edge Function.
+- The same Supabase route is used in both local development and production.
+- Cloudflare/Wrangler continues to deploy the frontend app, but it is not part of the scripture lookup backend path.
 
 Typical deploy flow:
 
