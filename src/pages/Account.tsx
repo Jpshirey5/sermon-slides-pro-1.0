@@ -13,6 +13,7 @@ import { useSearchParams } from "react-router-dom";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { TRANSLATION_OPTIONS, DEFAULT_TRANSLATION } from "@/lib/translations";
 import SubscriptionPlanPicker from "@/components/SubscriptionPlanPicker";
+import SubscriptionManagementPicker from "@/components/SubscriptionManagementPicker";
 import { getPlanById, getPlanByPriceId, getPlanCapacityByTier, type SubscriptionPlanId } from "@/lib/subscriptionPlans";
 import { getSiteUrl } from "@/lib/site-url";
 
@@ -56,6 +57,9 @@ const Account = () => {
   const [isOwner, setIsOwner] = useState(false);
   const [deleteWarningOpen, setDeleteWarningOpen] = useState(false);
   const [deleteFinalOpen, setDeleteFinalOpen] = useState(false);
+  const [subscriptionModalOpen, setSubscriptionModalOpen] = useState(false);
+  const [subscriptionModalStep, setSubscriptionModalStep] = useState<"actions" | "plans">("actions");
+  const [planChangeLoading, setPlanChangeLoading] = useState<SubscriptionPlanId | null>(null);
 
   useEffect(() => {
     if (profile?.full_name) setFullName(profile.full_name);
@@ -287,17 +291,24 @@ const Account = () => {
     }
   };
 
-  const handleManageSubscription = async () => {
+  const handleManageSubscription = async (options?: { action?: "cancel" | "change_plan"; targetPriceId?: string }) => {
     setPortalLoading(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) { toast.error("Please log in again."); return; }
       const { data, error } = await supabase.functions.invoke("customer-portal", {
         headers: { Authorization: `Bearer ${session.access_token}` },
+        body: options?.action ? options : undefined,
       });
       if (error || !data?.url) {
-        toast.error("Could not open subscription portal.");
+        const message = error?.message || data?.error || "Could not open subscription portal.";
+        toast.error(message);
       } else {
+        if (data.mode === "change_plan_fallback") {
+          toast.message("Opened Stripe billing portal", {
+            description: "The direct plan-change handoff was unavailable, so Stripe opened your standard billing portal instead.",
+          });
+        }
         window.location.href = data.url;
       }
     } catch {
@@ -344,6 +355,42 @@ const Account = () => {
 
   const handleStartDeleteFlow = () => {
     setDeleteWarningOpen(true);
+  };
+
+  const openSubscriptionModal = () => {
+    setSubscriptionModalStep("actions");
+    setSubscriptionModalOpen(true);
+  };
+
+  const closeSubscriptionModal = (open: boolean) => {
+    setSubscriptionModalOpen(open);
+    if (!open) {
+      setSubscriptionModalStep("actions");
+      setPlanChangeLoading(null);
+    }
+  };
+
+  const handleCancelSubscription = async () => {
+    setSubscriptionModalOpen(false);
+    await handleManageSubscription({ action: "cancel" });
+  };
+
+  const handleChangePlanSelection = async (planId: SubscriptionPlanId) => {
+    const requestedPlan = getPlanById(planId);
+    if (!requestedPlan) return;
+
+    setPlanChangeLoading(planId);
+    setSubscriptionModalOpen(false);
+
+    try {
+      await handleManageSubscription({
+        action: "change_plan",
+        targetPriceId: requestedPlan.priceId,
+      });
+    } finally {
+      setPlanChangeLoading(null);
+      setSubscriptionModalStep("actions");
+    }
   };
 
   const handleContinueDeleteFlow = () => {
@@ -406,6 +453,16 @@ const Account = () => {
       toast.success("Subscription activated!");
       const next = new URLSearchParams(searchParams.toString());
       next.delete("checkout");
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchParams, setSearchParams, checkSubscription]);
+
+  useEffect(() => {
+    if (searchParams.get("subscription") === "updated") {
+      checkSubscription();
+      toast.success("Subscription updated!");
+      const next = new URLSearchParams(searchParams.toString());
+      next.delete("subscription");
       setSearchParams(next, { replace: true });
     }
   }, [searchParams, setSearchParams, checkSubscription]);
@@ -680,7 +737,7 @@ const Account = () => {
                     {portalLoading ? "Opening..." : "Resubscribe"}
                   </Button>
                 ) : subscription.subscribed ? (
-                  <Button onClick={handleManageSubscription} disabled={portalLoading} variant="outline">
+                  <Button onClick={openSubscriptionModal} disabled={portalLoading} variant="outline">
                     {portalLoading ? "Opening..." : "Manage Subscription"}
                   </Button>
                 ) : (
@@ -767,6 +824,69 @@ const Account = () => {
             <Button variant="outline" onClick={() => setDeleteFinalOpen(false)}>Go Back</Button>
             <Button variant="destructive" onClick={handleGoToExitSurvey}>Continue to Exit Survey</Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={subscriptionModalOpen} onOpenChange={closeSubscriptionModal}>
+        <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
+          {subscriptionModalStep === "actions" ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>Manage Subscription</DialogTitle>
+                <DialogDescription>
+                  Choose whether you want to cancel in Stripe or move to a different plan or billing interval.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 md:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={handleCancelSubscription}
+                  className="rounded-2xl border border-border/70 bg-white/70 p-5 text-left transition-colors hover:border-primary/40 hover:bg-primary/5"
+                >
+                  <p className="font-medium text-foreground">Cancel Subscription</p>
+                  <p className="text-sm text-muted-foreground mt-2">
+                    Open Stripe and keep the current cancellation flow exactly as it works today.
+                  </p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSubscriptionModalStep("plans")}
+                  className="rounded-2xl border border-border/70 bg-white/70 p-5 text-left transition-colors hover:border-primary/40 hover:bg-primary/5"
+                >
+                  <p className="font-medium text-foreground">Choose a Different Plan</p>
+                  <p className="text-sm text-muted-foreground mt-2">
+                    Change plan tier or switch between monthly and annual billing using Stripe’s update flow.
+                  </p>
+                </button>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => closeSubscriptionModal(false)}>
+                  Close
+                </Button>
+              </DialogFooter>
+            </>
+          ) : (
+            <>
+              <DialogHeader>
+                <DialogTitle>Choose a Different Plan</DialogTitle>
+                <DialogDescription>
+                  Select a new plan or billing interval. Stripe will show the exact billing details before you confirm.
+                </DialogDescription>
+              </DialogHeader>
+              <SubscriptionManagementPicker
+                title="Update Your Subscription"
+                description="Pick the plan you want to move to. Your current plan is marked and cannot be reselected."
+                currentPriceId={subscription.price_id}
+                onSelectPlan={handleChangePlanSelection}
+                loadingPlanId={planChangeLoading}
+              />
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setSubscriptionModalStep("actions")}>
+                  Back
+                </Button>
+              </DialogFooter>
+            </>
+          )}
         </DialogContent>
       </Dialog>
     </div>
