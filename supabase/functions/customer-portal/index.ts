@@ -11,9 +11,51 @@ const logStep = (step: string, details?: any) => {
   console.log(`[CUSTOMER-PORTAL] ${step}${details ? ` - ${JSON.stringify(details)}` : ''}`);
 };
 
+const getAllowedPriceIds = () => {
+  const priceIds = [
+    Deno.env.get("STRIPE_PRICE_PRO_MONTHLY"),
+    Deno.env.get("STRIPE_PRICE_PRO_ANNUAL"),
+    Deno.env.get("STRIPE_PRICE_TEAM_MONTHLY"),
+    Deno.env.get("STRIPE_PRICE_TEAM_ANNUAL"),
+    Deno.env.get("STRIPE_PRICE_ENTERPRISE_MONTHLY"),
+    Deno.env.get("STRIPE_PRICE_ENTERPRISE_ANNUAL"),
+  ].filter((value): value is string => Boolean(value && value.startsWith("price_")));
+
+  if (priceIds.length === 0) {
+    priceIds.push(
+      "price_1TEfgIP2Yr0z0IcsX2VXk6wJ",
+      "price_1TEfi2P2Yr0z0Icsnod1blF1",
+      "price_1TEfggP2Yr0z0IcsHHgS6kye",
+      "price_1TEfjmP2Yr0z0IcsXW3ZujSG",
+      "price_1TEfhaP2Yr0z0IcsGlDJJyu7",
+      "price_1TEfkDP2Yr0z0IcsUhXwzh9z"
+    );
+  }
+
+  return priceIds;
+};
+
+const readJsonBody = async (req: Request) => {
+  const rawBody = await req.text();
+  if (!rawBody.trim()) return null;
+
+  try {
+    return JSON.parse(rawBody);
+  } catch {
+    throw new Error("Invalid JSON body");
+  }
+};
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
+  }
+
+  if (req.method !== "POST") {
+    return new Response(JSON.stringify({ error: "Method not allowed" }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 405,
+    });
   }
 
   try {
@@ -30,6 +72,15 @@ serve(async (req) => {
 
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) throw new Error("No authorization header");
+    const body = await readJsonBody(req);
+    const requestedAction =
+      body?.action === "change_plan" || body?.action === "cancel"
+        ? body.action as "change_plan" | "cancel"
+        : "cancel";
+    const targetPriceId =
+      typeof body?.targetPriceId === "string" && body.targetPriceId.trim().startsWith("price_")
+        ? body.targetPriceId.trim()
+        : null;
 
     const token = authHeader.replace("Bearer ", "");
     const anonClient = createClient(
@@ -71,15 +122,78 @@ serve(async (req) => {
     }
 
     const origin = req.headers.get("origin") || "https://sermonslides.app";
+    const allowedPriceIds = getAllowedPriceIds();
+    let portalSession;
+    let mode: "default" | "change_plan" | "change_plan_fallback" = "default";
 
-    const portalSession = await stripe.billingPortal.sessions.create({
-      customer: customerId,
-      return_url: `${origin}/account`,
-    });
+    if (requestedAction === "change_plan") {
+      try {
+        if (!targetPriceId || !allowedPriceIds.includes(targetPriceId)) {
+          throw new Error("Unsupported subscription price selected");
+        }
+
+        const subscriptions = await stripe.subscriptions.list({
+          customer: customerId,
+          status: "all",
+          limit: 10,
+        });
+
+        const currentSubscription = subscriptions.data.find((sub) =>
+          sub.status === "active" || sub.status === "trialing"
+        );
+
+        if (!currentSubscription) {
+          throw new Error("No active subscription found");
+        }
+
+        const currentItem = currentSubscription.items.data[0];
+        if (!currentItem?.id) {
+          throw new Error("Subscription is not eligible for plan changes");
+        }
+
+        portalSession = await stripe.billingPortal.sessions.create({
+          customer: customerId,
+          return_url: `${origin}/account`,
+          flow_data: {
+            type: "subscription_update_confirm",
+            after_completion: {
+              type: "redirect",
+              redirect: {
+                return_url: `${origin}/account?subscription=updated`,
+              },
+            },
+            subscription_update_confirm: {
+              subscription: currentSubscription.id,
+              items: [
+                {
+                  id: currentItem.id,
+                  price: targetPriceId,
+                  quantity: currentItem.quantity || 1,
+                },
+              ],
+            },
+          },
+        });
+        mode = "change_plan";
+      } catch (changePlanError) {
+        const changePlanMessage = changePlanError instanceof Error ? changePlanError.message : String(changePlanError);
+        logStep("Change-plan deep link failed, falling back to standard portal", { message: changePlanMessage });
+        portalSession = await stripe.billingPortal.sessions.create({
+          customer: customerId,
+          return_url: `${origin}/account`,
+        });
+        mode = "change_plan_fallback";
+      }
+    } else {
+      portalSession = await stripe.billingPortal.sessions.create({
+        customer: customerId,
+        return_url: `${origin}/account`,
+      });
+    }
 
     logStep("Portal session created", { url: portalSession.url });
 
-    return new Response(JSON.stringify({ url: portalSession.url }), {
+    return new Response(JSON.stringify({ url: portalSession.url, mode }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 200,
     });

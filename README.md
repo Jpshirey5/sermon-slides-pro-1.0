@@ -97,6 +97,8 @@ npx supabase secrets set \
 - The app uses a dedicated `/auth/confirm` route for email confirmation.
 - Password resets route through `/reset-password`.
 - Stripe checkout is initiated through the app and Supabase Edge Functions, not directly from the email template.
+- Active subscription changes from the Account page are handled through the Stripe billing portal via the `customer-portal` Edge Function.
+- The Stripe billing portal configuration must have subscription update options enabled for the supported plan prices if you want in-app plan changes to work.
 - If auth emails are pointing to the wrong host, check Supabase `Authentication -> URL Configuration` and the confirm-signup email template.
 
 ## Deployment
@@ -123,6 +125,7 @@ Operational requirements:
 - Supabase URL Configuration must use the correct production domain.
 - Supabase email templates must align with the app’s confirmation route.
 - Stripe-related Supabase Edge Functions must have the required environment secrets configured.
+- Stripe billing portal settings must allow customer subscription updates for the plan prices used in this app.
 
 ## Project Structure
 
