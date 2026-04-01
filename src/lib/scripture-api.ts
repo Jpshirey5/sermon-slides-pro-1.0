@@ -1,3 +1,5 @@
+import { supabase } from "@/integrations/supabase/client";
+
 export interface ScriptureResult {
   text: string;
   reference: string;
@@ -24,24 +26,6 @@ export function parseScriptureReference(reference: string): {
   };
 }
 
-function getScriptureLookupEndpoint(): { url: string; headers: Record<string, string> } | null {
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-  const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-
-  if (!supabaseUrl || !supabaseKey) {
-    return null;
-  }
-
-  return {
-    url: `${supabaseUrl}/functions/v1/scripture-lookup`,
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${supabaseKey}`,
-      apikey: supabaseKey,
-    },
-  };
-}
-
 export async function lookupScripture(
   reference: string,
   translation: string = "KJV"
@@ -58,36 +42,21 @@ export async function lookupScripture(
     };
   }
 
-  const endpoint = getScriptureLookupEndpoint();
-  if (!endpoint) {
-    return {
-      text: "",
-      reference,
-      translation: requestedTranslation,
-      error: true,
-      errorMessage: "Scripture lookup is not configured for this environment.",
-    };
-  }
-
   try {
-    const response = await fetch(endpoint.url, {
-      method: "POST",
-      headers: endpoint.headers,
-      body: JSON.stringify({
+    const { data, error } = await supabase.functions.invoke("scripture-lookup", {
+      body: {
         reference,
         translation: requestedTranslation,
-      }),
+      },
     });
 
-    const data = await response.json().catch(() => null);
-
-    if (!response.ok) {
+    if (error) {
       return {
         text: "",
         reference,
         translation: requestedTranslation,
         error: true,
-        errorMessage: data?.errorMessage || data?.error || "Could not find scripture. Please try again.",
+        errorMessage: error.message || "Could not find scripture. Please try again.",
       };
     }
 
