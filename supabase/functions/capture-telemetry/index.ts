@@ -55,9 +55,27 @@ function sanitizeValue(value: unknown, keyPath = ""): unknown {
   return String(value);
 }
 
+async function readJsonBody(req: Request): Promise<Record<string, unknown> | null> {
+  const rawBody = await req.text();
+  if (!rawBody.trim()) return null;
+
+  try {
+    return JSON.parse(rawBody) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
+  }
+
+  if (req.method !== "POST") {
+    return new Response(JSON.stringify({ error: "method_not_allowed" }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 405,
+    });
   }
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
@@ -69,7 +87,13 @@ serve(async (req) => {
   });
 
   try {
-    const body = await req.json();
+    const body = await readJsonBody(req);
+    if (!body) {
+      return new Response(JSON.stringify({ ok: true, ignored: true }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      });
+    }
     const authHeader = req.headers.get("Authorization");
     let userId: string | null = null;
     let accountId: string | null = null;
