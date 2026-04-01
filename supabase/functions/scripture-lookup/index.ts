@@ -174,13 +174,42 @@ async function jsonResponse(body: ScriptureResponse, status = 200) {
   });
 }
 
+async function readJsonBody(req: Request): Promise<Record<string, unknown> | null> {
+  const rawBody = await req.text();
+  if (!rawBody.trim()) return null;
+
+  try {
+    return JSON.parse(rawBody) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
+  if (req.method !== "POST") {
+    return new Response(JSON.stringify({ error: "Method not allowed" }), {
+      status: 405,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
   try {
-    const { reference, translation = "KJV" } = await req.json();
+    const body = await readJsonBody(req);
+    if (!body) {
+      return jsonResponse({
+        text: "",
+        reference: "",
+        translation: "KJV",
+        error: true,
+        errorMessage: "Scripture lookup request body was empty or invalid JSON.",
+      }, 400);
+    }
+
+    const { reference, translation = "KJV" } = body;
     const requestedTranslation = String(translation).toUpperCase();
 
     if (!reference || String(reference).trim().length < 3) {
