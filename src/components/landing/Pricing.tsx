@@ -6,6 +6,33 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { PLAN_FAMILIES, type BillingInterval } from "@/lib/subscriptionPlans";
 
+const FEATURES_BY_TIER = {
+  pro: [
+    "1 user",
+    "Unlimited presentation creation",
+    "Unlimited PowerPoint and ProPresenter exports",
+    "Saved presentations and editing history",
+    "Scripture lookup and weekly sermon workflow",
+    "Best for solo pastors and ministry leaders",
+  ],
+  team: [
+    "Up to 3 users",
+    "Shared account for pastors, worship leaders, and staff",
+    "Unlimited presentation creation",
+    "Unlimited PowerPoint and ProPresenter exports",
+    "Saved presentations for recurring team workflows",
+    "Best for small church teams",
+  ],
+  enterprise: [
+    "Up to 10 users",
+    "Built for larger ministries and multi-role teams",
+    "Unlimited presentation creation",
+    "Unlimited PowerPoint and ProPresenter exports",
+    "Saved presentations across the organization",
+    "Best for growing churches and larger teams",
+  ],
+} as const;
+
 const Pricing = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -102,14 +129,7 @@ const Pricing = () => {
           {PLAN_FAMILIES.map((family) => {
             const plan = billingInterval === "monthly" ? family.monthly : family.annual;
             const isFeatured = family.tier === "team";
-            const features = [
-              family.inviteCapacityLabel,
-              "Unlimited presentation creation",
-              "Unlimited exports",
-              "Saved presentations",
-              "Easy-to-use editor",
-              "Access to new features",
-            ];
+            const features = FEATURES_BY_TIER[family.tier];
 
             return (
               <div

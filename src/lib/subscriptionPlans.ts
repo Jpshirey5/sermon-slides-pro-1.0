@@ -41,24 +41,24 @@ const getPublicPriceId = (envKey: keyof ImportMetaEnv, fallback = "") =>
 const PLAN_CAPACITY: Record<PlanTier, number | null> = {
   pro: 0,
   team: 2,
-  enterprise: null,
+  enterprise: 9,
 };
 
 const PLAN_DETAILS: Record<PlanTier, { planName: "Pro" | "Team" | "Enterprise"; audience: string; description: string }> = {
   pro: {
     planName: "Pro",
-    audience: "For the Solo User",
-    description: "This plan does not support additional users",
+    audience: "For Solo Pastors and Ministry Leaders",
+    description: "Built for a single weekly sermon workflow",
   },
   team: {
     planName: "Team",
-    audience: "For Teams up to 3 Users",
-    description: "Supports up to 2 additional users",
+    audience: "For Small Church Teams",
+    description: "Shared workflow for up to 3 total users",
   },
   enterprise: {
     planName: "Enterprise",
-    audience: "For Organizations with Unlimited Users",
-    description: "Supports unlimited users",
+    audience: "For Growing Churches and Larger Teams",
+    description: "Built for up to 10 total users",
   },
 };
 
@@ -107,26 +107,26 @@ export const SUBSCRIPTION_PLANS: Record<SubscriptionPlanId, SubscriptionPlanConf
   team_monthly: createPlan(
     "team",
     "monthly",
-    "$89",
-    getPublicPriceId("VITE_STRIPE_PRICE_TEAM_MONTHLY", "price_1TEfggP2Yr0z0IcsHHgS6kye")
+    "$99",
+    getPublicPriceId("VITE_STRIPE_PRICE_TEAM_MONTHLY", "price_1TJJjFP2Yr0z0IcsZRFgIQlX")
   ),
   team_annual: createPlan(
     "team",
     "annual",
-    "$890",
-    getPublicPriceId("VITE_STRIPE_PRICE_TEAM_ANNUAL", "price_1TEfjmP2Yr0z0IcsXW3ZujSG")
+    "$990",
+    getPublicPriceId("VITE_STRIPE_PRICE_TEAM_ANNUAL", "price_1TJJjWP2Yr0z0IcsAV9Y4SV5")
   ),
   enterprise_monthly: createPlan(
     "enterprise",
     "monthly",
-    "$179",
-    getPublicPriceId("VITE_STRIPE_PRICE_ENTERPRISE_MONTHLY", "price_1TEfhaP2Yr0z0IcsGlDJJyu7")
+    "$199",
+    getPublicPriceId("VITE_STRIPE_PRICE_ENTERPRISE_MONTHLY", "price_1TJJlcP2Yr0z0IcsUb9IHJuS")
   ),
   enterprise_annual: createPlan(
     "enterprise",
     "annual",
-    "$1790",
-    getPublicPriceId("VITE_STRIPE_PRICE_ENTERPRISE_ANNUAL", "price_1TEfkDP2Yr0z0IcsUhXwzh9z")
+    "$1990",
+    getPublicPriceId("VITE_STRIPE_PRICE_ENTERPRISE_ANNUAL", "price_1TJJlpP2Yr0z0IcsDJBpCJHa")
   ),
 };
 

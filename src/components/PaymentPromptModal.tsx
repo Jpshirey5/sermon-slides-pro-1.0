@@ -58,7 +58,7 @@ export function PaymentPromptModal({
           <div className="bg-muted/50 rounded-lg p-4 space-y-2">
             <div className="flex items-center justify-between">
               <span className="font-medium">One-time Export Access</span>
-              <span className="text-xl font-bold">$12</span>
+              <span className="text-xl font-bold">$15</span>
             </div>
             <p className="text-sm text-muted-foreground">
               Export this presentation to PowerPoint or ProPresenter formats.
@@ -87,7 +87,7 @@ export function PaymentPromptModal({
           </Button>
           <Button onClick={handlePayClick} className="flex-1">
             <CreditCard className="w-4 h-4 mr-2" />
-            Pay $12
+            Pay $15
             <ArrowRight className="w-4 h-4 ml-1" />
           </Button>
         </div>

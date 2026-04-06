@@ -25,6 +25,10 @@ const getAllowedPriceIds = () => {
     priceIds.push(
       "price_1TEfgIP2Yr0z0IcsX2VXk6wJ",
       "price_1TEfi2P2Yr0z0Icsnod1blF1",
+      "price_1TJJjFP2Yr0z0IcsZRFgIQlX",
+      "price_1TJJjWP2Yr0z0IcsAV9Y4SV5",
+      "price_1TJJlcP2Yr0z0IcsUb9IHJuS",
+      "price_1TJJlpP2Yr0z0IcsDJBpCJHa",
       "price_1TEfggP2Yr0z0IcsHHgS6kye",
       "price_1TEfjmP2Yr0z0IcsXW3ZujSG",
       "price_1TEfhaP2Yr0z0IcsGlDJJyu7",
