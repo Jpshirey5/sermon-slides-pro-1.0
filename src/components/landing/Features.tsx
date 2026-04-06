@@ -6,6 +6,7 @@ import {
   BookOpen,
   Share2,
   Type,
+  Zap,
 } from "lucide-react";
 
 const features = [
@@ -39,24 +40,24 @@ const features = [
     description:
       "Access a library of beautiful fonts perfect for worship presentations and readability.",
   },
-  // {
-  //   icon: Zap,
-  //   title: "Drag & Drop Editor",
-  //   description:
-  //     "Reorder slides, customize layouts, and perfect your presentation with intuitive controls.",
-  // },
+  {
+    icon: Zap,
+    title: "Drag & Drop Editor",
+    description:
+      "Reorder slides, customize layouts, and perfect your presentation with intuitive controls.",
+  },
   // {
   //   icon: Upload,
   //   title: "Church Branding",
   //   description:
   //     "Save your church colors, logos, and preferences for consistent branding across all sermons.",
   // },
-  {
-    icon: Share2,
-    title: "Easy Sharing",
-    description:
-      "Send presentations via email or shareable link. Team members can access instantly.",
-  },
+  // {
+  //   icon: Share2,
+  //   title: "Easy Sharing",
+  //   description:
+  //     "Send presentations via email or shareable link. Team members can access instantly.",
+  // },
 ];
 
 const Features = () => {

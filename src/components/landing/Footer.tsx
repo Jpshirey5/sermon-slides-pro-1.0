@@ -19,7 +19,7 @@ const Footer = () => {
           </p>
 
           <p className="text-muted-foreground text-sm flex items-center gap-1">
-            Made with <Heart className="w-4 h-4 text-primary fill-primary" /> for ministry leaders
+            Made with purpose for ministry leaders
           </p>
         </div>
       </div>
