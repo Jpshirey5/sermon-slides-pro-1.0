@@ -18,6 +18,11 @@ const SubscriptionManagementPicker = ({
   loadingPlanId = null,
 }: SubscriptionManagementPickerProps) => {
   const currentPlan = getPlanByPriceId(currentPriceId);
+  const featureHighlights: Record<string, string> = {
+    pro: "1 user • Saved presentations • Weekly sermon workflow",
+    team: "Up to 3 users • Shared team workflow • Recurring collaboration",
+    enterprise: "Up to 10 users • Multi-role teams • Organization-wide workflow",
+  };
 
   return (
     <div className="space-y-6">
@@ -47,6 +52,7 @@ const SubscriptionManagementPicker = ({
                 <h3 className="font-serif text-xl font-semibold text-foreground">{family.planName}</h3>
                 <p className="text-sm text-foreground/80 mt-1">{family.audience}</p>
                 <p className="text-sm text-muted-foreground mt-1">{family.description}</p>
+                <p className="text-xs text-primary mt-2">{featureHighlights[family.tier]}</p>
               </div>
               {family.annual.savingsCopy && (
                 <span className="inline-flex rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">

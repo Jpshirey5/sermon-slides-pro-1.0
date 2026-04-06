@@ -27,6 +27,19 @@ export interface SermonPresentation {
   };
 }
 
+export interface DashboardPresentation {
+  id: string;
+  title: string;
+  date: string;
+  slides: number;
+  lastModified: string;
+}
+
+export interface DashboardPresentationsPage {
+  items: DashboardPresentation[];
+  hasMore: boolean;
+}
+
 // The slides column stores a wrapper object with both form data and editor slides
 interface SlidesWrapper {
   formData?: SermonPresentation['data'];
@@ -117,6 +130,16 @@ function mapRowToPresentation(row: GuestSermonRow): SermonPresentation {
   };
 }
 
+function mapRowToDashboardPresentation(row: Pick<GuestSermonRow, "id" | "title" | "slides" | "created_at" | "updated_at">): DashboardPresentation {
+  return {
+    id: row.id,
+    title: row.title,
+    date: row.created_at.split("T")[0],
+    slides: countSlides(row.slides),
+    lastModified: new Date(row.updated_at).toLocaleDateString(),
+  };
+}
+
 function saveGuestPresentation(presentation: SermonPresentation): string {
   const store = readGuestSermons();
   const existing = store[presentation.id];
@@ -146,27 +169,28 @@ async function getUserAccountId(): Promise<string | null> {
   return data || null;
 }
 
-export async function getPresentations(): Promise<SermonPresentation[]> {
+export async function getDashboardPresentationsPage(
+  options: { limit: number; offset: number }
+): Promise<DashboardPresentationsPage> {
+  const { limit, offset } = options;
   const accountId = await getUserAccountId();
-  if (!accountId) return [];
+  if (!accountId) return { items: [], hasMore: false };
 
   const { data, error } = await supabase
     .from('sermons')
-    .select('*')
+    .select('id, title, slides, created_at, updated_at')
     .eq('account_id', accountId)
-    .order('updated_at', { ascending: false });
+    .order('updated_at', { ascending: false })
+    .range(offset, offset + limit);
 
-  if (error || !data) return [];
+  if (error || !data) return { items: [], hasMore: false };
 
-  return data.map(row => ({
-    id: row.id,
-    title: row.title,
-    date: row.created_at.split('T')[0],
-    slides: countSlides(row.slides),
-    lastModified: new Date(row.updated_at).toLocaleDateString(),
-    scripture_reference: row.scripture_reference || undefined,
-    data: extractFormData(row.slides),
-  }));
+  const hasMore = data.length > limit;
+  const items = data
+    .slice(0, limit)
+    .map((row) => mapRowToDashboardPresentation(row));
+
+  return { items, hasMore };
 }
 
 export async function savePresentation(presentation: SermonPresentation): Promise<string | null> {

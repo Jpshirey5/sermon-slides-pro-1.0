@@ -13,6 +13,12 @@ export function SubscriptionUpsellModal({
   onContinue,
   onSelectPlan,
 }: SubscriptionUpsellModalProps) {
+  const featureHighlights: Record<string, string> = {
+    pro: "1 user • Weekly sermon workflow",
+    team: "Up to 3 users • Shared team workflow",
+    enterprise: "Up to 10 users • Larger ministry teams",
+  };
+
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onContinue()}>
       <DialogContent className="sm:max-w-3xl">
@@ -31,6 +37,7 @@ export function SubscriptionUpsellModal({
                 {family.inviteCapacityLabel}
               </p>
               <p className="text-xs text-muted-foreground mt-1 mb-4">{family.description}</p>
+              <p className="text-xs text-primary mt-1 mb-4">{featureHighlights[family.tier]}</p>
               <div className="space-y-2">
                 {[family.monthly, family.annual].map((plan) => (
                   <Button

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -16,9 +16,9 @@ import {
   Sparkles,
 } from "lucide-react";
 import {
-  getPresentations,
+  getDashboardPresentationsPage,
   deletePresentation,
-  type SermonPresentation,
+  type DashboardPresentation,
 } from "@/lib/presentations";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
@@ -26,13 +26,18 @@ import { logError, trackEvent } from "@/lib/monitoring";
 import ProductTour, { type ProductTourStep } from "@/components/ProductTour";
 import { consumeProductTourCompletion } from "@/lib/product-tour";
 
+const DASHBOARD_PAGE_SIZE = 12;
+
 const Dashboard = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const { user, profile, signOut, checkSubscription } = useAuth();
-  const [presentations, setPresentations] = useState<SermonPresentation[]>([]);
+  const [presentations, setPresentations] = useState<DashboardPresentation[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMorePresentations, setHasMorePresentations] = useState(false);
+  const [loadedCount, setLoadedCount] = useState(0);
   const [showTourCompletionPrompt, setShowTourCompletionPrompt] = useState(false);
 
   // Handle returning from Stripe checkout
@@ -64,23 +69,39 @@ const Dashboard = () => {
     }
   }, [location.pathname, location.search, location.state, navigate, user]);
 
-  const loadPresentations = async () => {
-    setLoading(true);
+  const loadPresentationsPage = useCallback(async (offset: number, replace = false) => {
     try {
-      const data = await getPresentations();
-      setPresentations(data);
-      trackEvent("presentations_loaded", { count: data.length });
+      const data = await getDashboardPresentationsPage({
+        limit: DASHBOARD_PAGE_SIZE,
+        offset,
+      });
+
+      setPresentations((prev) => replace ? data.items : [...prev, ...data.items]);
+      setLoadedCount(offset + data.items.length);
+      setHasMorePresentations(data.hasMore);
+      trackEvent("presentations_loaded", {
+        count: data.items.length,
+        totalLoaded: offset + data.items.length,
+        offset,
+      });
     } catch (error) {
       logError(error, { scope: "dashboard_load_presentations" });
       toast.error("Failed to load presentations");
-    } finally {
-      setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    loadPresentations();
-  }, []);
+    const loadInitialPresentations = async () => {
+      setLoading(true);
+      try {
+        await loadPresentationsPage(0, true);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    void loadInitialPresentations();
+  }, [loadPresentationsPage]);
 
   const handleLogout = async () => {
     trackEvent("logout_clicked");
@@ -89,10 +110,25 @@ const Dashboard = () => {
   };
 
   const handleDeletePresentation = async (id: string) => {
-    await deletePresentation(id);
-    trackEvent("presentation_deleted");
-    await loadPresentations();
-    toast.success("Presentation deleted");
+    try {
+      await deletePresentation(id);
+      setPresentations((prev) => prev.filter((presentation) => presentation.id !== id));
+      setLoadedCount((prev) => Math.max(0, prev - 1));
+      trackEvent("presentation_deleted");
+      toast.success("Presentation deleted");
+    } catch (error) {
+      logError(error, { scope: "dashboard_delete_presentation", presentationId: id });
+      toast.error("Failed to delete presentation");
+    }
+  };
+
+  const handleLoadMore = async () => {
+    setLoadingMore(true);
+    try {
+      await loadPresentationsPage(loadedCount);
+    } finally {
+      setLoadingMore(false);
+    }
   };
 
   const displayName = profile?.full_name || user?.email || "User";
@@ -282,27 +318,40 @@ const Dashboard = () => {
                   </Link>
                 </div>
               ) : (
-                <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {presentations.map((p) => (
-                    <div key={p.id} className="rounded-xl border border-border/70 bg-white/75 backdrop-blur-sm p-5 hover:shadow-soft transition-shadow group">
-                      <div className="cursor-pointer" onClick={() => navigate(`/editor/${p.id}`, { state: { from: "dashboard" } })}>
-                        <h3 className="font-serif font-semibold text-foreground mb-1 group-hover:text-primary transition-colors truncate">
-                          {p.title || "Untitled"}
-                        </h3>
-                        <div className="flex items-center gap-3 text-xs text-muted-foreground mb-3">
-                          <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> {p.date}</span>
-                          <span className="flex items-center gap-1"><Layers className="w-3 h-3" /> {p.slides} slides</span>
+                <>
+                  <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {presentations.map((p) => (
+                      <div key={p.id} className="rounded-xl border border-border/70 bg-white/75 backdrop-blur-sm p-5 hover:shadow-soft transition-shadow group">
+                        <div className="cursor-pointer" onClick={() => navigate(`/editor/${p.id}`, { state: { from: "dashboard" } })}>
+                          <h3 className="font-serif font-semibold text-foreground mb-1 group-hover:text-primary transition-colors truncate">
+                            {p.title || "Untitled"}
+                          </h3>
+                          <div className="flex items-center gap-3 text-xs text-muted-foreground mb-3">
+                            <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> {p.date}</span>
+                            <span className="flex items-center gap-1"><Layers className="w-3 h-3" /> {p.slides} slides</span>
+                          </div>
+                          <p className="text-xs text-muted-foreground"><Clock className="w-3 h-3 inline mr-1" />{p.lastModified}</p>
                         </div>
-                        <p className="text-xs text-muted-foreground"><Clock className="w-3 h-3 inline mr-1" />{p.lastModified}</p>
+                        <div className="flex items-center justify-end gap-2 mt-4 pt-3 border-t border-border">
+                          <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => handleDeletePresentation(p.id)}>
+                            <Trash2 className="w-3 h-3" />
+                          </Button>
+                        </div>
                       </div>
-                      <div className="flex items-center justify-end gap-2 mt-4 pt-3 border-t border-border">
-                        <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => handleDeletePresentation(p.id)}>
-                          <Trash2 className="w-3 h-3" />
-                        </Button>
-                      </div>
+                    ))}
+                  </div>
+                  {hasMorePresentations && (
+                    <div className="mt-6 flex justify-center">
+                      <Button
+                        variant="outline"
+                        onClick={handleLoadMore}
+                        disabled={loadingMore}
+                      >
+                        {loadingMore ? "Loading..." : "Load More"}
+                      </Button>
                     </div>
-                  ))}
-                </div>
+                  )}
+                </>
               )}
             </section>
           </motion.div>

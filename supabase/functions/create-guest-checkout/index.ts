@@ -17,7 +17,8 @@ serve(async (req) => {
     const payPerPriceId =
       Deno.env.get("STRIPE_PRICE_ONE_TIME_EXPORT") ||
       Deno.env.get("STRIPE_PAY_PER_SERMON_PRICE_ID") ||
-      Deno.env.get("STRIPE_PAY_PER_EXPORT_PRICE_ID");
+      Deno.env.get("STRIPE_PAY_PER_EXPORT_PRICE_ID") ||
+      "price_1TEffiP2Yr0z0IcsWOHYJaUt";
 
     const { origin, sermonId } = await req.json();
     const siteOrigin = origin || req.headers.get("origin") || "http://localhost:8080";
@@ -44,13 +45,13 @@ serve(async (req) => {
       }
     } catch (priceError) {
       console.error("[CREATE-GUEST-CHECKOUT] Price checkout failed, using inline price fallback:", priceError);
-      // Fallback to inline one-time $12 payment so flow still works.
+      // Fallback to inline one-time $15 payment so flow still works.
       session = await stripe.checkout.sessions.create({
         mode: "payment",
         line_items: [{
           price_data: {
             currency: "usd",
-            unit_amount: 1200,
+            unit_amount: 1500,
             product_data: {
               name: "Sermon Slide Pro - Pay Per Sermon Export",
               description: "One-time unlock for this presentation export",

@@ -33,6 +33,18 @@ interface PendingInvite {
   expires_at: string;
 }
 
+const getInviteCapacityMessage = (maxAdditionalUsers: number | null) => {
+  if (maxAdditionalUsers === null) {
+    return "Supports additional users.";
+  }
+
+  if (maxAdditionalUsers === 0) {
+    return "This plan does not support additional users.";
+  }
+
+  return `Supports up to ${maxAdditionalUsers} additional users.`;
+};
+
 const Account = () => {
   const navigate = useNavigate();
   const { user, profile, subscription, refreshProfile, signOut, checkSubscription, accountId } = useAuth();
@@ -214,7 +226,7 @@ const Account = () => {
       }
 
       if (!capacity.isUnlimited && inviteSlotsUsed >= (capacity.maxAdditionalUsers ?? 0)) {
-        toast.error("Supports up to 2 additional users.");
+        toast.error(getInviteCapacityMessage(capacity.maxAdditionalUsers));
         setInviting(false);
         return;
       }
@@ -325,7 +337,7 @@ const Account = () => {
 
   const handleUpgrade = async (openInNewTab: boolean = false, priceId?: string) => {
     if (subscription.subscribed) {
-      toast.success("Your Pro subscription is already active.");
+      toast.success("Your subscription is already active.");
       return;
     }
 
@@ -483,7 +495,7 @@ const Account = () => {
       localStorage.removeItem("pending_pro_checkout");
       localStorage.removeItem("pending_pro_checkout_email");
       localStorage.removeItem("pending_pro_checkout_price_id");
-      toast.success("Your Pro subscription is already active.");
+      toast.success("Your subscription is already active.");
       return;
     }
 
@@ -627,12 +639,8 @@ const Account = () => {
                 </div>
                 <p className="mt-2 text-xs text-muted-foreground">
                   {inviteLimitReached
-                    ? activePlanTier === "pro" || activePlanTier === "free"
-                      ? "This plan does not support additional users."
-                      : "Supports up to 2 additional users."
-                    : capacity.isUnlimited
-                    ? "Supports unlimited users."
-                    : "Supports up to 2 additional users."}
+                    ? getInviteCapacityMessage(capacity.maxAdditionalUsers)
+                    : getInviteCapacityMessage(capacity.maxAdditionalUsers)}
                 </p>
               </div>
             )}
