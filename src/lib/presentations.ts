@@ -1,5 +1,6 @@
 // Presentation types and Supabase utilities
 import { supabase } from "@/integrations/supabase/client";
+import { ensureResolvedAccountAccess } from "@/lib/account-access";
 import { deleteStoredBackground, isStorageBackground } from "@/lib/background-assets";
 
 export interface SermonPresentation {
@@ -66,6 +67,7 @@ interface GuestSermonRow {
 }
 
 const GUEST_SERMONS_STORAGE_KEY = "guest_sermons";
+const serializeEditorSlides = (slides: any[] | null | undefined) => JSON.stringify(slides || []);
 
 function isWrapped(slides: any): slides is SlidesWrapper {
   return slides && typeof slides === 'object' && !Array.isArray(slides) && ('formData' in slides || 'editorSlides' in slides);
@@ -162,24 +164,41 @@ function saveGuestPresentation(presentation: SermonPresentation): string {
   return presentation.id;
 }
 
-async function getUserAccountId(): Promise<string | null> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
-  const { data } = await supabase.rpc('get_user_account_id', { _user_id: user.id });
-  return data || null;
+interface PresentationAccessContext {
+  userId: string | null;
+  accountId: string | null;
+  isAuthenticated: boolean;
+}
+
+async function getPresentationAccessContext(): Promise<PresentationAccessContext> {
+  const access = await ensureResolvedAccountAccess();
+  return {
+    userId: access.userId,
+    accountId: access.accountId,
+    isAuthenticated: Boolean(access.userId && access.accountId),
+  };
+}
+
+async function requireAccountScopedAccess(): Promise<{ userId: string; accountId: string }> {
+  const access = await getPresentationAccessContext();
+  if (!access.isAuthenticated || !access.userId || !access.accountId) {
+    throw new Error("Missing authenticated account access");
+  }
+  return { userId: access.userId, accountId: access.accountId };
 }
 
 export async function getDashboardPresentationsPage(
   options: { limit: number; offset: number }
 ): Promise<DashboardPresentationsPage> {
   const { limit, offset } = options;
-  const accountId = await getUserAccountId();
-  if (!accountId) return { items: [], hasMore: false };
+  const access = await getPresentationAccessContext();
+  if (!access.isAuthenticated || !access.accountId) return { items: [], hasMore: false };
 
+  // Backed by a compound index on (account_id, updated_at desc) for account-scoped dashboard pagination.
   const { data, error } = await supabase
     .from('sermons')
     .select('id, title, slides, created_at, updated_at')
-    .eq('account_id', accountId)
+    .eq('account_id', access.accountId)
     .order('updated_at', { ascending: false })
     .range(offset, offset + limit);
 
@@ -194,11 +213,8 @@ export async function getDashboardPresentationsPage(
 }
 
 export async function savePresentation(presentation: SermonPresentation): Promise<string | null> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return saveGuestPresentation(presentation);
-
-  const accountId = await getUserAccountId();
-  if (!accountId) return saveGuestPresentation(presentation);
+  const access = await getPresentationAccessContext();
+  if (!access.isAuthenticated || !access.userId || !access.accountId) return saveGuestPresentation(presentation);
 
   // Check if presentation already exists
   const { data: existing } = await supabase
@@ -234,8 +250,8 @@ export async function savePresentation(presentation: SermonPresentation): Promis
       .from('sermons')
       .insert({
         title: presentation.title,
-        account_id: accountId,
-        created_by_user_id: user.id,
+        account_id: access.accountId,
+        created_by_user_id: access.userId,
         slides: wrapper as any,
         scripture_reference: presentation.scripture_reference || null,
       })
@@ -254,13 +270,14 @@ export async function savePresentationWithSlides(
   presentation: SermonPresentation,
   editorSlides: any[]
 ): Promise<string | null> {
-  const { data: { user } } = await supabase.auth.getUser();
   const wrapper: SlidesWrapper = {
     formData: presentation.data,
     editorSlides,
   };
 
-  if (!user) {
+  const access = await getPresentationAccessContext();
+
+  if (!access.isAuthenticated) {
     const store = readGuestSermons();
     const existing = store[presentation.id];
     const now = new Date().toISOString();
@@ -275,11 +292,6 @@ export async function savePresentationWithSlides(
     };
     writeGuestSermons(store);
     return presentation.id;
-  }
-
-  const accountId = await getUserAccountId();
-  if (!accountId) {
-    return saveGuestPresentation(presentation);
   }
 
   const { data: existing } = await supabase
@@ -309,8 +321,8 @@ export async function savePresentationWithSlides(
     .from("sermons")
     .insert({
       title: presentation.title,
-      account_id: accountId,
-      created_by_user_id: user.id,
+      account_id: access.accountId,
+      created_by_user_id: access.userId,
       slides: wrapper as any,
       scripture_reference: presentation.scripture_reference || null,
     })
@@ -325,8 +337,8 @@ export async function savePresentationWithSlides(
 }
 
 export async function deletePresentation(id: string): Promise<void> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
+  const access = await getPresentationAccessContext();
+  if (!access.isAuthenticated) {
     const store = readGuestSermons();
     delete store[id];
     writeGuestSermons(store);
@@ -355,8 +367,8 @@ export async function deletePresentation(id: string): Promise<void> {
 }
 
 export async function getPresentation(id: string): Promise<SermonPresentation | undefined> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
+  const access = await getPresentationAccessContext();
+  if (!access.isAuthenticated) {
     const guestRow = readGuestSermons()[id];
     return guestRow ? mapRowToPresentation(guestRow) : undefined;
   }
@@ -384,8 +396,8 @@ export async function getPresentation(id: string): Promise<SermonPresentation | 
 }
 
 export async function getEditorPresentationState(id: string): Promise<EditorPresentationState | undefined> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
+  const access = await getPresentationAccessContext();
+  if (!access.isAuthenticated) {
     const guestRow = readGuestSermons()[id];
     if (!guestRow) return undefined;
 
@@ -434,11 +446,16 @@ export async function getEditorPresentationState(id: string): Promise<EditorPres
 
 // Save editor slides (the visual slide array) to the sermons table, preserving form data
 export async function saveEditorSlides(sermonId: string, slides: any[]): Promise<void> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
+  const nextSerializedSlides = serializeEditorSlides(slides);
+  const access = await getPresentationAccessContext();
+  if (!access.isAuthenticated) {
     const store = readGuestSermons();
     const existing = store[sermonId];
     if (!existing) return;
+    const existingEditorSlides = extractEditorSlides(existing.slides);
+    if (serializeEditorSlides(existingEditorSlides) === nextSerializedSlides) {
+      return;
+    }
     const existingFormData = extractFormData(existing.slides);
     store[sermonId] = {
       ...existing,
@@ -452,12 +469,19 @@ export async function saveEditorSlides(sermonId: string, slides: any[]): Promise
     return;
   }
 
+  await requireAccountScopedAccess();
+
   // First read existing to preserve formData
   const { data: existing } = await supabase
     .from('sermons')
     .select('slides')
     .eq('id', sermonId)
     .maybeSingle();
+
+  const existingEditorSlides = existing ? extractEditorSlides(existing.slides) : null;
+  if (serializeEditorSlides(existingEditorSlides) === nextSerializedSlides) {
+    return;
+  }
 
   const existingFormData = existing ? extractFormData(existing.slides) : undefined;
 
@@ -476,8 +500,8 @@ export async function saveEditorSlides(sermonId: string, slides: any[]): Promise
 
 // Get editor slides from the sermons table
 export async function getEditorSlides(sermonId: string): Promise<any[] | null> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
+  const access = await getPresentationAccessContext();
+  if (!access.isAuthenticated) {
     const existing = readGuestSermons()[sermonId];
     if (!existing) return null;
     return extractEditorSlides(existing.slides);
