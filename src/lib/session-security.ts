@@ -27,3 +27,13 @@ export function consumeStoredLogoutReason(): LogoutReason | null {
   clearStoredLogoutReason();
   return reason;
 }
+
+export function resetSessionInactivityTracking(at = Date.now()) {
+  if (typeof window === "undefined") return at;
+
+  localStorage.setItem(STORAGE_LAST_ACTIVITY_KEY, String(at));
+  localStorage.removeItem(STORAGE_FORCED_LOGOUT_KEY);
+  clearStoredLogoutReason();
+
+  return at;
+}
