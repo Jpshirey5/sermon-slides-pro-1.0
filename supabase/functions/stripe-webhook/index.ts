@@ -23,8 +23,13 @@ const PLAN_BY_PRICE_ID = new Map<string, { planTier: string; billingInterval: "m
     ["price_1TEfi2P2Yr0z0Icsnod1blF1", { planTier: "pro", billingInterval: "annual", maxAdditionalUsers: 0 }],
     ["price_1TEfggP2Yr0z0IcsHHgS6kye", { planTier: "team", billingInterval: "monthly", maxAdditionalUsers: 2 }],
     ["price_1TEfjmP2Yr0z0IcsXW3ZujSG", { planTier: "team", billingInterval: "annual", maxAdditionalUsers: 2 }],
-    ["price_1TEfhaP2Yr0z0IcsGlDJJyu7", { planTier: "enterprise", billingInterval: "monthly", maxAdditionalUsers: null }],
-    ["price_1TEfkDP2Yr0z0IcsUhXwzh9z", { planTier: "enterprise", billingInterval: "annual", maxAdditionalUsers: null }],
+    ["price_1TEfhaP2Yr0z0IcsGlDJJyu7", { planTier: "enterprise", billingInterval: "monthly", maxAdditionalUsers: 9 }],
+    ["price_1TEfkDP2Yr0z0IcsUhXwzh9z", { planTier: "enterprise", billingInterval: "annual", maxAdditionalUsers: 9 }],
+    ["price_1TJJjFP2Yr0z0IcsZRFgIQlX", { planTier: "team", billingInterval: "monthly", maxAdditionalUsers: 2 }],
+    ["price_1TJJjWP2Yr0z0IcsAV9Y4SV5", { planTier: "team", billingInterval: "annual", maxAdditionalUsers: 2 }],
+    ["price_1TJJlcP2Yr0z0IcsUb9IHJuS", { planTier: "enterprise", billingInterval: "monthly", maxAdditionalUsers: 9 }],
+    ["price_1TJJlpP2Yr0z0IcsDJBpCJHa", { planTier: "enterprise", billingInterval: "annual", maxAdditionalUsers: 9 }],
+    ["price_1TJQdEP2Yr0z0IcsjUAm4Xq6", { planTier: "enterprise", billingInterval: "annual", maxAdditionalUsers: 9 }],
   ].filter((entry): entry is [string, { planTier: string; billingInterval: "monthly" | "annual"; maxAdditionalUsers: number | null }] => Boolean(entry[0]))
 );
 

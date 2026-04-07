@@ -7,6 +7,9 @@ interface ExportOptionsModalProps {
   onClose: () => void;
   onExport: (format: "pptx" | "probundle") => void;
   isExporting: boolean;
+  title?: string;
+  description?: string;
+  exportingLabel?: string;
 }
 
 export function ExportOptionsModal({
@@ -14,6 +17,9 @@ export function ExportOptionsModal({
   onClose,
   onExport,
   isExporting,
+  title = "Export Your Presentation",
+  description = "Choose your preferred format to download.",
+  exportingLabel = "Exporting...",
 }: ExportOptionsModalProps) {
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && !isExporting && onClose()}>
@@ -21,10 +27,10 @@ export function ExportOptionsModal({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Download className="w-5 h-5 text-primary" />
-            Export Your Presentation
+            {title}
           </DialogTitle>
           <DialogDescription>
-            Choose your preferred format to download.
+            {description}
           </DialogDescription>
         </DialogHeader>
         
@@ -59,7 +65,7 @@ export function ExportOptionsModal({
         {isExporting && (
           <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="w-4 h-4 animate-spin" />
-            Exporting...
+            {exportingLabel}
           </div>
         )}
       </DialogContent>

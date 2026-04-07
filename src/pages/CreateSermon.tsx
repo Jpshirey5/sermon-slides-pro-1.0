@@ -56,6 +56,10 @@ const CreateSermon = () => {
   const editData = (location.state as any)?.editData;
   const editId = (location.state as any)?.editId;
   const [title, setTitle] = useState(editData?.title || "");
+  const [series, setSeries] = useState(editData?.series || "");
+  const [presentationDate, setPresentationDate] = useState(
+    editData?.date || new Date().toISOString().split("T")[0]
+  );
   const [globalTranslation, setGlobalTranslation] = useState(editData?.translation || DEFAULT_TRANSLATION);
   const [verseBreakdown, setVerseBreakdown] = useState(editData?.verseBreakdown || "verse-by-verse");
   const [showTourBuilderPrompt, setShowTourBuilderPrompt] = useState(false);
@@ -356,12 +360,15 @@ const CreateSermon = () => {
     const presentationPayload = {
       id: presentationId,
       title: title,
-      date: new Date().toISOString().split("T")[0],
+      series: series.trim() || null,
+      presentationDate,
+      date: presentationDate,
       slides: 0,
       lastModified: "Just now",
       data: {
         title,
-        date: new Date().toISOString().split("T")[0],
+        series: series.trim() || null,
+        date: presentationDate,
         verseBreakdown,
         translation: globalTranslation,
         points: points.map((p) => ({
@@ -552,6 +559,32 @@ const CreateSermon = () => {
                     placeholder="e.g., The Power of Faith"
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
+                    required
+                    className="h-12"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="series">Series</Label>
+                  <Input
+                    id="series"
+                    type="text"
+                    placeholder="e.g., Summer in Psalms"
+                    value={series}
+                    onChange={(e) => setSeries(e.target.value)}
+                    className="h-12"
+                  />
+                </div>
+              </div>
+
+              <div className="grid sm:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label htmlFor="presentationDate">Presentation Date</Label>
+                  <Input
+                    id="presentationDate"
+                    type="date"
+                    value={presentationDate}
+                    onChange={(e) => setPresentationDate(e.target.value)}
                     required
                     className="h-12"
                   />

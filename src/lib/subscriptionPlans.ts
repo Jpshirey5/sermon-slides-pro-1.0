@@ -35,6 +35,15 @@ export interface PlanFamilyConfig {
   annual: SubscriptionPlanConfig;
 }
 
+const LEGACY_PRICE_ID_ALIASES: Partial<Record<SubscriptionPlanId, string[]>> = {
+  pro_monthly: ["price_1TEfgIP2Yr0z0IcsX2VXk6wJ"],
+  pro_annual: ["price_1TEfi2P2Yr0z0Icsnod1blF1"],
+  team_monthly: ["price_1TEfggP2Yr0z0IcsHHgS6kye"],
+  team_annual: ["price_1TEfjmP2Yr0z0IcsXW3ZujSG"],
+  enterprise_monthly: ["price_1TEfhaP2Yr0z0IcsGlDJJyu7"],
+  enterprise_annual: ["price_1TEfkDP2Yr0z0IcsUhXwzh9z", "price_1TJJlpP2Yr0z0IcsDJBpCJHa"],
+};
+
 const getPublicPriceId = (envKey: keyof ImportMetaEnv, fallback = "") =>
   (import.meta.env[envKey] || fallback || "").trim();
 
@@ -126,11 +135,20 @@ export const SUBSCRIPTION_PLANS: Record<SubscriptionPlanId, SubscriptionPlanConf
     "enterprise",
     "annual",
     "$1990",
-    getPublicPriceId("VITE_STRIPE_PRICE_ENTERPRISE_ANNUAL", "price_1TJJlpP2Yr0z0IcsDJBpCJHa")
+    getPublicPriceId("VITE_STRIPE_PRICE_ENTERPRISE_ANNUAL", "price_1TJQdEP2Yr0z0IcsjUAm4Xq6")
   ),
 };
 
 export const SUBSCRIPTION_PLAN_LIST = Object.values(SUBSCRIPTION_PLANS);
+
+const PLAN_BY_ANY_PRICE_ID = new Map<string, SubscriptionPlanConfig>();
+
+for (const plan of SUBSCRIPTION_PLAN_LIST) {
+  PLAN_BY_ANY_PRICE_ID.set(plan.priceId, plan);
+  for (const legacyPriceId of LEGACY_PRICE_ID_ALIASES[plan.id] || []) {
+    PLAN_BY_ANY_PRICE_ID.set(legacyPriceId, plan);
+  }
+}
 
 export const PLAN_FAMILIES: PlanFamilyConfig[] = [
   {
@@ -164,7 +182,7 @@ export const PLAN_FAMILIES: PlanFamilyConfig[] = [
 
 export const getPlanByPriceId = (priceId?: string | null): SubscriptionPlanConfig | null => {
   if (!priceId) return null;
-  return SUBSCRIPTION_PLAN_LIST.find((plan) => plan.priceId === priceId) || null;
+  return PLAN_BY_ANY_PRICE_ID.get(priceId) || null;
 };
 
 export const getPlanById = (planId?: string | null): SubscriptionPlanConfig | null => {

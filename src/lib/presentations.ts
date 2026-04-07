@@ -6,12 +6,15 @@ import { deleteStoredBackground, isStorageBackground } from "@/lib/background-as
 export interface SermonPresentation {
   id: string;
   title: string;
+  series?: string | null;
+  presentationDate?: string | null;
   date: string;
   slides: number;
   lastModified: string;
   scripture_reference?: string;
   data?: {
     title: string;
+    series?: string | null;
     date: string;
     translation: string;
     verseBreakdown?: string;
@@ -31,7 +34,8 @@ export interface SermonPresentation {
 export interface DashboardPresentation {
   id: string;
   title: string;
-  date: string;
+  series?: string | null;
+  presentationDate: string;
   slides: number;
   lastModified: string;
 }
@@ -39,6 +43,12 @@ export interface DashboardPresentation {
 export interface DashboardPresentationsPage {
   items: DashboardPresentation[];
   hasMore: boolean;
+}
+
+export interface DashboardPresentationFilters {
+  search?: string;
+  presentationMonth?: string | null;
+  sort?: "newest" | "oldest";
 }
 
 // The slides column stores a wrapper object with both form data and editor slides
@@ -50,10 +60,12 @@ interface SlidesWrapper {
 export interface EditorPresentationState {
   id: string;
   title: string;
+  series?: string | null;
   formData?: SermonPresentation["data"];
   editorSlides: any[] | null;
   createdAt?: string;
   updatedAt?: string;
+  presentationDate?: string | null;
   scriptureReference?: string;
 }
 
@@ -68,6 +80,7 @@ interface GuestSermonRow {
 
 const GUEST_SERMONS_STORAGE_KEY = "guest_sermons";
 const serializeEditorSlides = (slides: any[] | null | undefined) => JSON.stringify(slides || []);
+const DEFAULT_PRESENTATION_SORT: NonNullable<DashboardPresentationFilters["sort"]> = "newest";
 
 function isWrapped(slides: any): slides is SlidesWrapper {
   return slides && typeof slides === 'object' && !Array.isArray(slides) && ('formData' in slides || 'editorSlides' in slides);
@@ -78,6 +91,23 @@ function extractFormData(slides: any): SermonPresentation['data'] | undefined {
   // Legacy: slides is the form data directly (has 'points')
   if (slides && typeof slides === 'object' && !Array.isArray(slides) && 'points' in slides) return slides as any;
   return undefined;
+}
+
+function extractSeries(slides: any): string | null {
+  const formData = extractFormData(slides);
+  return formData?.series?.trim() || null;
+}
+
+function resolvePresentationDate(
+  slides: any,
+  createdAt?: string | null,
+  explicitPresentationDate?: string | null
+): string {
+  if (explicitPresentationDate) return explicitPresentationDate;
+  const formData = extractFormData(slides);
+  if (formData?.date) return formData.date;
+  if (createdAt) return createdAt.split("T")[0];
+  return new Date().toISOString().split("T")[0];
 }
 
 function extractEditorSlides(slides: any): any[] | null {
@@ -124,7 +154,9 @@ function mapRowToPresentation(row: GuestSermonRow): SermonPresentation {
   return {
     id: row.id,
     title: row.title,
-    date: row.created_at.split("T")[0],
+    series: extractSeries(row.slides),
+    presentationDate: resolvePresentationDate(row.slides, row.created_at),
+    date: resolvePresentationDate(row.slides, row.created_at),
     slides: countSlides(row.slides),
     lastModified: new Date(row.updated_at).toLocaleDateString(),
     scripture_reference: row.scripture_reference || undefined,
@@ -132,14 +164,57 @@ function mapRowToPresentation(row: GuestSermonRow): SermonPresentation {
   };
 }
 
-function mapRowToDashboardPresentation(row: Pick<GuestSermonRow, "id" | "title" | "slides" | "created_at" | "updated_at">): DashboardPresentation {
+function mapRowToDashboardPresentation(
+  row: Pick<GuestSermonRow, "id" | "title" | "slides" | "created_at" | "updated_at"> & {
+    series?: string | null;
+    presentation_date?: string | null;
+  }
+): DashboardPresentation {
   return {
     id: row.id,
     title: row.title,
-    date: row.created_at.split("T")[0],
+    series: row.series || extractSeries(row.slides),
+    presentationDate: resolvePresentationDate(row.slides, row.created_at, row.presentation_date || null),
     slides: countSlides(row.slides),
     lastModified: new Date(row.updated_at).toLocaleDateString(),
   };
+}
+
+function escapeSupabaseLikeQuery(value: string): string {
+  return value.replace(/[%_]/g, (match) => `\\${match}`).replace(/,/g, "\\,");
+}
+
+function applyGuestDashboardFilters(
+  rows: GuestSermonRow[],
+  filters: DashboardPresentationFilters
+): DashboardPresentation[] {
+  const normalizedSearch = filters.search?.trim().toLowerCase() || "";
+  const presentationMonth = filters.presentationMonth || null;
+  const sort = filters.sort || DEFAULT_PRESENTATION_SORT;
+
+  const filtered = rows
+    .map((row) => ({ row, presentation: mapRowToDashboardPresentation(row) }))
+    .filter(({ presentation }) => {
+      const matchesSearch =
+        !normalizedSearch ||
+        presentation.title.toLowerCase().includes(normalizedSearch) ||
+        (presentation.series || "").toLowerCase().includes(normalizedSearch);
+      const matchesMonth =
+        !presentationMonth || presentation.presentationDate.startsWith(presentationMonth);
+      return matchesSearch && matchesMonth;
+    });
+
+  filtered.sort((a, b) => {
+    const presentationDateDiff =
+      new Date(a.presentation.presentationDate).getTime() - new Date(b.presentation.presentationDate).getTime();
+    if (presentationDateDiff !== 0) {
+      return sort === "oldest" ? presentationDateDiff : -presentationDateDiff;
+    }
+    const lastModifiedDiff = new Date(a.row.updated_at).getTime() - new Date(b.row.updated_at).getTime();
+    return sort === "oldest" ? lastModifiedDiff : -lastModifiedDiff;
+  });
+
+  return filtered.map(({ presentation }) => presentation);
 }
 
 function saveGuestPresentation(presentation: SermonPresentation): string {
@@ -188,19 +263,45 @@ async function requireAccountScopedAccess(): Promise<{ userId: string; accountId
 }
 
 export async function getDashboardPresentationsPage(
-  options: { limit: number; offset: number }
+  options: { limit: number; offset: number } & DashboardPresentationFilters
 ): Promise<DashboardPresentationsPage> {
-  const { limit, offset } = options;
+  const { limit, offset, search = "", presentationMonth = null, sort = DEFAULT_PRESENTATION_SORT } = options;
   const access = await getPresentationAccessContext();
-  if (!access.isAuthenticated || !access.accountId) return { items: [], hasMore: false };
+  if (!access.isAuthenticated || !access.accountId) {
+    const guestPresentations = applyGuestDashboardFilters(Object.values(readGuestSermons()), {
+      search,
+      presentationMonth,
+      sort,
+    });
+    return {
+      items: guestPresentations.slice(offset, offset + limit),
+      hasMore: offset + limit < guestPresentations.length,
+    };
+  }
 
-  // Backed by a compound index on (account_id, updated_at desc) for account-scoped dashboard pagination.
-  const { data, error } = await supabase
+  let query = supabase
     .from('sermons')
-    .select('id, title, slides, created_at, updated_at')
+    .select('id, title, series, presentation_date, slides, created_at, updated_at')
     .eq('account_id', access.accountId)
-    .order('updated_at', { ascending: false })
+    .order('presentation_date', { ascending: sort === "oldest" })
+    .order('updated_at', { ascending: sort === "oldest" })
     .range(offset, offset + limit);
+
+  if (search.trim()) {
+    const escapedSearch = escapeSupabaseLikeQuery(search.trim());
+    query = query.or(`title.ilike.%${escapedSearch}%,series.ilike.%${escapedSearch}%`);
+  }
+
+  if (presentationMonth) {
+    const [year, month] = presentationMonth.split("-");
+    if (year && month) {
+      const monthStart = `${year}-${month}-01`;
+      const monthEnd = new Date(Number(year), Number(month), 0).toISOString().split("T")[0];
+      query = query.gte("presentation_date", monthStart).lte("presentation_date", monthEnd);
+    }
+  }
+
+  const { data, error } = await query;
 
   if (error || !data) return { items: [], hasMore: false };
 
@@ -235,6 +336,8 @@ export async function savePresentation(presentation: SermonPresentation): Promis
       .from('sermons')
       .update({
         title: presentation.title,
+        series: presentation.series || null,
+        presentation_date: presentation.presentationDate || presentation.date || null,
         slides: wrapper as any,
         scripture_reference: presentation.scripture_reference || null,
       })
@@ -250,8 +353,10 @@ export async function savePresentation(presentation: SermonPresentation): Promis
       .from('sermons')
       .insert({
         title: presentation.title,
+        series: presentation.series || null,
         account_id: access.accountId,
         created_by_user_id: access.userId,
+        presentation_date: presentation.presentationDate || presentation.date || null,
         slides: wrapper as any,
         scripture_reference: presentation.scripture_reference || null,
       })
@@ -305,6 +410,8 @@ export async function savePresentationWithSlides(
       .from("sermons")
       .update({
         title: presentation.title,
+        series: presentation.series || null,
+        presentation_date: presentation.presentationDate || presentation.date || null,
         slides: wrapper as any,
         scripture_reference: presentation.scripture_reference || null,
       })
@@ -321,8 +428,10 @@ export async function savePresentationWithSlides(
     .from("sermons")
     .insert({
       title: presentation.title,
+      series: presentation.series || null,
       account_id: access.accountId,
       created_by_user_id: access.userId,
+      presentation_date: presentation.presentationDate || presentation.date || null,
       slides: wrapper as any,
       scripture_reference: presentation.scripture_reference || null,
     })
@@ -387,7 +496,9 @@ export async function getPresentation(id: string): Promise<SermonPresentation | 
   return {
     id: data.id,
     title: data.title,
-    date: data.created_at.split('T')[0],
+    series: data.series || extractSeries(data.slides),
+    presentationDate: resolvePresentationDate(data.slides, data.created_at, data.presentation_date),
+    date: resolvePresentationDate(data.slides, data.created_at, data.presentation_date),
     slides: countSlides(data.slides),
     lastModified: new Date(data.updated_at).toLocaleDateString(),
     scripture_reference: data.scripture_reference || undefined,
@@ -404,17 +515,19 @@ export async function getEditorPresentationState(id: string): Promise<EditorPres
     return {
       id: guestRow.id,
       title: guestRow.title,
+      series: extractSeries(guestRow.slides),
       formData: extractFormData(guestRow.slides),
       editorSlides: extractEditorSlides(guestRow.slides),
       createdAt: guestRow.created_at,
       updatedAt: guestRow.updated_at,
+      presentationDate: resolvePresentationDate(guestRow.slides, guestRow.created_at),
       scriptureReference: guestRow.scripture_reference || undefined,
     };
   }
 
   const { data, error } = await supabase
     .from("sermons")
-    .select("id, title, scripture_reference, slides, created_at, updated_at")
+    .select("id, title, series, presentation_date, scripture_reference, slides, created_at, updated_at")
     .eq("id", id)
     .maybeSingle();
 
@@ -425,10 +538,12 @@ export async function getEditorPresentationState(id: string): Promise<EditorPres
     return {
       id: guestRow.id,
       title: guestRow.title,
+      series: extractSeries(guestRow.slides),
       formData: extractFormData(guestRow.slides),
       editorSlides: extractEditorSlides(guestRow.slides),
       createdAt: guestRow.created_at,
       updatedAt: guestRow.updated_at,
+      presentationDate: resolvePresentationDate(guestRow.slides, guestRow.created_at),
       scriptureReference: guestRow.scripture_reference || undefined,
     };
   }
@@ -436,10 +551,12 @@ export async function getEditorPresentationState(id: string): Promise<EditorPres
   return {
     id: data.id,
     title: data.title,
+    series: data.series || extractSeries(data.slides),
     formData: extractFormData(data.slides),
     editorSlides: extractEditorSlides(data.slides),
     createdAt: data.created_at,
     updatedAt: data.updated_at,
+    presentationDate: resolvePresentationDate(data.slides, data.created_at, data.presentation_date),
     scriptureReference: data.scripture_reference || undefined,
   };
 }

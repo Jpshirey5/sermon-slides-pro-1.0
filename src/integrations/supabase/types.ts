@@ -205,7 +205,9 @@ export type Database = {
           created_by_user_id: string
           font_settings: Json | null
           id: string
+          presentation_date: string | null
           scripture_reference: string | null
+          series: string | null
           slides: Json
           title: string
           updated_at: string
@@ -217,7 +219,9 @@ export type Database = {
           created_by_user_id: string
           font_settings?: Json | null
           id?: string
+          presentation_date?: string | null
           scripture_reference?: string | null
+          series?: string | null
           slides?: Json
           title: string
           updated_at?: string
@@ -229,7 +233,9 @@ export type Database = {
           created_by_user_id?: string
           font_settings?: Json | null
           id?: string
+          presentation_date?: string | null
           scripture_reference?: string | null
+          series?: string | null
           slides?: Json
           title?: string
           updated_at?: string

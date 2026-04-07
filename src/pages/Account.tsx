@@ -316,11 +316,6 @@ const Account = () => {
         const message = error?.message || data?.error || "Could not open subscription portal.";
         toast.error(message);
       } else {
-        if (data.mode === "change_plan_fallback") {
-          toast.message("Opened Stripe billing portal", {
-            description: "The direct plan-change handoff was unavailable, so Stripe opened your standard billing portal instead.",
-          });
-        }
         window.location.href = data.url;
       }
     } catch {
@@ -390,6 +385,12 @@ const Account = () => {
   const handleChangePlanSelection = async (planId: SubscriptionPlanId) => {
     const requestedPlan = getPlanById(planId);
     if (!requestedPlan) return;
+    if (resolvedPlan?.id === requestedPlan.id) {
+      toast.success("That plan is already active on your account.");
+      setSubscriptionModalOpen(false);
+      setSubscriptionModalStep("actions");
+      return;
+    }
 
     setPlanChangeLoading(planId);
     setSubscriptionModalOpen(false);

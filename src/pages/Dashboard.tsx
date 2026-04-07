@@ -2,18 +2,25 @@ import { useState, useEffect, useCallback } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   BookOpen,
   LogOut,
   Presentation,
   Plus,
-  Trash2,
   Calendar,
   Layers,
   Clock,
   User,
   CreditCard,
   Sparkles,
+  Search,
+  X,
+  Download,
+  RefreshCw,
+  CheckSquare,
 } from "lucide-react";
 import {
   getDashboardPresentationsPage,
@@ -25,19 +32,33 @@ import { useAuth } from "@/contexts/AuthContext";
 import { logError, trackEvent } from "@/lib/monitoring";
 import ProductTour, { type ProductTourStep } from "@/components/ProductTour";
 import { consumeProductTourCompletion } from "@/lib/product-tour";
+import { ExportOptionsModal } from "@/components/ExportOptionsModal";
+import { exportPresentationsAsZip } from "@/lib/bulk-export";
 
 const DASHBOARD_PAGE_SIZE = 12;
+const DASHBOARD_SORT_OPTIONS = [
+  { value: "newest", label: "Newest First" },
+  { value: "oldest", label: "Oldest First" },
+] as const;
 
 const Dashboard = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { user, profile, signOut, checkSubscription } = useAuth();
+  const { user, profile, subscription, signOut, checkSubscription } = useAuth();
   const [presentations, setPresentations] = useState<DashboardPresentation[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMorePresentations, setHasMorePresentations] = useState(false);
   const [loadedCount, setLoadedCount] = useState(0);
+  const [searchInput, setSearchInput] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [presentationMonth, setPresentationMonth] = useState("");
+  const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedPresentationIds, setSelectedPresentationIds] = useState<Set<string>>(new Set());
+  const [showBulkExportModal, setShowBulkExportModal] = useState(false);
+  const [isBulkExporting, setIsBulkExporting] = useState(false);
   const [showTourCompletionPrompt, setShowTourCompletionPrompt] = useState(false);
 
   // Handle returning from Stripe checkout
@@ -52,6 +73,14 @@ const Dashboard = () => {
       setSearchParams({}, { replace: true });
     }
   }, [checkSubscription, searchParams, setSearchParams]);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setDebouncedSearch(searchInput.trim());
+    }, 300);
+
+    return () => window.clearTimeout(timeout);
+  }, [searchInput]);
 
   useEffect(() => {
     if (!user) return;
@@ -74,6 +103,9 @@ const Dashboard = () => {
       const data = await getDashboardPresentationsPage({
         limit: DASHBOARD_PAGE_SIZE,
         offset,
+        search: debouncedSearch,
+        presentationMonth: presentationMonth || null,
+        sort: sortOrder,
       });
 
       setPresentations((prev) => replace ? data.items : [...prev, ...data.items]);
@@ -88,20 +120,25 @@ const Dashboard = () => {
       logError(error, { scope: "dashboard_load_presentations" });
       toast.error("Failed to load presentations");
     }
-  }, []);
+  }, [debouncedSearch, presentationMonth, sortOrder]);
+
+  const refreshDashboardPresentations = useCallback(async () => {
+    setLoading(true);
+    try {
+      await loadPresentationsPage(0, true);
+    } finally {
+      setLoading(false);
+    }
+  }, [loadPresentationsPage]);
 
   useEffect(() => {
-    const loadInitialPresentations = async () => {
-      setLoading(true);
-      try {
-        await loadPresentationsPage(0, true);
-      } finally {
-        setLoading(false);
-      }
-    };
+    void refreshDashboardPresentations();
+  }, [refreshDashboardPresentations]);
 
-    void loadInitialPresentations();
-  }, [loadPresentationsPage]);
+  useEffect(() => {
+    setSelectionMode(false);
+    setSelectedPresentationIds(new Set());
+  }, [debouncedSearch, presentationMonth, sortOrder]);
 
   const handleLogout = async () => {
     trackEvent("logout_clicked");
@@ -131,8 +168,111 @@ const Dashboard = () => {
     }
   };
 
+  const togglePresentationSelection = (presentationId: string) => {
+    setSelectedPresentationIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(presentationId)) {
+        next.delete(presentationId);
+      } else {
+        next.add(presentationId);
+      }
+      return next;
+    });
+  };
+
+  const handleOpenSelectionMode = () => {
+    setSelectionMode(true);
+  };
+
+  const handleCancelSelection = () => {
+    setSelectionMode(false);
+    setSelectedPresentationIds(new Set());
+    setShowBulkExportModal(false);
+  };
+
+  const handleSelectAllLoaded = () => {
+    setSelectedPresentationIds(new Set(presentations.map((presentation) => presentation.id)));
+  };
+
+  const handleBulkExport = async (format: "pptx" | "probundle") => {
+    setIsBulkExporting(true);
+    try {
+      const result = await exportPresentationsAsZip(Array.from(selectedPresentationIds), format);
+      toast.success(`Exported ${result.exportedCount} presentation${result.exportedCount === 1 ? "" : "s"} to zip.`);
+      if (result.failed.length > 0) {
+        toast.error("Some presentations were skipped.", {
+          description: result.failed.map((failure) => `${failure.title}: ${failure.reason}`).join(" "),
+        });
+      }
+      setShowBulkExportModal(false);
+      handleCancelSelection();
+    } catch (error) {
+      logError(error, { scope: "dashboard_bulk_export", format, selectedCount: selectedPresentationIds.size });
+      toast.error("Bulk export failed", {
+        description: error instanceof Error ? error.message : "Please try again.",
+      });
+    } finally {
+      setIsBulkExporting(false);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    const selectedIds = Array.from(selectedPresentationIds);
+    if (selectedIds.length === 0) return;
+
+    const confirmed = window.confirm(
+      `Delete ${selectedIds.length} presentation${selectedIds.length === 1 ? "" : "s"}? This cannot be undone.`
+    );
+    if (!confirmed) return;
+
+    const failedIds = new Set<string>();
+
+    await Promise.all(
+      selectedIds.map(async (id) => {
+        try {
+          await deletePresentation(id);
+        } catch (error) {
+          failedIds.add(id);
+          logError(error, { scope: "dashboard_bulk_delete_presentation", presentationId: id });
+        }
+      })
+    );
+
+    const deletedCount = selectedIds.length - failedIds.size;
+
+    if (deletedCount > 0) {
+      setPresentations((prev) => prev.filter((presentation) => !selectedIds.includes(presentation.id) || failedIds.has(presentation.id)));
+      setLoadedCount((prev) => Math.max(0, prev - deletedCount));
+      trackEvent("presentation_deleted", { count: deletedCount, source: "bulk" });
+    }
+
+    if (failedIds.size === 0) {
+      toast.success(`${deletedCount} presentation${deletedCount === 1 ? "" : "s"} deleted`);
+      handleCancelSelection();
+      return;
+    }
+
+    setSelectedPresentationIds(failedIds);
+
+    if (deletedCount > 0) {
+      toast.error("Some presentations could not be deleted.", {
+        description: `${failedIds.size} failed to delete.`,
+      });
+    } else {
+      toast.error("Failed to delete selected presentations");
+    }
+  };
+
+  const clearFilters = () => {
+    setSearchInput("");
+    setPresentationMonth("");
+    setSortOrder("newest");
+  };
+
   const displayName = profile?.full_name || user?.email || "User";
   const hasPresentations = presentations.length > 0;
+  const hasActiveFilters = Boolean(searchInput.trim() || presentationMonth || sortOrder !== "newest");
+  const hasSelectedPresentations = selectedPresentationIds.size > 0;
   const dashboardTourSteps: ProductTourStep[] = [
     {
       targetId: "dashboard-account-button",
@@ -280,16 +420,113 @@ const Dashboard = () => {
 
             {/* Presentations List */}
             <section data-tour-id="dashboard-presentations-section">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="font-serif text-2xl font-semibold text-foreground">
-                  My Presentations
-                </h2>
-                <Link to="/dashboard/create">
-                  <Button variant="outline" size="sm">
-                    <Plus className="w-4 h-4" />
-                    New
-                  </Button>
-                </Link>
+              <div className="flex flex-col gap-4 mb-6">
+                <div className="flex items-center justify-between gap-3">
+                  <h2 className="font-serif text-2xl font-semibold text-foreground">
+                    My Presentations
+                  </h2>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void refreshDashboardPresentations()}
+                      disabled={loading}
+                    >
+                      <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+                      Refresh
+                    </Button>
+                    {presentations.length > 0 && (
+                      <Button
+                        variant={selectionMode ? "hero" : "outline"}
+                        size="sm"
+                        onClick={selectionMode ? handleCancelSelection : handleOpenSelectionMode}
+                        aria-pressed={selectionMode}
+                      >
+                        <CheckSquare className="w-4 h-4" />
+                        Select
+                      </Button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-border/70 bg-white/70 p-4">
+                  <div className="grid gap-3 md:grid-cols-[minmax(0,1.5fr)_minmax(180px,220px)_minmax(180px,220px)_auto]">
+                    <div className="relative">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        value={searchInput}
+                        onChange={(event) => setSearchInput(event.target.value)}
+                        placeholder="Search by title or series"
+                        className="pl-9"
+                      />
+                    </div>
+                    <Input
+                      type="month"
+                      value={presentationMonth}
+                      onChange={(event) => setPresentationMonth(event.target.value)}
+                    />
+                    <Select
+                      value={sortOrder}
+                      onValueChange={(value) => setSortOrder(value as "newest" | "oldest")}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {DASHBOARD_SORT_OPTIONS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {hasActiveFilters && (
+                      <Button variant="ghost" onClick={clearFilters}>
+                        <X className="w-4 h-4" />
+                        Clear
+                      </Button>
+                    )}
+                  </div>
+                </div>
+
+                {selectionMode && (
+                  <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <p className="text-sm text-foreground">
+                        {hasSelectedPresentations
+                          ? `${selectedPresentationIds.size} presentation${selectedPresentationIds.size === 1 ? "" : "s"} selected`
+                          : "Select presentations to bulk delete or export."}
+                      </p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button variant="outline" size="sm" onClick={handleSelectAllLoaded}>
+                          Select All Loaded
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => void handleBulkDelete()}
+                          disabled={!hasSelectedPresentations}
+                        >
+                          Delete Selected
+                        </Button>
+                        {subscription.subscribed && (
+                        <Button
+                          variant="hero"
+                          size="sm"
+                          onClick={() => setShowBulkExportModal(true)}
+                          disabled={!hasSelectedPresentations}
+                        >
+                          <Download className="w-4 h-4" />
+                          Export Selected
+                        </Button>
+                        )}
+                        <Button variant="ghost" size="sm" onClick={handleCancelSelection}>
+                          Cancel Selection
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {loading ? (
@@ -321,21 +558,40 @@ const Dashboard = () => {
                 <>
                   <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
                     {presentations.map((p) => (
-                      <div key={p.id} className="rounded-xl border border-border/70 bg-white/75 backdrop-blur-sm p-5 hover:shadow-soft transition-shadow group">
-                        <div className="cursor-pointer" onClick={() => navigate(`/editor/${p.id}`, { state: { from: "dashboard" } })}>
-                          <h3 className="font-serif font-semibold text-foreground mb-1 group-hover:text-primary transition-colors truncate">
+                      <div key={p.id} className="rounded-xl border border-border/70 bg-white/75 backdrop-blur-sm p-4 hover:shadow-soft transition-shadow group">
+                        <div
+                          className="cursor-pointer"
+                          onClick={() => {
+                            if (selectionMode) {
+                              togglePresentationSelection(p.id);
+                              return;
+                            }
+                            navigate(`/editor/${p.id}`, { state: { from: "dashboard" } });
+                          }}
+                        >
+                          {p.series && (
+                            <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground mb-0.5 truncate">
+                              {p.series}
+                            </p>
+                          )}
+                          {selectionMode && (
+                            <div className="flex items-center gap-2 mb-2">
+                              <Checkbox
+                                checked={selectedPresentationIds.has(p.id)}
+                                onCheckedChange={() => togglePresentationSelection(p.id)}
+                                aria-label={`Select ${p.title}`}
+                              />
+                              <span className="text-xs text-muted-foreground">Select</span>
+                            </div>
+                          )}
+                          <h3 className="font-serif font-semibold text-foreground mb-2 group-hover:text-primary transition-colors truncate">
                             {p.title || "Untitled"}
                           </h3>
-                          <div className="flex items-center gap-3 text-xs text-muted-foreground mb-3">
-                            <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> {p.date}</span>
+                          <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground mb-2">
+                            <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> {p.presentationDate}</span>
                             <span className="flex items-center gap-1"><Layers className="w-3 h-3" /> {p.slides} slides</span>
                           </div>
                           <p className="text-xs text-muted-foreground"><Clock className="w-3 h-3 inline mr-1" />{p.lastModified}</p>
-                        </div>
-                        <div className="flex items-center justify-end gap-2 mt-4 pt-3 border-t border-border">
-                          <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => handleDeletePresentation(p.id)}>
-                            <Trash2 className="w-3 h-3" />
-                          </Button>
                         </div>
                       </div>
                     ))}
@@ -368,6 +624,15 @@ const Dashboard = () => {
           introStartLabel="Start Guided Tour"
         />
       )}
+      <ExportOptionsModal
+        isOpen={showBulkExportModal}
+        onClose={() => setShowBulkExportModal(false)}
+        onExport={handleBulkExport}
+        isExporting={isBulkExporting}
+        title="Export Selected Presentations"
+        description="Choose one format for all selected presentations. They will be packaged into a single zip file."
+        exportingLabel="Preparing zip export..."
+      />
     </>
   );
 };

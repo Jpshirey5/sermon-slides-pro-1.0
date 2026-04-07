@@ -11,8 +11,25 @@ const logStep = (step: string, details?: any) => {
   console.log(`[CREATE-CHECKOUT] ${step}${details ? ` - ${JSON.stringify(details)}` : ''}`);
 };
 
+const CANONICAL_PRICE_IDS = [
+  "price_1TEfgIP2Yr0z0IcsX2VXk6wJ",
+  "price_1TEfi2P2Yr0z0Icsnod1blF1",
+  "price_1TJJjFP2Yr0z0IcsZRFgIQlX",
+  "price_1TJJjWP2Yr0z0IcsAV9Y4SV5",
+  "price_1TJJlcP2Yr0z0IcsUb9IHJuS",
+  "price_1TJQdEP2Yr0z0IcsjUAm4Xq6",
+];
+
+const LEGACY_PRICE_IDS = [
+  "price_1TEfggP2Yr0z0IcsHHgS6kye",
+  "price_1TEfjmP2Yr0z0IcsXW3ZujSG",
+  "price_1TEfhaP2Yr0z0IcsGlDJJyu7",
+  "price_1TEfkDP2Yr0z0IcsUhXwzh9z",
+  "price_1TJJlpP2Yr0z0IcsDJBpCJHa",
+];
+
 const getAllowedPriceIds = () => {
-  const priceIds = [
+  const configuredPriceIds = [
     Deno.env.get("STRIPE_PRICE_PRO_MONTHLY"),
     Deno.env.get("STRIPE_PRICE_PRO_ANNUAL"),
     Deno.env.get("STRIPE_PRICE_TEAM_MONTHLY"),
@@ -21,22 +38,11 @@ const getAllowedPriceIds = () => {
     Deno.env.get("STRIPE_PRICE_ENTERPRISE_ANNUAL"),
   ].filter((value): value is string => Boolean(value && value.startsWith("price_")));
 
-  if (priceIds.length === 0) {
-    priceIds.push(
-      "price_1TEfgIP2Yr0z0IcsX2VXk6wJ",
-      "price_1TEfi2P2Yr0z0Icsnod1blF1",
-      "price_1TJJjFP2Yr0z0IcsZRFgIQlX",
-      "price_1TJJjWP2Yr0z0IcsAV9Y4SV5",
-      "price_1TJJlcP2Yr0z0IcsUb9IHJuS",
-      "price_1TJJlpP2Yr0z0IcsDJBpCJHa",
-      "price_1TEfggP2Yr0z0IcsHHgS6kye",
-      "price_1TEfjmP2Yr0z0IcsXW3ZujSG",
-      "price_1TEfhaP2Yr0z0IcsGlDJJyu7",
-      "price_1TEfkDP2Yr0z0IcsUhXwzh9z"
-    );
-  }
-
-  return priceIds;
+  return Array.from(new Set([
+    ...configuredPriceIds,
+    ...CANONICAL_PRICE_IDS,
+    ...LEGACY_PRICE_IDS,
+  ]));
 };
 
 const getDefaultCheckoutPriceId = () =>

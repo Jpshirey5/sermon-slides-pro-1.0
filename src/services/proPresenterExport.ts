@@ -331,10 +331,10 @@ function buildPresentationMessage(
 
 // ── Public export functions ───────────────────────────
 
-export async function exportAsProBundle(
+export async function buildProBundleFile(
   slides: SlideData[],
   presentationTitle: string
-): Promise<void> {
+): Promise<{ blob: Blob; filename: string }> {
   const validation = validateSlidesForExport(slides);
   if (!validation.isValid) {
     throw new Error(validation.errors.join(' '));
@@ -378,7 +378,18 @@ export async function exportAsProBundle(
   zip.file(`${safeTitle}.pro`, buffer);
 
   const content = await zip.generateAsync({ type: 'blob' });
-  saveAs(content, `${safeTitle}.probundle`);
+  return {
+    blob: content,
+    filename: `${safeTitle}.probundle`,
+  };
+}
+
+export async function exportAsProBundle(
+  slides: SlideData[],
+  presentationTitle: string
+): Promise<void> {
+  const { blob, filename } = await buildProBundleFile(slides, presentationTitle);
+  saveAs(blob, filename);
 }
 
 export function exportAsPlainText(
