@@ -1,4 +1,5 @@
 import pptxgen from 'pptxgenjs';
+import { saveAs } from 'file-saver';
 import { resolveBackgroundImageSource } from '@/lib/background-assets';
 
 export interface SlideData {
@@ -39,7 +40,7 @@ function parseBackground(bg: string): { color: string; isGradient: boolean } {
 }
 
 // Sanitize filename for safe file system use
-function sanitizeFileName(name: string): string {
+export function sanitizePptxFileName(name: string): string {
   return name.replace(/[<>:"/\\|?*]/g, '_').trim() || 'Presentation';
 }
 
@@ -72,10 +73,10 @@ function mapFontFamily(fontFamily: string): string {
   return 'Arial';
 }
 
-export async function exportToPowerPoint(
+export async function buildPowerPointFile(
   slides: SlideData[],
   title: string
-): Promise<void> {
+): Promise<{ blob: Blob; filename: string }> {
   const pptx = new pptxgen();
 
   // Set presentation properties
@@ -223,6 +224,18 @@ export async function exportToPowerPoint(
   }
 
   // Generate and download file with sanitized filename
-  const fileName = sanitizeFileName(title);
-  await pptx.writeFile({ fileName: `${fileName}.pptx` });
+  const fileName = sanitizePptxFileName(title);
+  const blob = await pptx.write({ outputType: "blob" }) as Blob;
+  return {
+    blob,
+    filename: `${fileName}.pptx`,
+  };
+}
+
+export async function exportToPowerPoint(
+  slides: SlideData[],
+  title: string
+): Promise<void> {
+  const { blob, filename } = await buildPowerPointFile(slides, title);
+  saveAs(blob, filename);
 }

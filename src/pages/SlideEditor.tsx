@@ -236,7 +236,17 @@ const SlideEditor = () => {
             ? {
                 id: presentationState.id,
                 title: presentationState.title,
-                date: presentationState.createdAt?.split("T")[0] || new Date().toISOString().split("T")[0],
+                series: presentationState.series || presentationState.formData.series || null,
+                presentationDate:
+                  presentationState.presentationDate ||
+                  presentationState.formData.date ||
+                  presentationState.createdAt?.split("T")[0] ||
+                  new Date().toISOString().split("T")[0],
+                date:
+                  presentationState.presentationDate ||
+                  presentationState.formData.date ||
+                  presentationState.createdAt?.split("T")[0] ||
+                  new Date().toISOString().split("T")[0],
                 slides: presentationState.editorSlides?.length || 0,
                 lastModified: presentationState.updatedAt
                   ? new Date(presentationState.updatedAt).toLocaleDateString()
