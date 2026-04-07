@@ -9,7 +9,7 @@ import { logError, trackEvent } from "@/lib/monitoring";
 const CheckoutRedirect = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { user, accountId, subscription, subscriptionChecked, checkSubscription } = useAuth();
+  const { user, accountId, subscription, subscriptionChecked } = useAuth();
   const startedRef = useRef(false);
 
   useEffect(() => {
@@ -67,12 +67,6 @@ const CheckoutRedirect = () => {
 
     startCheckout();
   }, [user, accountId, subscription.subscribed, subscriptionChecked, navigate, searchParams]);
-
-  useEffect(() => {
-    if (!subscription.subscribed) return;
-    trackEvent("subscription_detected_active");
-    checkSubscription();
-  }, [subscription.subscribed, checkSubscription]);
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center px-4">

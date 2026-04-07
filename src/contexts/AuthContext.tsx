@@ -2,6 +2,11 @@ import { createContext, useContext, useEffect, useState, useCallback, ReactNode,
 import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import {
+  clearResolvedAccountAccess,
+  ensureResolvedAccountAccess,
+  setResolvedAccountAccess,
+} from "@/lib/account-access";
+import {
   clearStoredLogoutReason,
   getStoredLogoutReason,
   setStoredLogoutReason,
@@ -45,6 +50,7 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const SUBSCRIPTION_FALLBACK_REFRESH_MS = 6 * 60 * 60 * 1000;
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
@@ -72,6 +78,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   });
   const userInitiatedSignOutRef = useRef(false);
   const lastUserIdRef = useRef<string | null>(null);
+  const pendingSubscriptionCheckRef = useRef<Promise<void> | null>(null);
 
   const fetchProfile = async (userId: string) => {
     const { data } = await supabase
@@ -86,45 +93,59 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const fetchAccountId = async (userId: string) => {
     const { data } = await supabase.rpc('get_user_account_id', { _user_id: userId });
-    setAccountId(data || null);
+    const nextAccountId = data || null;
+    setAccountId(nextAccountId);
+    setResolvedAccountAccess({ userId, accountId: nextAccountId });
+    return nextAccountId;
   };
 
   const checkSubscription = useCallback(async () => {
-    try {
-      const { data: { session: currentSession } } = await supabase.auth.getSession();
-      if (!currentSession) {
-        setSubscriptionChecked(true);
-        return;
-      }
-
-      const { data, error } = await supabase.functions.invoke("check-subscription", {
-        headers: { Authorization: `Bearer ${currentSession.access_token}` },
-      });
-
-      if (!error && data) {
-        setSubscription({
-          subscribed: data.subscribed || false,
-          product_id: data.product_id || null,
-          price_id: data.price_id || null,
-          billing_interval: data.billing_interval || null,
-          plan_label: data.plan_label || null,
-          plan_tier: data.plan_tier || null,
-          subscription_end: data.subscription_end || null,
-          cancel_at_period_end: data.cancel_at_period_end || false,
-          subscription_status: data.subscription_status || null,
-        });
-      }
-    } catch (err) {
-      console.error("Error checking subscription:", err);
-    } finally {
-      setSubscriptionChecked(true);
+    if (pendingSubscriptionCheckRef.current) {
+      return pendingSubscriptionCheckRef.current;
     }
+
+    pendingSubscriptionCheckRef.current = (async () => {
+      try {
+        const { data: { session: currentSession } } = await supabase.auth.getSession();
+        if (!currentSession) {
+          setSubscriptionChecked(true);
+          return;
+        }
+
+        const { data, error } = await supabase.functions.invoke("check-subscription", {
+          headers: { Authorization: `Bearer ${currentSession.access_token}` },
+        });
+
+        if (!error && data) {
+          setSubscription({
+            subscribed: data.subscribed || false,
+            product_id: data.product_id || null,
+            price_id: data.price_id || null,
+            billing_interval: data.billing_interval || null,
+            plan_label: data.plan_label || null,
+            plan_tier: data.plan_tier || null,
+            subscription_end: data.subscription_end || null,
+            cancel_at_period_end: data.cancel_at_period_end || false,
+            subscription_status: data.subscription_status || null,
+          });
+        }
+      } catch (err) {
+        console.error("Error checking subscription:", err);
+      } finally {
+        setSubscriptionChecked(true);
+        pendingSubscriptionCheckRef.current = null;
+      }
+    })();
+
+    return pendingSubscriptionCheckRef.current;
   }, []);
 
   const refreshProfile = async () => {
     if (user) {
       await fetchProfile(user.id);
-      await fetchAccountId(user.id);
+      const access = await ensureResolvedAccountAccess();
+      setAccountId(access.accountId);
+      setResolvedAccountAccess({ userId: user.id, accountId: access.accountId });
       await checkSubscription();
     }
   };
@@ -140,6 +161,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setSession(null);
     setProfile(null);
     setAccountId(null);
+    clearResolvedAccountAccess();
     setSubscriptionChecked(false);
     setSubscription({
       subscribed: false,
@@ -169,6 +191,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         } else {
           setProfile(null);
           setAccountId(null);
+          clearResolvedAccountAccess();
           setSubscriptionChecked(false);
           setSubscription({
             subscribed: false,
@@ -189,11 +212,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           }
           setProfile(null);
           setAccountId(null);
+          clearResolvedAccountAccess();
           lastUserIdRef.current = null;
           userInitiatedSignOutRef.current = false;
         } else if (newSession?.user?.id) {
           lastUserIdRef.current = newSession.user.id;
           userInitiatedSignOutRef.current = false;
+          setResolvedAccountAccess({
+            userId: newSession.user.id,
+            accountId: null,
+          });
         }
         setLoading(false);
       }
@@ -204,11 +232,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setUser(initialSession?.user ?? null);
       if (initialSession?.user) {
         lastUserIdRef.current = initialSession.user.id;
+        setResolvedAccountAccess({
+          userId: initialSession.user.id,
+          accountId: null,
+        });
         fetchProfile(initialSession.user.id);
         fetchAccountId(initialSession.user.id);
         checkSubscription();
       } else {
         lastUserIdRef.current = null;
+        clearResolvedAccountAccess();
         setSubscriptionChecked(true);
       }
       setLoading(false);
@@ -219,7 +252,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     if (!user) return;
-    const interval = setInterval(checkSubscription, 60000);
+    const interval = setInterval(() => {
+      void checkSubscription();
+    }, SUBSCRIPTION_FALLBACK_REFRESH_MS);
     return () => clearInterval(interval);
   }, [user, checkSubscription]);
 

@@ -108,6 +108,7 @@ const defaultSlides: SlideData[] = [{
 }];
 
 const MAX_HISTORY = 50;
+const AUTOSAVE_DEBOUNCE_MS = 1500;
 
 // These are now async wrappers using the Supabase-backed functions from presentations.ts
 
@@ -129,6 +130,7 @@ const SlideEditor = () => {
   const [resolvedBackgroundImages, setResolvedBackgroundImages] = useState<Record<string, string>>({});
   const [isPresentationLoading, setIsPresentationLoading] = useState(true);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastSavedSlidesRef = useRef(JSON.stringify(defaultSlides));
   
   // Payment state
   const [isExportUnlocked, setIsExportUnlocked] = useState(() => {
@@ -251,6 +253,7 @@ const SlideEditor = () => {
                 ? generateSlidesFromPresentation(generatedPresentation)
                 : defaultSlides;
 
+          lastSavedSlidesRef.current = JSON.stringify(initialSlides);
           setSlides(initialSlides);
           setHistory([initialSlides]);
           setHistoryIndex(0);
@@ -283,6 +286,9 @@ const SlideEditor = () => {
         }
       }
       if (cancelled) return;
+      if (!id || id === "new") {
+        lastSavedSlidesRef.current = JSON.stringify(defaultSlides);
+      }
       isInitialLoadRef.current = false;
       setIsPresentationLoading(false);
     };
@@ -301,39 +307,46 @@ const SlideEditor = () => {
   
   // Auto-save slides whenever they change
   useEffect(() => {
-    if (id && id !== "new" && !isInitialLoadRef.current) {
-      // Show saving indicator
-      setSaveStatus('saving');
-      
-      // Clear any existing timeout
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
-      }
-      
-      // Debounce save
-      saveTimeoutRef.current = setTimeout(async () => {
-        try {
-          await saveEditorSlidesToDb(id, slides);
-          setSaveStatus('saved');
-          
-          // Reset to idle after 2 seconds
-          setTimeout(() => {
-            setSaveStatus('idle');
-          }, 2000);
-        } catch (error) {
-          logError(error, { scope: "editor_autosave", sermonId: id });
-          toast.error('Failed to save changes');
-          setSaveStatus('idle');
-        }
-      }, 500);
+    if (!id || id === "new" || isInitialLoadRef.current || isPresentationLoading) {
+      return;
     }
+
+    const serializedSlides = JSON.stringify(slides);
+    if (serializedSlides === lastSavedSlidesRef.current) {
+      return;
+    }
+
+    // Clear any existing timeout
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+
+    setSaveStatus('saving');
+
+    // Debounce save
+    saveTimeoutRef.current = setTimeout(async () => {
+      try {
+        await saveEditorSlidesToDb(id, slides);
+        lastSavedSlidesRef.current = serializedSlides;
+        setSaveStatus('saved');
+        
+        // Reset to idle after 2 seconds
+        setTimeout(() => {
+          setSaveStatus('idle');
+        }, 2000);
+      } catch (error) {
+        logError(error, { scope: "editor_autosave", sermonId: id });
+        toast.error('Failed to save changes');
+        setSaveStatus('idle');
+      }
+    }, AUTOSAVE_DEBOUNCE_MS);
     
     return () => {
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current);
       }
     };
-  }, [slides, id]);
+  }, [slides, id, isPresentationLoading]);
 
   useEffect(() => {
     let cancelled = false;
