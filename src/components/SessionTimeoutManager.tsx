@@ -7,6 +7,7 @@ import {
   WARNING_MS,
   STORAGE_LAST_ACTIVITY_KEY,
   STORAGE_FORCED_LOGOUT_KEY,
+  resetSessionInactivityTracking,
   setStoredLogoutReason,
 } from "@/lib/session-security";
 
@@ -23,14 +24,17 @@ const SessionTimeoutManager = () => {
   useEffect(() => {
     if (!user) {
       setWarningOpen(false);
+      setSecondsRemaining(Math.ceil(WARNING_MS / 1000));
       loggingOutRef.current = false;
       return;
     }
 
-    const storedActivity = Number(localStorage.getItem(STORAGE_LAST_ACTIVITY_KEY));
-    const initialActivity = Number.isFinite(storedActivity) && storedActivity > 0 ? storedActivity : Date.now();
-    lastActivityRef.current = initialActivity;
-    localStorage.setItem(STORAGE_LAST_ACTIVITY_KEY, String(initialActivity));
+    const now = resetSessionInactivityTracking();
+    lastRecordedRef.current = now;
+    lastActivityRef.current = now;
+    loggingOutRef.current = false;
+    setWarningOpen(false);
+    setSecondsRemaining(Math.ceil(WARNING_MS / 1000));
   }, [user]);
 
   useEffect(() => {
