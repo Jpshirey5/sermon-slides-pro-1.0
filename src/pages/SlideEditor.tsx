@@ -233,10 +233,13 @@ const SlideEditor = () => {
           setPresentationTitle(presentationState.title);
 
           const generatedPresentation: SermonPresentation | null = presentationState.formData
-            ? {
+              ? {
                 id: presentationState.id,
                 title: presentationState.title,
                 series: presentationState.series || presentationState.formData.series || null,
+                campusId: presentationState.campusId || null,
+                campusName: presentationState.campusName || null,
+                formerCampusName: presentationState.formerCampusName || null,
                 presentationDate:
                   presentationState.presentationDate ||
                   presentationState.formData.date ||
@@ -996,7 +999,13 @@ const SlideEditor = () => {
                   const presentation = await getEditorPresentationState(id);
                   if (presentation?.formData) {
                     const target = location.state?.from === "dashboard" ? '/dashboard/create' : '/create';
-                    editorNavigate(target, { state: { editData: presentation.formData, editId: id } });
+                    editorNavigate(target, {
+                      state: {
+                        editData: presentation.formData,
+                        editId: id,
+                        editCampusId: presentation.campusId || null,
+                      },
+                    });
                   } else {
                     toast.error("Original sermon form data not found.");
                   }

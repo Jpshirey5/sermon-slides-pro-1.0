@@ -155,6 +155,48 @@ export type Database = {
         }
         Relationships: []
       }
+      campuses: {
+        Row: {
+          account_id: string
+          created_at: string
+          id: string
+          is_primary: boolean
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          created_at?: string
+          id?: string
+          is_primary?: boolean
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          created_at?: string
+          id?: string
+          is_primary?: boolean
+          name?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campuses_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "campuses_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -201,8 +243,10 @@ export type Database = {
         Row: {
           account_id: string
           background_settings: Json | null
+          campus_id: string | null
           created_at: string
           created_by_user_id: string
+          former_campus_name: string | null
           font_settings: Json | null
           id: string
           presentation_date: string | null
@@ -215,8 +259,10 @@ export type Database = {
         Insert: {
           account_id: string
           background_settings?: Json | null
+          campus_id?: string | null
           created_at?: string
           created_by_user_id: string
+          former_campus_name?: string | null
           font_settings?: Json | null
           id?: string
           presentation_date?: string | null
@@ -229,8 +275,10 @@ export type Database = {
         Update: {
           account_id?: string
           background_settings?: Json | null
+          campus_id?: string | null
           created_at?: string
           created_by_user_id?: string
+          former_campus_name?: string | null
           font_settings?: Json | null
           id?: string
           presentation_date?: string | null
@@ -253,6 +301,13 @@ export type Database = {
             columns: ["account_id"]
             isOneToOne: false
             referencedRelation: "accounts_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sermons_campus_id_fkey"
+            columns: ["campus_id"]
+            isOneToOne: false
+            referencedRelation: "campuses"
             referencedColumns: ["id"]
           },
         ]
@@ -318,6 +373,22 @@ export type Database = {
       }
     }
     Functions: {
+      create_campus: {
+        Args: { _account_id: string; _name: string }
+        Returns: {
+          account_id: string
+          created_at: string
+          id: string
+          is_primary: boolean
+          name: string
+          updated_at: string
+        }
+      }
+      delete_campus: { Args: { _campus_id: string }; Returns: string }
+      ensure_enterprise_main_campus_for_account: {
+        Args: { _account_id: string }
+        Returns: string
+      }
       get_account_members_for_user: {
         Args: { _user_id: string }
         Returns: {
@@ -347,6 +418,28 @@ export type Database = {
       is_account_owner: {
         Args: { _account_id: string; _user_id: string }
         Returns: boolean
+      }
+      rename_campus: {
+        Args: { _campus_id: string; _name: string }
+        Returns: {
+          account_id: string
+          created_at: string
+          id: string
+          is_primary: boolean
+          name: string
+          updated_at: string
+        }
+      }
+      set_primary_campus: {
+        Args: { _campus_id: string }
+        Returns: {
+          account_id: string
+          created_at: string
+          id: string
+          is_primary: boolean
+          name: string
+          updated_at: string
+        }
       }
       users_share_account: {
         Args: { _user_id_1: string; _user_id_2: string }

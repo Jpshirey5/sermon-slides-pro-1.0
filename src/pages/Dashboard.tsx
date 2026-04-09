@@ -26,6 +26,7 @@ import {
   getDashboardPresentationsPage,
   deletePresentation,
   type DashboardPresentation,
+  type DashboardPresentationFilters,
 } from "@/lib/presentations";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
@@ -34,6 +35,7 @@ import ProductTour, { type ProductTourStep } from "@/components/ProductTour";
 import { consumeProductTourCompletion } from "@/lib/product-tour";
 import { ExportOptionsModal } from "@/components/ExportOptionsModal";
 import { exportPresentationsAsZip } from "@/lib/bulk-export";
+import { getEnterpriseCampusFilterOptions, type CampusFilterOption } from "@/lib/campuses";
 
 const DASHBOARD_PAGE_SIZE = 12;
 const DASHBOARD_SORT_OPTIONS = [
@@ -41,11 +43,25 @@ const DASHBOARD_SORT_OPTIONS = [
   { value: "oldest", label: "Oldest First" },
 ] as const;
 
+const parseCampusFilterValue = (
+  value: string
+): NonNullable<DashboardPresentationFilters["campusFilter"]> => {
+  if (value.startsWith("active:")) {
+    return { type: "active", value: value.replace("active:", "") };
+  }
+
+  if (value.startsWith("former:")) {
+    return { type: "former", value: value.replace("former:", "") };
+  }
+
+  return { type: "all" };
+};
+
 const Dashboard = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { user, profile, subscription, signOut, checkSubscription } = useAuth();
+  const { user, profile, subscription, signOut, checkSubscription, accountId } = useAuth();
   const [presentations, setPresentations] = useState<DashboardPresentation[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -54,12 +70,17 @@ const Dashboard = () => {
   const [searchInput, setSearchInput] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [presentationMonth, setPresentationMonth] = useState("");
+  const [campusFilterValue, setCampusFilterValue] = useState("all");
+  const [campusFilterOptions, setCampusFilterOptions] = useState<CampusFilterOption[]>([
+    { value: "all", label: "All Campuses", type: "all" },
+  ]);
   const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedPresentationIds, setSelectedPresentationIds] = useState<Set<string>>(new Set());
   const [showBulkExportModal, setShowBulkExportModal] = useState(false);
   const [isBulkExporting, setIsBulkExporting] = useState(false);
   const [showTourCompletionPrompt, setShowTourCompletionPrompt] = useState(false);
+  const isEnterpriseAccount = subscription.plan_tier === "enterprise";
 
   // Handle returning from Stripe checkout
   useEffect(() => {
@@ -105,6 +126,7 @@ const Dashboard = () => {
         offset,
         search: debouncedSearch,
         presentationMonth: presentationMonth || null,
+        campusFilter: parseCampusFilterValue(campusFilterValue),
         sort: sortOrder,
       });
 
@@ -120,7 +142,7 @@ const Dashboard = () => {
       logError(error, { scope: "dashboard_load_presentations" });
       toast.error("Failed to load presentations");
     }
-  }, [debouncedSearch, presentationMonth, sortOrder]);
+  }, [campusFilterValue, debouncedSearch, presentationMonth, sortOrder]);
 
   const refreshDashboardPresentations = useCallback(async () => {
     setLoading(true);
@@ -138,7 +160,41 @@ const Dashboard = () => {
   useEffect(() => {
     setSelectionMode(false);
     setSelectedPresentationIds(new Set());
-  }, [debouncedSearch, presentationMonth, sortOrder]);
+  }, [campusFilterValue, debouncedSearch, presentationMonth, sortOrder]);
+
+  useEffect(() => {
+    if (!isEnterpriseAccount || !accountId) {
+      setCampusFilterValue("all");
+      setCampusFilterOptions([{ value: "all", label: "All Campuses", type: "all" }]);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadCampusFilters = async () => {
+      try {
+        const options = await getEnterpriseCampusFilterOptions(accountId);
+        if (!cancelled) {
+          setCampusFilterOptions(options);
+          setCampusFilterValue((current) =>
+            options.some((option) => option.value === current) ? current : "all"
+          );
+        }
+      } catch (error) {
+        logError(error, { scope: "dashboard_load_campus_filters" });
+        if (!cancelled) {
+          setCampusFilterOptions([{ value: "all", label: "All Campuses", type: "all" }]);
+          setCampusFilterValue("all");
+        }
+      }
+    };
+
+    void loadCampusFilters();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [accountId, isEnterpriseAccount]);
 
   const handleLogout = async () => {
     trackEvent("logout_clicked");
@@ -266,13 +322,21 @@ const Dashboard = () => {
   const clearFilters = () => {
     setSearchInput("");
     setPresentationMonth("");
+    setCampusFilterValue("all");
     setSortOrder("newest");
   };
 
   const displayName = profile?.full_name || user?.email || "User";
   const hasPresentations = presentations.length > 0;
-  const hasActiveFilters = Boolean(searchInput.trim() || presentationMonth || sortOrder !== "newest");
+  const hasActiveFilters = Boolean(
+    searchInput.trim() || presentationMonth || campusFilterValue !== "all" || sortOrder !== "newest"
+  );
   const hasSelectedPresentations = selectedPresentationIds.size > 0;
+  const selectedCampusFilter = parseCampusFilterValue(campusFilterValue);
+  const createPresentationState =
+    selectedCampusFilter.type === "active" && selectedCampusFilter.value
+      ? { campusFilter: selectedCampusFilter }
+      : undefined;
   const dashboardTourSteps: ProductTourStep[] = [
     {
       targetId: "dashboard-account-button",
@@ -370,7 +434,7 @@ const Dashboard = () => {
                       variant="hero"
                       onClick={() => {
                         setShowTourCompletionPrompt(false);
-                        navigate("/dashboard/create", { replace: true });
+                        navigate("/dashboard/create", { replace: true, state: createPresentationState });
                       }}
                     >
                       <Plus className="w-4 h-4" />
@@ -396,7 +460,7 @@ const Dashboard = () => {
                     : "Create, edit, and export presentation slides from one place whenever you are ready."}
                 </p>
                 <div className="flex flex-col gap-3 w-full sm:w-auto sm:flex-row">
-                  <Link to="/dashboard/create">
+                  <Link to="/dashboard/create" state={createPresentationState}>
                     <Button
                       variant="hero"
                       className="w-full"
@@ -450,7 +514,7 @@ const Dashboard = () => {
                 </div>
 
                 <div className="rounded-2xl border border-border/70 bg-white/70 p-4">
-                  <div className="grid gap-3 md:grid-cols-[minmax(0,1.5fr)_minmax(180px,220px)_minmax(180px,220px)_auto]">
+                  <div className={`grid gap-3 ${isEnterpriseAccount ? "md:grid-cols-[minmax(0,1.4fr)_minmax(180px,220px)_minmax(180px,220px)_minmax(180px,220px)_auto]" : "md:grid-cols-[minmax(0,1.5fr)_minmax(180px,220px)_minmax(180px,220px)_auto]"}`}>
                     <div className="relative">
                       <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                       <Input
@@ -465,6 +529,20 @@ const Dashboard = () => {
                       value={presentationMonth}
                       onChange={(event) => setPresentationMonth(event.target.value)}
                     />
+                    {isEnterpriseAccount && (
+                      <Select value={campusFilterValue} onValueChange={setCampusFilterValue}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Campus" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {campusFilterOptions.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
                     <Select
                       value={sortOrder}
                       onValueChange={(value) => setSortOrder(value as "newest" | "oldest")}
@@ -542,7 +620,7 @@ const Dashboard = () => {
                   <p className="text-muted-foreground max-w-md mx-auto mb-6">
                     Create a presentation whenever you are ready. It will appear here once saved.
                   </p>
-                  <Link to="/dashboard/create">
+                  <Link to="/dashboard/create" state={createPresentationState}>
                     <Button
                       variant="hero"
                       onClick={() => {
@@ -573,6 +651,20 @@ const Dashboard = () => {
                             <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground mb-0.5 truncate">
                               {p.series}
                             </p>
+                          )}
+                          {(p.campusName || p.formerCampusName) && (
+                            <div className="flex flex-wrap items-center gap-2 mb-1">
+                              {p.campusName && (
+                                <span className="text-[11px] font-medium text-primary">
+                                  {p.campusName}
+                                </span>
+                              )}
+                              {p.formerCampusName && (
+                                <span className="text-[11px] text-muted-foreground">
+                                  Formerly {p.formerCampusName}
+                                </span>
+                              )}
+                            </div>
                           )}
                           {selectionMode && (
                             <div className="flex items-center gap-2 mb-2">

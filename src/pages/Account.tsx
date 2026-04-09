@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { BookOpen, ArrowLeft, CreditCard, User, Crown, Users, Mail, Loader2, AlertTriangle, Trash2 } from "lucide-react";
+import { BookOpen, ArrowLeft, CreditCard, User, Crown, Users, Mail, Loader2, AlertTriangle, Trash2, Building2, Check } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -16,6 +16,14 @@ import SubscriptionPlanPicker from "@/components/SubscriptionPlanPicker";
 import SubscriptionManagementPicker from "@/components/SubscriptionManagementPicker";
 import { getPlanById, getPlanByPriceId, getPlanCapacityByTier, type SubscriptionPlanId } from "@/lib/subscriptionPlans";
 import { getSiteUrl } from "@/lib/site-url";
+import {
+  listAccountCampuses,
+  createCampus as createCampusRecord,
+  renameCampus as renameCampusRecord,
+  setPrimaryCampus as setPrimaryCampusRecord,
+  deleteCampus as deleteCampusRecord,
+  type Campus,
+} from "@/lib/campuses";
 
 interface TeamMember {
   id: string;
@@ -67,6 +75,12 @@ const Account = () => {
   const [pendingInvitesLoading, setPendingInvitesLoading] = useState(false);
   const [orgName, setOrgName] = useState("");
   const [isOwner, setIsOwner] = useState(false);
+  const [campuses, setCampuses] = useState<Campus[]>([]);
+  const [campusesLoading, setCampusesLoading] = useState(false);
+  const [newCampusName, setNewCampusName] = useState("");
+  const [campusActionLoading, setCampusActionLoading] = useState<string | null>(null);
+  const [editingCampusId, setEditingCampusId] = useState<string | null>(null);
+  const [editingCampusName, setEditingCampusName] = useState("");
   const [deleteWarningOpen, setDeleteWarningOpen] = useState(false);
   const [deleteFinalOpen, setDeleteFinalOpen] = useState(false);
   const [subscriptionModalOpen, setSubscriptionModalOpen] = useState(false);
@@ -144,6 +158,20 @@ const Account = () => {
       setPendingInvites((data || []) as PendingInvite[]);
     }
     setPendingInvitesLoading(false);
+  };
+
+  const loadCampuses = async () => {
+    if (!accountId) return;
+    setCampusesLoading(true);
+    try {
+      const nextCampuses = await listAccountCampuses(accountId);
+      setCampuses(nextCampuses);
+    } catch {
+      setCampuses([]);
+      toast.error("Could not load campuses right now.");
+    } finally {
+      setCampusesLoading(false);
+    }
   };
 
   const resendInvite = async (invite: PendingInvite) => {
@@ -456,6 +484,71 @@ const Account = () => {
     : subscription.subscribed
     ? "text-green-600 font-medium"
     : "text-muted-foreground";
+  const isEnterprisePlan = activePlanTier === "enterprise";
+  const canCreateMoreCampuses = campuses.length < 5;
+  const primaryCampus = campuses.find((campus) => campus.isPrimary) || null;
+
+  const handleCreateCampus = async () => {
+    if (!accountId || !newCampusName.trim()) return;
+    setCampusActionLoading("create");
+    try {
+      await createCampusRecord(accountId, newCampusName.trim());
+      setNewCampusName("");
+      await loadCampuses();
+      toast.success("Campus created.");
+    } catch (error: any) {
+      toast.error(error?.message || "Could not create campus.");
+    } finally {
+      setCampusActionLoading(null);
+    }
+  };
+
+  const handleSaveCampusRename = async (campusId: string) => {
+    if (!editingCampusName.trim()) return;
+    setCampusActionLoading(`rename:${campusId}`);
+    try {
+      await renameCampusRecord(campusId, editingCampusName.trim());
+      setEditingCampusId(null);
+      setEditingCampusName("");
+      await loadCampuses();
+      toast.success("Campus updated.");
+    } catch (error: any) {
+      toast.error(error?.message || "Could not update campus.");
+    } finally {
+      setCampusActionLoading(null);
+    }
+  };
+
+  const handleSetPrimaryCampus = async (campusId: string) => {
+    setCampusActionLoading(`primary:${campusId}`);
+    try {
+      await setPrimaryCampusRecord(campusId);
+      await loadCampuses();
+      toast.success("Primary campus updated.");
+    } catch (error: any) {
+      toast.error(error?.message || "Could not update the primary campus.");
+    } finally {
+      setCampusActionLoading(null);
+    }
+  };
+
+  const handleDeleteCampus = async (campus: Campus) => {
+    const confirmed = window.confirm(
+      `Delete ${campus.name}? Its presentations will move to the primary campus and keep the former campus label for filtering.`
+    );
+    if (!confirmed) return;
+
+    setCampusActionLoading(`delete:${campus.id}`);
+    try {
+      await deleteCampusRecord(campus.id);
+      await loadCampuses();
+      toast.success("Campus deleted.");
+    } catch (error: any) {
+      toast.error(error?.message || "Could not delete campus.");
+    } finally {
+      setCampusActionLoading(null);
+    }
+  };
 
   useEffect(() => {
     if (searchParams.get("checkout") === "success") {
@@ -503,6 +596,14 @@ const Account = () => {
     localStorage.removeItem("pending_pro_checkout");
     handleUpgrade(false, requestedPriceId);
   }, [searchParams, setSearchParams, user, accountId, subscription.subscribed]);
+
+  useEffect(() => {
+    if (!accountId || !isEnterprisePlan) {
+      setCampuses([]);
+      return;
+    }
+    void loadCampuses();
+  }, [accountId, isEnterprisePlan]);
 
   return (
     <div className="app-shell">
@@ -683,6 +784,152 @@ const Account = () => {
             )}
           </div>
 
+          {isEnterprisePlan && (
+            <div className="rounded-2xl glass-panel p-6 mb-6">
+              <div className="flex items-center gap-3 mb-6">
+                <Building2 className="w-5 h-5 text-muted-foreground" />
+                <div>
+                  <h2 className="font-serif text-xl font-semibold text-foreground">Campuses</h2>
+                  <p className="text-sm text-muted-foreground">
+                    Enterprise accounts can organize presentations across up to 5 campuses.
+                  </p>
+                </div>
+              </div>
+
+              {campusesLoading ? (
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Loading campuses...</span>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {campuses.map((campus) => {
+                    const isEditing = editingCampusId === campus.id;
+                    const isOnlyPrimaryCampus = campus.isPrimary && campuses.length === 1;
+                    return (
+                      <div
+                        key={campus.id}
+                        className="rounded-lg border border-border/70 bg-white/65 p-3"
+                      >
+                        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                          <div className="min-w-0 flex-1">
+                            {isEditing ? (
+                              <div className="flex gap-2">
+                                <Input
+                                  value={editingCampusName}
+                                  onChange={(event) => setEditingCampusName(event.target.value)}
+                                  className="h-10"
+                                  maxLength={60}
+                                />
+                                <Button
+                                  size="sm"
+                                  onClick={() => void handleSaveCampusRename(campus.id)}
+                                  disabled={campusActionLoading === `rename:${campus.id}` || !editingCampusName.trim()}
+                                >
+                                  {campusActionLoading === `rename:${campus.id}` ? "Saving..." : "Save"}
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => {
+                                    setEditingCampusId(null);
+                                    setEditingCampusName("");
+                                  }}
+                                >
+                                  Cancel
+                                </Button>
+                              </div>
+                            ) : (
+                              <>
+                                <div className="flex items-center gap-2">
+                                  <p className="text-sm font-medium text-foreground truncate">{campus.name}</p>
+                                  {campus.isPrimary && (
+                                    <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
+                                      Primary
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  {campus.isPrimary
+                                    ? "New Enterprise presentations default here unless another campus is selected."
+                                    : primaryCampus
+                                    ? `Deleting this campus moves its presentations to ${primaryCampus.name}.`
+                                    : "Presentations in this campus stay filtered together on the dashboard."}
+                                </p>
+                              </>
+                            )}
+                          </div>
+
+                          {isOwner && !isEditing && (
+                            <div className="flex flex-wrap items-center gap-2">
+                              {!campus.isPrimary && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => void handleSetPrimaryCampus(campus.id)}
+                                  disabled={Boolean(campusActionLoading)}
+                                >
+                                  <Check className="w-4 h-4 mr-1" />
+                                  Make Primary
+                                </Button>
+                              )}
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  setEditingCampusId(campus.id);
+                                  setEditingCampusName(campus.name);
+                                }}
+                                disabled={Boolean(campusActionLoading)}
+                              >
+                                Rename
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => void handleDeleteCampus(campus)}
+                                disabled={Boolean(campusActionLoading) || isOnlyPrimaryCampus}
+                              >
+                                Delete
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {isOwner && (
+                <div className="pt-4 border-t border-border mt-4 space-y-2">
+                  <Label className="text-sm font-medium text-foreground block">Add a campus</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      value={newCampusName}
+                      onChange={(event) => setNewCampusName(event.target.value)}
+                      placeholder="e.g., Downtown Campus"
+                      className="h-10"
+                      disabled={!canCreateMoreCampuses}
+                    />
+                    <Button
+                      onClick={() => void handleCreateCampus()}
+                      disabled={!newCampusName.trim() || !canCreateMoreCampuses || campusActionLoading === "create"}
+                      size="sm"
+                    >
+                      {campusActionLoading === "create" ? "Adding..." : "Add Campus"}
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {canCreateMoreCampuses
+                      ? `${campuses.length} of 5 campuses used.`
+                      : "You have reached the 5-campus limit for Enterprise."}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Subscription Section */}
           <div className="rounded-2xl glass-panel p-6">
             <div className="flex items-center gap-3 mb-6">
@@ -843,10 +1090,20 @@ const Account = () => {
               <DialogHeader>
                 <DialogTitle>Manage Subscription</DialogTitle>
                 <DialogDescription>
-                  Choose whether you want to cancel in Stripe or move to a different plan or billing interval.
+                  Choose whether you want to change your subscription or cancel it.
                 </DialogDescription>
               </DialogHeader>
               <div className="grid gap-4 md:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => setSubscriptionModalStep("plans")}
+                  className="rounded-2xl border border-border/70 bg-white/70 p-5 text-left transition-colors hover:border-primary/40 hover:bg-primary/5"
+                >
+                  <p className="font-medium text-foreground">Change Subscription</p>
+                  <p className="text-sm text-muted-foreground mt-2">
+                    Choose a different plan or billing option for your account.
+                  </p>
+                </button>
                 <button
                   type="button"
                   onClick={handleCancelSubscription}
@@ -854,17 +1111,7 @@ const Account = () => {
                 >
                   <p className="font-medium text-foreground">Cancel Subscription</p>
                   <p className="text-sm text-muted-foreground mt-2">
-                    Open Stripe and keep the current cancellation flow exactly as it works today.
-                  </p>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSubscriptionModalStep("plans")}
-                  className="rounded-2xl border border-border/70 bg-white/70 p-5 text-left transition-colors hover:border-primary/40 hover:bg-primary/5"
-                >
-                  <p className="font-medium text-foreground">Choose a Different Plan</p>
-                  <p className="text-sm text-muted-foreground mt-2">
-                    Change plan tier or switch between monthly and annual billing using Stripe’s update flow.
+                    End your current subscription when you're ready.
                   </p>
                 </button>
               </div>
@@ -879,7 +1126,7 @@ const Account = () => {
               <DialogHeader>
                 <DialogTitle>Choose a Different Plan</DialogTitle>
                 <DialogDescription>
-                  Select a new plan or billing interval. Stripe will show the exact billing details before you confirm.
+                  Select a new plan or billing interval. You'll see the billing details before you confirm.
                 </DialogDescription>
               </DialogHeader>
               <SubscriptionManagementPicker

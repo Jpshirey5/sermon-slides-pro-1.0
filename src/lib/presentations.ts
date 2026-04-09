@@ -2,12 +2,16 @@
 import { supabase } from "@/integrations/supabase/client";
 import { ensureResolvedAccountAccess } from "@/lib/account-access";
 import { deleteStoredBackground, isStorageBackground } from "@/lib/background-assets";
+import { getPrimaryCampus } from "@/lib/campuses";
 
 export interface SermonPresentation {
   id: string;
   title: string;
   series?: string | null;
   presentationDate?: string | null;
+  campusId?: string | null;
+  campusName?: string | null;
+  formerCampusName?: string | null;
   date: string;
   slides: number;
   lastModified: string;
@@ -36,6 +40,9 @@ export interface DashboardPresentation {
   title: string;
   series?: string | null;
   presentationDate: string;
+  campusId?: string | null;
+  campusName?: string | null;
+  formerCampusName?: string | null;
   slides: number;
   lastModified: string;
 }
@@ -49,6 +56,10 @@ export interface DashboardPresentationFilters {
   search?: string;
   presentationMonth?: string | null;
   sort?: "newest" | "oldest";
+  campusFilter?: {
+    type: "all" | "active" | "former";
+    value?: string;
+  } | null;
 }
 
 // The slides column stores a wrapper object with both form data and editor slides
@@ -61,6 +72,9 @@ export interface EditorPresentationState {
   id: string;
   title: string;
   series?: string | null;
+  campusId?: string | null;
+  campusName?: string | null;
+  formerCampusName?: string | null;
   formData?: SermonPresentation["data"];
   editorSlides: any[] | null;
   createdAt?: string;
@@ -168,6 +182,9 @@ function mapRowToDashboardPresentation(
   row: Pick<GuestSermonRow, "id" | "title" | "slides" | "created_at" | "updated_at"> & {
     series?: string | null;
     presentation_date?: string | null;
+    campus_id?: string | null;
+    campus_name?: string | null;
+    former_campus_name?: string | null;
   }
 ): DashboardPresentation {
   return {
@@ -175,9 +192,62 @@ function mapRowToDashboardPresentation(
     title: row.title,
     series: row.series || extractSeries(row.slides),
     presentationDate: resolvePresentationDate(row.slides, row.created_at, row.presentation_date || null),
+    campusId: row.campus_id || null,
+    campusName: row.campus_name || null,
+    formerCampusName: row.former_campus_name || null,
     slides: countSlides(row.slides),
     lastModified: new Date(row.updated_at).toLocaleDateString(),
   };
+}
+
+async function getAccountPlanTier(accountId: string): Promise<string> {
+  const { data, error } = await supabase
+    .from("accounts")
+    .select("plan_tier")
+    .eq("id", accountId)
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return data?.plan_tier || "free";
+}
+
+async function resolvePresentationCampusId(
+  accountId: string,
+  requestedCampusId?: string | null
+): Promise<string | null> {
+  const planTier = await getAccountPlanTier(accountId);
+
+  if (planTier !== "enterprise") {
+    return requestedCampusId || null;
+  }
+
+  if (requestedCampusId) {
+    return requestedCampusId;
+  }
+
+  const primaryCampus = await getPrimaryCampus(accountId);
+  return primaryCampus?.id || null;
+}
+
+async function loadCampusNamesById(accountId: string, campusIds: string[]): Promise<Map<string, string>> {
+  if (campusIds.length === 0) {
+    return new Map();
+  }
+
+  const { data, error } = await supabase
+    .from("campuses")
+    .select("id, name")
+    .eq("account_id", accountId)
+    .in("id", campusIds);
+
+  if (error || !data) {
+    return new Map();
+  }
+
+  return new Map(data.map((campus) => [campus.id, campus.name]));
 }
 
 function escapeSupabaseLikeQuery(value: string): string {
@@ -265,7 +335,14 @@ async function requireAccountScopedAccess(): Promise<{ userId: string; accountId
 export async function getDashboardPresentationsPage(
   options: { limit: number; offset: number } & DashboardPresentationFilters
 ): Promise<DashboardPresentationsPage> {
-  const { limit, offset, search = "", presentationMonth = null, sort = DEFAULT_PRESENTATION_SORT } = options;
+  const {
+    limit,
+    offset,
+    search = "",
+    presentationMonth = null,
+    sort = DEFAULT_PRESENTATION_SORT,
+    campusFilter = null,
+  } = options;
   const access = await getPresentationAccessContext();
   if (!access.isAuthenticated || !access.accountId) {
     const guestPresentations = applyGuestDashboardFilters(Object.values(readGuestSermons()), {
@@ -281,7 +358,7 @@ export async function getDashboardPresentationsPage(
 
   let query = supabase
     .from('sermons')
-    .select('id, title, series, presentation_date, slides, created_at, updated_at')
+    .select('id, title, series, presentation_date, campus_id, former_campus_name, slides, created_at, updated_at')
     .eq('account_id', access.accountId)
     .order('presentation_date', { ascending: sort === "oldest" })
     .order('updated_at', { ascending: sort === "oldest" })
@@ -301,14 +378,32 @@ export async function getDashboardPresentationsPage(
     }
   }
 
+  if (campusFilter?.type === "active" && campusFilter.value) {
+    query = query.eq("campus_id", campusFilter.value);
+  }
+
+  if (campusFilter?.type === "former" && campusFilter.value) {
+    query = query.eq("former_campus_name", campusFilter.value);
+  }
+
   const { data, error } = await query;
 
   if (error || !data) return { items: [], hasMore: false };
 
+  const campusNamesById = await loadCampusNamesById(
+    access.accountId,
+    Array.from(new Set(data.map((row) => row.campus_id).filter((id): id is string => Boolean(id))))
+  );
+
   const hasMore = data.length > limit;
   const items = data
     .slice(0, limit)
-    .map((row) => mapRowToDashboardPresentation(row));
+    .map((row) =>
+      mapRowToDashboardPresentation({
+        ...row,
+        campus_name: row.campus_id ? campusNamesById.get(row.campus_id) || null : null,
+      })
+    );
 
   return { items, hasMore };
 }
@@ -316,11 +411,12 @@ export async function getDashboardPresentationsPage(
 export async function savePresentation(presentation: SermonPresentation): Promise<string | null> {
   const access = await getPresentationAccessContext();
   if (!access.isAuthenticated || !access.userId || !access.accountId) return saveGuestPresentation(presentation);
+  const resolvedCampusId = await resolvePresentationCampusId(access.accountId, presentation.campusId);
 
   // Check if presentation already exists
   const { data: existing } = await supabase
     .from('sermons')
-    .select('id, slides')
+    .select('id, slides, campus_id, former_campus_name')
     .eq('id', presentation.id)
     .maybeSingle();
 
@@ -338,6 +434,11 @@ export async function savePresentation(presentation: SermonPresentation): Promis
         title: presentation.title,
         series: presentation.series || null,
         presentation_date: presentation.presentationDate || presentation.date || null,
+        campus_id: resolvedCampusId,
+        former_campus_name:
+          existing?.campus_id && resolvedCampusId && existing.campus_id !== resolvedCampusId
+            ? null
+            : existing?.former_campus_name || null,
         slides: wrapper as any,
         scripture_reference: presentation.scripture_reference || null,
       })
@@ -357,6 +458,8 @@ export async function savePresentation(presentation: SermonPresentation): Promis
         account_id: access.accountId,
         created_by_user_id: access.userId,
         presentation_date: presentation.presentationDate || presentation.date || null,
+        campus_id: resolvedCampusId,
+        former_campus_name: presentation.formerCampusName || null,
         slides: wrapper as any,
         scripture_reference: presentation.scripture_reference || null,
       })
@@ -401,9 +504,11 @@ export async function savePresentationWithSlides(
 
   const { data: existing } = await supabase
     .from("sermons")
-    .select("id")
+    .select("id, campus_id, former_campus_name")
     .eq("id", presentation.id)
     .maybeSingle();
+
+  const resolvedCampusId = await resolvePresentationCampusId(access.accountId!, presentation.campusId);
 
   if (existing) {
     const { error } = await supabase
@@ -412,6 +517,11 @@ export async function savePresentationWithSlides(
         title: presentation.title,
         series: presentation.series || null,
         presentation_date: presentation.presentationDate || presentation.date || null,
+        campus_id: resolvedCampusId,
+        former_campus_name:
+          existing.campus_id && resolvedCampusId && existing.campus_id !== resolvedCampusId
+            ? null
+            : existing.former_campus_name || null,
         slides: wrapper as any,
         scripture_reference: presentation.scripture_reference || null,
       })
@@ -432,6 +542,8 @@ export async function savePresentationWithSlides(
       account_id: access.accountId,
       created_by_user_id: access.userId,
       presentation_date: presentation.presentationDate || presentation.date || null,
+      campus_id: resolvedCampusId,
+      former_campus_name: presentation.formerCampusName || null,
       slides: wrapper as any,
       scripture_reference: presentation.scripture_reference || null,
     })
@@ -498,6 +610,8 @@ export async function getPresentation(id: string): Promise<SermonPresentation | 
     title: data.title,
     series: data.series || extractSeries(data.slides),
     presentationDate: resolvePresentationDate(data.slides, data.created_at, data.presentation_date),
+    campusId: data.campus_id || null,
+    formerCampusName: data.former_campus_name || null,
     date: resolvePresentationDate(data.slides, data.created_at, data.presentation_date),
     slides: countSlides(data.slides),
     lastModified: new Date(data.updated_at).toLocaleDateString(),
@@ -516,6 +630,9 @@ export async function getEditorPresentationState(id: string): Promise<EditorPres
       id: guestRow.id,
       title: guestRow.title,
       series: extractSeries(guestRow.slides),
+      campusId: null,
+      campusName: null,
+      formerCampusName: null,
       formData: extractFormData(guestRow.slides),
       editorSlides: extractEditorSlides(guestRow.slides),
       createdAt: guestRow.created_at,
@@ -527,7 +644,7 @@ export async function getEditorPresentationState(id: string): Promise<EditorPres
 
   const { data, error } = await supabase
     .from("sermons")
-    .select("id, title, series, presentation_date, scripture_reference, slides, created_at, updated_at")
+    .select("id, account_id, title, series, campus_id, former_campus_name, presentation_date, scripture_reference, slides, created_at, updated_at")
     .eq("id", id)
     .maybeSingle();
 
@@ -539,6 +656,9 @@ export async function getEditorPresentationState(id: string): Promise<EditorPres
       id: guestRow.id,
       title: guestRow.title,
       series: extractSeries(guestRow.slides),
+      campusId: null,
+      campusName: null,
+      formerCampusName: null,
       formData: extractFormData(guestRow.slides),
       editorSlides: extractEditorSlides(guestRow.slides),
       createdAt: guestRow.created_at,
@@ -548,10 +668,18 @@ export async function getEditorPresentationState(id: string): Promise<EditorPres
     };
   }
 
+  const campusNamesById = await loadCampusNamesById(
+    data.account_id || "",
+    data.campus_id ? [data.campus_id] : []
+  );
+
   return {
     id: data.id,
     title: data.title,
     series: data.series || extractSeries(data.slides),
+    campusId: data.campus_id || null,
+    campusName: data.campus_id ? campusNamesById.get(data.campus_id) || null : null,
+    formerCampusName: data.former_campus_name || null,
     formData: extractFormData(data.slides),
     editorSlides: extractEditorSlides(data.slides),
     createdAt: data.created_at,

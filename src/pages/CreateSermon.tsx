@@ -31,6 +31,7 @@ import { logError, trackEvent } from "@/lib/monitoring";
 import ProductTour, { type ProductTourStep } from "@/components/ProductTour";
 import { consumeCreateTourPrompt, readProductTourState, setProductTourStage } from "@/lib/product-tour";
 import { generateSlidesFromPresentation } from "@/lib/slide-generation";
+import { listAccountCampuses, type Campus } from "@/lib/campuses";
 
 interface Scripture {
   reference: string;
@@ -51,15 +52,21 @@ interface SermonPoint {
 const CreateSermon = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { profile, user } = useAuth();
+  const { profile, user, accountId, subscription } = useAuth();
   const isFromDashboard = location.pathname.startsWith("/dashboard");
   const editData = (location.state as any)?.editData;
   const editId = (location.state as any)?.editId;
+  const editCampusId = (location.state as any)?.editCampusId || editData?.campusId || "";
+  const dashboardCampusFilter = (location.state as any)?.campusFilter || null;
+  const isEnterpriseAccount = subscription.plan_tier === "enterprise";
   const [title, setTitle] = useState(editData?.title || "");
   const [series, setSeries] = useState(editData?.series || "");
   const [presentationDate, setPresentationDate] = useState(
     editData?.date || new Date().toISOString().split("T")[0]
   );
+  const [availableCampuses, setAvailableCampuses] = useState<Campus[]>([]);
+  const [campusId, setCampusId] = useState(editCampusId);
+  const [campusesLoading, setCampusesLoading] = useState(false);
   const [globalTranslation, setGlobalTranslation] = useState(editData?.translation || DEFAULT_TRANSLATION);
   const [verseBreakdown, setVerseBreakdown] = useState(editData?.verseBreakdown || "verse-by-verse");
   const [showTourBuilderPrompt, setShowTourBuilderPrompt] = useState(false);
@@ -117,6 +124,51 @@ const CreateSermon = () => {
       trackEvent("create_tour_prompt_shown");
     }
   }, [user]);
+
+  useEffect(() => {
+    if (!isEnterpriseAccount || !accountId) {
+      setAvailableCampuses([]);
+      setCampusId("");
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadCampuses = async () => {
+      setCampusesLoading(true);
+      try {
+        const campuses = await listAccountCampuses(accountId);
+        if (cancelled) return;
+        setAvailableCampuses(campuses);
+        setCampusId((currentCampusId) => {
+          const dashboardSelectedCampusId =
+            dashboardCampusFilter?.type === "active" ? dashboardCampusFilter.value || "" : "";
+          const preferredCampusId = editCampusId || dashboardSelectedCampusId || currentCampusId;
+
+          if (preferredCampusId && campuses.some((campus) => campus.id === preferredCampusId)) {
+            return preferredCampusId;
+          }
+
+          return campuses.find((campus) => campus.isPrimary)?.id || campuses[0]?.id || "";
+        });
+      } catch (error) {
+        logError(error, { scope: "create_sermon_load_campuses" });
+        if (!cancelled) {
+          setAvailableCampuses([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setCampusesLoading(false);
+        }
+      }
+    };
+
+    void loadCampuses();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [accountId, dashboardCampusFilter?.type, dashboardCampusFilter?.value, editCampusId, isEnterpriseAccount]);
 
   const addPoint = () => {
     const newId = String(Date.now());
@@ -346,6 +398,11 @@ const CreateSermon = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isEnterpriseAccount && !campusId) {
+      const { toast } = await import("sonner");
+      toast.error("Select a campus before generating slides.");
+      return;
+    }
     setShowTourBuilderPrompt(false);
     trackEvent("sermon_generation_submitted", {
       editingExisting: Boolean(editId),
@@ -361,6 +418,7 @@ const CreateSermon = () => {
       id: presentationId,
       title: title,
       series: series.trim() || null,
+      campusId: isEnterpriseAccount ? campusId || null : null,
       presentationDate,
       date: presentationDate,
       slides: 0,
@@ -480,7 +538,7 @@ const CreateSermon = () => {
             <Button
               variant="hero"
               onClick={handleSubmit}
-              disabled={!title.trim() || !hasValidContent}
+              disabled={!title.trim() || !hasValidContent || (isEnterpriseAccount && (campusesLoading || !campusId))}
             >
               <Wand2 className="w-4 h-4" />
               <span className="hidden sm:inline">Generate Slides</span>
@@ -612,6 +670,27 @@ const CreateSermon = () => {
                   </Select>
                 </div>
               </div>
+
+              {isEnterpriseAccount && (
+                <div className="space-y-2">
+                  <Label htmlFor="campus">Campus</Label>
+                  <Select value={campusId} onValueChange={setCampusId} disabled={campusesLoading || availableCampuses.length === 0}>
+                    <SelectTrigger id="campus" className="h-12">
+                      <SelectValue placeholder={campusesLoading ? "Loading campuses..." : "Select a campus"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableCampuses.map((campus) => (
+                        <SelectItem key={campus.id} value={campus.id}>
+                          {campus.isPrimary ? `${campus.name} (Primary)` : campus.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Enterprise presentations are saved to a campus so they can be filtered on the dashboard.
+                  </p>
+                </div>
+              )}
 
               {/* Verse Breakdown */}
               <div className="space-y-3">
