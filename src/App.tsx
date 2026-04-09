@@ -25,6 +25,7 @@ import NotFound from "./pages/NotFound";
 import SessionTimeoutManager from "@/components/SessionTimeoutManager";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import RouteTracker from "@/components/RouteTracker";
+import ScrollToRouteTop from "@/components/ScrollToRouteTop";
 
 const queryClient = new QueryClient();
 
@@ -35,6 +36,7 @@ const App = () => (
         <Toaster />
         <Sonner />
         <BrowserRouter>
+          <ScrollToRouteTop />
           <RouteTracker />
           <AuthProvider>
             <SessionTimeoutManager />
