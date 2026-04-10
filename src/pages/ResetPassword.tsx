@@ -20,6 +20,16 @@ const ResetPassword = () => {
   const [checking, setChecking] = useState(true);
 
   useEffect(() => {
+    let cancelled = false;
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "PASSWORD_RECOVERY" && !cancelled) {
+        setReady(true);
+        setChecking(false);
+      }
+    });
+
     const handleRecovery = async () => {
       const tokenHash = searchParams.get("token_hash");
       const queryType = searchParams.get("type");
@@ -33,13 +43,17 @@ const ResetPassword = () => {
         if (error) {
           console.error("Failed to verify recovery token:", error);
           toast.error("Invalid or expired reset link.");
-          setChecking(false);
+          if (!cancelled) {
+            setChecking(false);
+          }
           return;
         }
 
         window.history.replaceState(null, "", window.location.pathname);
-        setReady(true);
-        setChecking(false);
+        if (!cancelled) {
+          setReady(true);
+          setChecking(false);
+        }
         return;
       }
 
@@ -60,37 +74,33 @@ const ResetPassword = () => {
         if (error) {
           console.error("Failed to set recovery session:", error);
           toast.error("Invalid or expired reset link.");
-          setChecking(false);
+          if (!cancelled) {
+            setChecking(false);
+          }
           return;
         }
 
         // Clear the hash from the URL
         window.history.replaceState(null, "", window.location.pathname);
-        setReady(true);
-        setChecking(false);
-        return;
-      }
-
-      // Also listen for PASSWORD_RECOVERY event (in case Supabase handles it)
-      const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-        if (event === "PASSWORD_RECOVERY") {
+        if (!cancelled) {
           setReady(true);
           setChecking(false);
         }
-      });
-
-      // If no hash params, check if there's already a session (user might have been redirected)
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        setReady(true);
+        return;
       }
-      
-      setChecking(false);
 
-      return () => subscription.unsubscribe();
+      if (!cancelled) {
+        setReady(false);
+        setChecking(false);
+      }
     };
 
-    handleRecovery();
+    void handleRecovery();
+
+    return () => {
+      cancelled = true;
+      subscription.unsubscribe();
+    };
   }, [searchParams]);
 
   const handleSubmit = async (e: React.FormEvent) => {
