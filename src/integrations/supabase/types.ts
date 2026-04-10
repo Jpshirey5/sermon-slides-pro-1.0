@@ -206,6 +206,7 @@ export type Database = {
           full_name: string | null
           id: string
           plan_tier: string | null
+          preferred_dashboard_campus_id: string | null
           stripe_customer_id: string | null
           stripe_subscription_id: string | null
           subscription_status: string | null
@@ -219,6 +220,7 @@ export type Database = {
           full_name?: string | null
           id: string
           plan_tier?: string | null
+          preferred_dashboard_campus_id?: string | null
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
           subscription_status?: string | null
@@ -232,12 +234,21 @@ export type Database = {
           full_name?: string | null
           id?: string
           plan_tier?: string | null
+          preferred_dashboard_campus_id?: string | null
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
           subscription_status?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "profiles_preferred_dashboard_campus_id_fkey"
+            columns: ["preferred_dashboard_campus_id"]
+            isOneToOne: false
+            referencedRelation: "campuses"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       sermons: {
         Row: {

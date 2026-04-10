@@ -17,6 +17,7 @@ interface Profile {
   full_name: string | null;
   email: string | null;
   default_translation: string | null;
+  preferred_dashboard_campus_id: string | null;
   plan_tier: string | null;
   subscription_status: string | null;
   stripe_customer_id: string | null;

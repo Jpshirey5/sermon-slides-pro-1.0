@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -81,6 +81,7 @@ const Dashboard = () => {
   const [isBulkExporting, setIsBulkExporting] = useState(false);
   const [showTourCompletionPrompt, setShowTourCompletionPrompt] = useState(false);
   const isEnterpriseAccount = subscription.plan_tier === "enterprise";
+  const latestPresentationLoadIdRef = useRef(0);
 
   // Handle returning from Stripe checkout
   useEffect(() => {
@@ -120,6 +121,8 @@ const Dashboard = () => {
   }, [location.pathname, location.search, location.state, navigate, user]);
 
   const loadPresentationsPage = useCallback(async (offset: number, replace = false) => {
+    const requestId = ++latestPresentationLoadIdRef.current;
+
     try {
       const data = await getDashboardPresentationsPage({
         limit: DASHBOARD_PAGE_SIZE,
@@ -129,6 +132,10 @@ const Dashboard = () => {
         campusFilter: parseCampusFilterValue(campusFilterValue),
         sort: sortOrder,
       });
+
+      if (requestId !== latestPresentationLoadIdRef.current) {
+        return;
+      }
 
       setPresentations((prev) => replace ? data.items : [...prev, ...data.items]);
       setLoadedCount(offset + data.items.length);
@@ -176,9 +183,12 @@ const Dashboard = () => {
         const options = await getEnterpriseCampusFilterOptions(accountId);
         if (!cancelled) {
           setCampusFilterOptions(options);
-          setCampusFilterValue((current) =>
-            options.some((option) => option.value === current) ? current : "all"
-          );
+          setCampusFilterValue((current) => {
+            if (options.some((option) => option.value === current)) {
+              return current;
+            }
+            return "all";
+          });
         }
       } catch (error) {
         logError(error, { scope: "dashboard_load_campus_filters" });
@@ -195,6 +205,36 @@ const Dashboard = () => {
       cancelled = true;
     };
   }, [accountId, isEnterpriseAccount]);
+
+  const defaultCampusFilterValue = useMemo(() => {
+    if (!isEnterpriseAccount) {
+      return "all";
+    }
+
+    const preferredCampusId = profile?.preferred_dashboard_campus_id;
+    if (!preferredCampusId) {
+      return "all";
+    }
+
+    const preferredValue = `active:${preferredCampusId}`;
+    return campusFilterOptions.some((option) => option.value === preferredValue) ? preferredValue : "all";
+  }, [campusFilterOptions, isEnterpriseAccount, profile?.preferred_dashboard_campus_id]);
+
+  useEffect(() => {
+    if (!isEnterpriseAccount) {
+      return;
+    }
+
+    setCampusFilterValue((current) => {
+      const isCurrentCampusValid = campusFilterOptions.some((option) => option.value === current);
+
+      if (!isCurrentCampusValid || current === "all" || current === defaultCampusFilterValue) {
+        return defaultCampusFilterValue;
+      }
+
+      return current;
+    });
+  }, [campusFilterOptions, defaultCampusFilterValue, isEnterpriseAccount]);
 
   const handleLogout = async () => {
     trackEvent("logout_clicked");
@@ -322,14 +362,17 @@ const Dashboard = () => {
   const clearFilters = () => {
     setSearchInput("");
     setPresentationMonth("");
-    setCampusFilterValue("all");
+    setCampusFilterValue(defaultCampusFilterValue);
     setSortOrder("newest");
   };
 
   const displayName = profile?.full_name || user?.email || "User";
   const hasPresentations = presentations.length > 0;
   const hasActiveFilters = Boolean(
-    searchInput.trim() || presentationMonth || campusFilterValue !== "all" || sortOrder !== "newest"
+    searchInput.trim() ||
+      presentationMonth ||
+      campusFilterValue !== defaultCampusFilterValue ||
+      sortOrder !== "newest"
   );
   const hasSelectedPresentations = selectedPresentationIds.size > 0;
   const selectedCampusFilter = parseCampusFilterValue(campusFilterValue);
