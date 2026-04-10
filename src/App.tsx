@@ -26,6 +26,7 @@ import SessionTimeoutManager from "@/components/SessionTimeoutManager";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import RouteTracker from "@/components/RouteTracker";
 import ScrollToRouteTop from "@/components/ScrollToRouteTop";
+import RecoveryRedirectHandler from "@/components/RecoveryRedirectHandler";
 
 const queryClient = new QueryClient();
 
@@ -39,6 +40,7 @@ const App = () => (
           <ScrollToRouteTop />
           <RouteTracker />
           <AuthProvider>
+            <RecoveryRedirectHandler />
             <SessionTimeoutManager />
             <Routes>
               <Route path="/" element={<Index />} />

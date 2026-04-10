@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -12,6 +12,7 @@ import { isPasswordStrong } from "@/lib/password";
 
 const ResetPassword = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -33,6 +34,7 @@ const ResetPassword = () => {
     const handleRecovery = async () => {
       const tokenHash = searchParams.get("token_hash");
       const queryType = searchParams.get("type");
+      const recoveryState = (location.state as { fromRecoveryEvent?: boolean } | null)?.fromRecoveryEvent;
 
       if (queryType === "recovery" && tokenHash) {
         const { error } = await supabase.auth.verifyOtp({
@@ -89,6 +91,14 @@ const ResetPassword = () => {
         return;
       }
 
+      if (recoveryState) {
+        if (!cancelled) {
+          setReady(true);
+          setChecking(false);
+        }
+        return;
+      }
+
       if (!cancelled) {
         setReady(false);
         setChecking(false);
@@ -101,7 +111,7 @@ const ResetPassword = () => {
       cancelled = true;
       subscription.unsubscribe();
     };
-  }, [searchParams]);
+  }, [location.state, searchParams]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -22,6 +22,7 @@ SMTP delivery is expected to run through Resend from the Supabase dashboard. The
 - Uses `redirectTo` with the app route `/reset-password`
 - Email is sent by Supabase Auth through configured SMTP
 - The reset page only unlocks for real recovery-link state, not a generic signed-in session
+- The app also has a global `PASSWORD_RECOVERY` redirect safeguard so recovery sessions are sent to `/reset-password` even if Supabase first lands on another route
 
 ### Team invites
 
