@@ -1096,29 +1096,35 @@ const Account = () => {
                     </div>
                   )}
                   <div className="pt-4 flex gap-3">
-                    {isCancelingSubscription ? (
-                      <Button onClick={handleManageSubscription} disabled={portalLoading} variant="hero">
-                        {portalLoading ? "Opening..." : "Resubscribe"}
-                      </Button>
-                    ) : subscription.subscribed ? (
-                      <Button onClick={openSubscriptionModal} disabled={portalLoading} variant="outline">
-                        {portalLoading ? "Opening..." : "Manage Subscription"}
-                      </Button>
-                    ) : (
-                      <div className="w-full space-y-4">
-                        <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
-                          <p className="text-sm text-foreground font-medium">Subscription required</p>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            Choose Pro, Team, or Enterprise with monthly or annual billing to activate your account and continue.
-                          </p>
+                    {isOwner ? (
+                      isCancelingSubscription ? (
+                        <Button onClick={handleManageSubscription} disabled={portalLoading} variant="hero">
+                          {portalLoading ? "Opening..." : "Resubscribe"}
+                        </Button>
+                      ) : subscription.subscribed ? (
+                        <Button onClick={openSubscriptionModal} disabled={portalLoading} variant="outline">
+                          {portalLoading ? "Opening..." : "Manage Subscription"}
+                        </Button>
+                      ) : (
+                        <div className="w-full space-y-4">
+                          <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
+                            <p className="text-sm text-foreground font-medium">Subscription required</p>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Choose Pro, Team, or Enterprise with monthly or annual billing to activate your account and continue.
+                            </p>
+                          </div>
+                          <SubscriptionPlanPicker
+                            title="Choose Your Plan"
+                            description="Select the plan and billing interval you want to use for this account."
+                            onSelectPlan={handleSelectRequiredPlan}
+                            loadingPlanId={requiredPlanLoading}
+                          />
                         </div>
-                        <SubscriptionPlanPicker
-                          title="Choose Your Plan"
-                          description="Select the plan and billing interval you want to use for this account."
-                          onSelectPlan={handleSelectRequiredPlan}
-                          loadingPlanId={requiredPlanLoading}
-                        />
-                      </div>
+                      )
+                    ) : (
+                      <p className="text-xs text-muted-foreground pt-2">
+                        Only the account owner can change billing or manage the subscription for this organization.
+                      </p>
                     )}
                   </div>
                 </div>
@@ -1129,7 +1135,7 @@ const Account = () => {
               <AccordionTrigger className="py-6 font-normal no-underline hover:no-underline">
                 <div className="flex items-center gap-3">
                   <AlertTriangle className="w-5 h-5 text-red-600" />
-                  <h2 className="font-serif text-xl font-semibold text-foreground">Account</h2>
+                  <h2 className="font-serif text-xl font-semibold text-foreground">Nothing to See Here</h2>
                 </div>
               </AccordionTrigger>
               <AccordionContent className="pb-6">

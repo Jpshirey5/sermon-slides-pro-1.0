@@ -21,6 +21,7 @@ SMTP delivery is expected to run through Resend from the Supabase dashboard. The
 - Triggered from `src/pages/ForgotPassword.tsx`
 - Uses `redirectTo` with the app route `/reset-password`
 - Email is sent by Supabase Auth through configured SMTP
+- The reset page only unlocks for real recovery-link state, not a generic signed-in session
 
 ### Team invites
 
@@ -100,6 +101,11 @@ Current app redirect targets:
 - team invites send `redirectTo` to `/auth/confirm`
 - invite completion continues on `/signup?invite=complete`
 
+Important:
+
+- The Supabase Recovery template should use `{{ .RedirectTo }}`, not `{{ .SiteURL }}`, so reset links land on `/reset-password`
+- If recovery emails are opening a signed-in page instead of the reset form, check `Authentication -> Email Templates -> Recovery` first
+
 Use the hosted logo URL in the templates:
 
 - `https://hqtcgynnnghxihvykrin.supabase.co/storage/v1/object/public/Branding/Sermon%20Slide%20Pro%20logo%20Transparent.png`
@@ -116,5 +122,6 @@ Do not assume local or bundled images can be used in emails.
 - Confirm signup lands on `/auth/confirm`
 - Invite lands on `/auth/confirm`
 - Recovery lands on `/reset-password`
+- Recovery template uses `{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=recovery`
 - Invited users land on the signup page with organization and email prefilled after accepting the invite
 - Owner-driven team-member removal emails have valid `RESEND_API_KEY` and `RESEND_FROM_EMAIL` secrets configured
