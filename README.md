@@ -96,10 +96,76 @@ npx supabase secrets set \
 - Supabase handles signup, login, email confirmation, and password reset.
 - The app uses a dedicated `/auth/confirm` route for email confirmation.
 - Password resets route through `/reset-password`.
+- Team invites are created in the app, but the email is now delivered through Supabase Auth's invite template.
+- New Supabase invite acceptance routes through `/auth/confirm` and then into the signup page to finish name and password setup.
 - Stripe checkout is initiated through the app and Supabase Edge Functions, not directly from the email template.
 - Active subscription changes from the Account page are handled through the Stripe billing portal via the `customer-portal` Edge Function.
 - The Stripe billing portal configuration must have subscription update options enabled for the supported plan prices if you want in-app plan changes to work.
 - If auth emails are pointing to the wrong host, check Supabase `Authentication -> URL Configuration` and the confirm-signup email template.
+
+## Auth Email Setup
+
+Sermon Slide Pro now uses two coordinated email paths:
+
+- Supabase Auth emails via custom SMTP for:
+  - confirm signup
+  - recovery
+  - invite
+- App-managed invite creation and pending invite tracking in the database
+- Transactional Resend API email for owner-driven team-member removal notices
+
+The app assumes the following route alignment in production:
+
+- confirm signup -> `/auth/confirm`
+- invite -> `/auth/confirm`
+- recovery -> `/reset-password`
+
+Required public/frontend variables:
+
+- `VITE_SITE_URL`
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_PUBLISHABLE_KEY`
+
+Required server-side/runtime variables:
+
+- `SITE_URL` for edge-function invite redirect fallback
+- `SUPABASE_SERVICE_ROLE_KEY` for the `send-invite` function
+- `RESEND_API_KEY` for team-member removal emails
+- `RESEND_FROM_EMAIL` for team-member removal emails
+- `RESEND_FROM_NAME` optional sender name override for team-member removal emails
+
+Supabase Dashboard requirements:
+
+- `Authentication -> URL Configuration`
+  - Site URL must be the production app URL
+  - Redirect URLs must allow the production app host and auth routes
+- `Authentication -> Email Templates`
+  - Confirm signup should use the app confirmation route
+  - Recovery should use the app reset-password route
+  - Invite should use the branded Supabase invite template
+- `Authentication -> SMTP Settings`
+  - configured to use Resend SMTP
+
+Use the hosted public logo URL in Supabase email templates rather than local image assets:
+
+- `https://hqtcgynnnghxihvykrin.supabase.co/storage/v1/object/public/Branding/Sermon%20Slide%20Pro%20logo%20Transparent.png`
+
+Recommended direct-app template link patterns:
+
+- Confirm signup:
+  - `{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=email`
+- Recovery:
+  - `{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=recovery`
+- Invite:
+  - `{{ .RedirectTo }}?token_hash={{ .TokenHash }}&type=invite`
+
+With the current app:
+
+- signup passes `redirectTo` as the full `/auth/confirm` route
+- recovery passes `redirectTo` as the full `/reset-password` route
+- team invites pass `redirectTo` as the full `/auth/confirm` route
+- invited team members finish setup on `/signup?invite=complete` after email confirmation
+- owners can remove non-owner team members from the Account page, which deletes that user login and emails a removal notice
 
 ## Deployment
 

@@ -85,6 +85,8 @@ const Account = () => {
   const [campusActionLoading, setCampusActionLoading] = useState<string | null>(null);
   const [editingCampusId, setEditingCampusId] = useState<string | null>(null);
   const [editingCampusName, setEditingCampusName] = useState("");
+  const [memberToRemove, setMemberToRemove] = useState<TeamMember | null>(null);
+  const [removingMemberId, setRemovingMemberId] = useState<string | null>(null);
   const [deleteWarningOpen, setDeleteWarningOpen] = useState(false);
   const [deleteFinalOpen, setDeleteFinalOpen] = useState(false);
   const [subscriptionModalOpen, setSubscriptionModalOpen] = useState(false);
@@ -336,6 +338,46 @@ const Account = () => {
       toast.error("An error occurred.");
     } finally {
       setInviting(false);
+    }
+  };
+
+  const handleRemoveTeamMember = async () => {
+    if (!memberToRemove) return;
+
+    setRemovingMemberId(memberToRemove.user_id);
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session) {
+        toast.error("Please log in again.");
+        return;
+      }
+
+      const { data, error } = await supabase.functions.invoke("remove-team-member", {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+        body: {
+          targetUserId: memberToRemove.user_id,
+        },
+      });
+
+      if (error || data?.error) {
+        toast.error(error?.message || data?.error || "Could not remove this team member.");
+        return;
+      }
+
+      await loadTeam();
+      setMemberToRemove(null);
+      toast.success(
+        data?.emailSent === false
+          ? "Team member removed. Their account was deleted, but the removal email could not be sent."
+          : "Team member removed and notified by email.",
+      );
+    } catch {
+      toast.error("Could not remove this team member.");
+    } finally {
+      setRemovingMemberId(null);
     }
   };
 
@@ -744,15 +786,27 @@ const Account = () => {
                   <div className="space-y-3 mb-6">
                     {teamMembers.map(member => (
                       <div key={member.id} className="flex items-center justify-between p-3 rounded-lg bg-white/65 border border-border/70">
-                        <div>
+                        <div className="min-w-0">
                           <p className="text-sm font-medium text-foreground">{member.full_name || "Unnamed"}</p>
-                          <p className="text-xs text-muted-foreground">{member.email}</p>
+                          <p className="text-xs text-muted-foreground truncate">{member.email}</p>
                         </div>
-                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-                          member.role === 'owner' ? 'bg-primary/10 text-primary' : 'bg-secondary text-muted-foreground'
-                        }`}>
-                          {member.role === 'owner' ? 'Owner' : 'Member'}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                            member.role === 'owner' ? 'bg-primary/10 text-primary' : 'bg-secondary text-muted-foreground'
+                          }`}>
+                            {member.role === 'owner' ? 'Owner' : 'Member'}
+                          </span>
+                          {isOwner && member.role !== "owner" && member.user_id !== user?.id && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setMemberToRemove(member)}
+                              disabled={removingMemberId === member.user_id}
+                            >
+                              {removingMemberId === member.user_id ? "Removing..." : "Remove"}
+                            </Button>
+                          )}
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -1070,7 +1124,7 @@ const Account = () => {
                   Delete your account and permanently remove your data from the platform.
                   {isOwner
                     ? " As an owner, this will also remove all team members and presentations for your organization."
-                    : " This action permanently removes your own login and profile access."}
+                    : " This action permanently removes only your own login and profile access. Presentations you created will stay with your organization."}
                 </p>
                 <Button variant="destructive" onClick={handleStartDeleteFlow}>
                   <Trash2 className="w-4 h-4 mr-2" />
@@ -1081,6 +1135,47 @@ const Account = () => {
           </Accordion>
         </motion.div>
       </main>
+
+      <Dialog open={!!memberToRemove} onOpenChange={(open) => !open && !removingMemberId && setMemberToRemove(null)}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Remove Team Member</DialogTitle>
+            <DialogDescription className="pt-2 text-left">
+              This will permanently delete this team member&apos;s login and remove their access to your organization.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="text-sm text-foreground space-y-2">
+            <p>
+              <span className="font-medium">Team member:</span>{" "}
+              {memberToRemove?.full_name || memberToRemove?.email || "Selected member"}
+            </p>
+            {memberToRemove?.email && (
+              <p>
+                <span className="font-medium">Email:</span> {memberToRemove.email}
+              </p>
+            )}
+            <p>Only this member will lose access.</p>
+            <p>Presentations they created will remain with your organization.</p>
+            <p>An email will be sent to let them know they have been removed.</p>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setMemberToRemove(null)}
+              disabled={Boolean(removingMemberId)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleRemoveTeamMember}
+              disabled={Boolean(removingMemberId)}
+            >
+              {removingMemberId ? "Removing..." : "Remove Member"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={deleteWarningOpen} onOpenChange={setDeleteWarningOpen}>
         <DialogContent className="sm:max-w-lg">
@@ -1095,13 +1190,21 @@ const Account = () => {
           </DialogHeader>
           <div className="text-sm text-foreground space-y-2">
             <p>Deleting your account will permanently remove your profile and access.</p>
-            <p>All presentations tied to your account context will be deleted.</p>
+            {isOwner ? (
+              <p>All presentations tied to your organization account will be deleted.</p>
+            ) : (
+              <p>Presentations you created will remain with your organization and stay available to the team.</p>
+            )}
             {isOwner && (
               <p className="font-medium text-red-700">
                 Because you are an owner, all associated team members will be removed and lose access.
               </p>
             )}
-            <p>Any active Stripe subscription for your account context will be canceled.</p>
+            {isOwner ? (
+              <p>Any active Stripe subscription for your organization account will be canceled.</p>
+            ) : (
+              <p>Your organization's subscription and the rest of the team will remain active.</p>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleteWarningOpen(false)}>Cancel</Button>

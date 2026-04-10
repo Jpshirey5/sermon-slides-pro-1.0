@@ -61,10 +61,20 @@
 </head>
 <body>
   <h1>Sermon Slide Pro User Journey Documentation</h1>
-  <p class="meta">Prepared from the current application implementation in <b>sermon-slides-pro-1.0</b>. This document is intended to be editable and usable for internal operations, onboarding, support, or investor documentation.</p>
+  <p class="meta">
+    Prepared from the current implementation in <b>sermon-slides-pro-1.0</b> as of
+    <b>April 10, 2026</b>. This is the canonical internal operations document in the
+    <b>/docs</b> folder and is intended for support, onboarding, handoff, and product
+    operations.
+  </p>
 
   <h2>1. Product Summary</h2>
-  <p>Sermon Slide Pro is a web platform for building sermon presentations. A user can arrive from the public website, create an account, choose a paid subscription, build a presentation from a sermon form, refine the result in a slide editor, and export the finished deck as either PowerPoint or ProPresenter. The product also supports a pay-per-export path for users who are not subscribed.</p>
+  <p>
+    Sermon Slide Pro is a web application for building sermon presentations from a structured
+    sermon form, refining them in a slide editor, and exporting them for presentation software.
+    The application supports both a pay-per-export path and authenticated subscription-based
+    account usage.
+  </p>
 
   <table>
     <tr>
@@ -72,399 +82,633 @@
       <th>How the platform supports it</th>
     </tr>
     <tr>
-      <td>Create sermon presentation slides quickly</td>
-      <td>Structured sermon form with sermon points, verse references, translation selection, and automatic scripture lookup</td>
+      <td>Create sermon slides quickly</td>
+      <td>Structured creation flow with title, series, presentation date, points, verses, and automatic scripture lookup</td>
     </tr>
     <tr>
-      <td>Refine the visual presentation</td>
-      <td>Slide editor with text, ordering, background, styling, preview, and autosave</td>
+      <td>Refine the final deck</td>
+      <td>Slide editor with generation, manual editing, reordering, background control, preview, and autosave</td>
     </tr>
     <tr>
-      <td>Use slides in church presentation software</td>
+      <td>Use slides in service software</td>
       <td>Export to <b>.pptx</b> and <b>.probundle</b></td>
     </tr>
     <tr>
-      <td>Stay active as a long-term customer</td>
-      <td>Dashboard, saved presentations, subscription management, account profile settings, and team invites</td>
+      <td>Support recurring weekly workflow</td>
+      <td>Saved presentations, dashboard management, account settings, subscription controls, and team support</td>
+    </tr>
+    <tr>
+      <td>Organize larger ministries</td>
+      <td>Enterprise-only campus support with up to 5 campuses and campus-filtered dashboard views</td>
     </tr>
   </table>
 
-  <h2>2. Website Entry to First Conversion</h2>
+  <h2>2. Website Entry and Conversion Paths</h2>
 
-  <h3>2.1 Landing on the Website</h3>
-  <p>The user enters the website on the public home page. The landing experience is organized around:</p>
+  <h3>2.1 Public Landing Experience</h3>
+  <p>The public website is the route at <b>/</b> and is composed of the following sections:</p>
   <ul>
-    <li>Hero section introducing the platform</li>
-    <li>Feature explanation</li>
-    <li>Testimonials/social proof</li>
-    <li>Pricing section</li>
-    <li>Call-to-action section</li>
+    <li>Hero</li>
+    <li>Features</li>
+    <li>Testimonials</li>
+    <li>Pricing</li>
+    <li>Call to action</li>
   </ul>
-  <p>The public site is designed to move the user toward either a free creation flow or a paid Pro subscription.</p>
+  <p>
+    Route-level navigation now resets to the top of the page, so when a user returns to the
+    landing page they land back on the hero section instead of their prior scroll position.
+  </p>
 
-  <h3>2.2 Pricing Choices Presented to the User</h3>
+  <h3>2.2 Pricing Model Presented to the User</h3>
   <table>
     <tr>
-      <th>Option</th>
-      <th>Price</th>
+      <th>Path</th>
       <th>User intent supported</th>
-      <th>Primary call to action</th>
+      <th>Current platform behavior</th>
     </tr>
     <tr>
       <td>Pay Per Export</td>
-      <td>$9 per export</td>
-      <td>User wants to create freely and pay only when exporting a specific presentation</td>
-      <td>Go to the free creation flow</td>
+      <td>User wants to create first and pay only when exporting</td>
+      <td>Opens the public creator at <b>/create</b>; export later triggers a one-time Stripe checkout</td>
     </tr>
     <tr>
-      <td>Pro Monthly</td>
-      <td>$50/month</td>
-      <td>User wants a persistent account, saved work, dashboard access, unlimited exports, and collaboration features</td>
-      <td>Start signup and subscription checkout</td>
+      <td>Pro</td>
+      <td>Single-user recurring workflow</td>
+      <td>Subscription flow through signup or account checkout</td>
     </tr>
     <tr>
-      <td>Pro Yearly</td>
-      <td>$500/year</td>
-      <td>User wants the same Pro capability with annual billing</td>
-      <td>Start signup and subscription checkout</td>
+      <td>Team</td>
+      <td>Small church team workflow</td>
+      <td>Subscription flow with shared account support for up to 3 total users</td>
+    </tr>
+    <tr>
+      <td>Enterprise</td>
+      <td>Larger ministry workflow with broader collaboration and campus organization</td>
+      <td>Subscription flow with up to 10 total users and campus support</td>
     </tr>
   </table>
 
-  <h3>2.3 Conversion Paths from the Homepage</h3>
-  <p>There are two main user-entry paths after the homepage:</p>
+  <p>The current pricing UI supports both <b>monthly</b> and <b>annual</b> billing for Pro, Team, and Enterprise.</p>
+
+  <table>
+    <tr>
+      <th>Plan</th>
+      <th>Monthly</th>
+      <th>Annual</th>
+      <th>Notes</th>
+    </tr>
+    <tr>
+      <td>Pro</td>
+      <td>$49</td>
+      <td>$490</td>
+      <td>Single-user workflow</td>
+    </tr>
+    <tr>
+      <td>Team</td>
+      <td>$99</td>
+      <td>$990</td>
+      <td>Up to 3 total users</td>
+    </tr>
+    <tr>
+      <td>Enterprise</td>
+      <td>$199</td>
+      <td>$1990</td>
+      <td>Up to 10 total users and multi-campus support</td>
+    </tr>
+  </table>
+
+  <h3>2.3 Current Entry Paths</h3>
   <ol>
-    <li><b>Free/pay-per-export path:</b> the user goes directly into presentation creation without needing an account to begin.</li>
-    <li><b>Pro subscription path:</b> the user chooses monthly or yearly Pro, creates an account, confirms email, and is redirected into Stripe checkout.</li>
+    <li><b>Pay-per-export path:</b> user opens the creator without needing an account first.</li>
+    <li><b>Account subscription path:</b> user selects Pro, Team, or Enterprise and moves through signup and Stripe checkout.</li>
+    <li><b>Authenticated upgrade path:</b> signed-in users can begin subscription checkout from the Account page.</li>
   </ol>
 
-  <h2>3. Account Creation and Login Journey</h2>
+  <h2>3. Authentication and Account Access</h2>
 
-  <h3>3.1 Standard Signup Flow</h3>
-  <p>When a user signs up for Pro, the platform collects:</p>
+  <h3>3.1 Core Authentication Model</h3>
+  <p>
+    The application uses Supabase Auth for signup, login, email confirmation, password reset,
+    and session handling. The core public auth routes are:
+  </p>
   <ul>
-    <li>Full name</li>
-    <li>Email address</li>
-    <li>Password and password confirmation</li>
-    <li>Organization name</li>
-    <li>City</li>
-    <li>State</li>
-  </ul>
-  <p>The platform validates required fields, password match, and password strength before allowing the user to continue.</p>
-
-  <h3>3.2 Plan Selection During Signup</h3>
-  <p>If the user reached signup from a pricing button, the selected plan can already be attached to the signup URL. If not, the user is shown a plan picker and chooses either:</p>
-  <ul>
-    <li>Pro Monthly</li>
-    <li>Pro Yearly</li>
+    <li><b>/signup</b></li>
+    <li><b>/login</b></li>
+    <li><b>/invite-signup</b></li>
+    <li><b>/auth/confirm</b></li>
+    <li><b>/forgot-password</b></li>
+    <li><b>/reset-password</b></li>
   </ul>
 
-  <h3>3.3 Email Confirmation</h3>
-  <p>After signup, the system creates the account and asks the user to confirm their email address. For new Pro users, the application stores a pending checkout state locally so that once the user confirms and logs in, the checkout process can resume automatically.</p>
+  <h3>3.2 Standard Signup Flow</h3>
+  <p>
+    Signup collects the user identity and organization information required to create a full
+    account. If the signup was initiated from pricing, the selected plan price is carried into
+    the signup and checkout path.
+  </p>
+  <p>
+    New account setup stores pending checkout intent locally so that after email confirmation the
+    app can continue into subscription checkout cleanly.
+  </p>
 
-  <h3>3.4 Login Flow</h3>
-  <p>Returning users log in with email and password. If authentication succeeds, they are sent to the dashboard or to the originally requested protected page. If the session was ended by inactivity or a security event, the user is informed during login.</p>
+  <h3>3.3 Email Confirmation and Checkout Continuation</h3>
+  <p>
+    New subscription signups must confirm email through <b>/auth/confirm</b>. After confirmation,
+    the app checks whether there is a pending checkout intent and, if so, routes the user into
+    the subscription checkout path.
+  </p>
 
-  <h3>3.5 Invite-Based Signup Flow</h3>
-  <p>The application also supports invited users. In that path:</p>
+  <h3>3.4 Login and Protected Route Behavior</h3>
+  <p>
+    Authenticated users are routed based on both authentication state and subscription state.
+    The platform currently behaves as follows:
+  </p>
+  <table>
+    <tr>
+      <th>Area</th>
+      <th>Requirement</th>
+      <th>Current behavior</th>
+    </tr>
+    <tr>
+      <td>Dashboard</td>
+      <td>Authenticated and subscribed</td>
+      <td>Redirects unsubscribed users to <b>/account?requiredSubscription=1</b></td>
+    </tr>
+    <tr>
+      <td>Dashboard creator</td>
+      <td>Authenticated and subscribed</td>
+      <td>Protected under the same rule as the dashboard</td>
+    </tr>
+    <tr>
+      <td>Account page</td>
+      <td>Authenticated</td>
+      <td>Available even when unsubscribed so billing can be activated or managed</td>
+    </tr>
+    <tr>
+      <td>Public creator</td>
+      <td>No account required</td>
+      <td>Supports guest usage and later pay-per-export checkout</td>
+    </tr>
+  </table>
+
+  <h3>3.5 Invite-Based Access</h3>
+  <p>The application supports invite-based signup into an existing account.</p>
   <ul>
-    <li>The invite token is verified</li>
-    <li>The invited email is prefilled and locked</li>
-    <li>The user completes signup for the existing organization</li>
-    <li>The user is taken into the dashboard after account confirmation/login</li>
+    <li>Invite token is validated</li>
+    <li>Invited email is prefilled</li>
+    <li>User joins the existing account structure</li>
+    <li>Team access is then controlled by the account membership model</li>
   </ul>
 
-  <h2>4. Subscription Payment Process</h2>
+  <h2>4. Subscription and Billing Execution</h2>
 
-  <h3>4.1 When Subscription Checkout Starts</h3>
-  <p>Subscription checkout can start in three places:</p>
+  <h3>4.1 Where Subscription Checkout Starts</h3>
+  <p>Subscription checkout can currently start from:</p>
   <ul>
-    <li>From the public pricing section</li>
-    <li>From signup after email confirmation</li>
-    <li>From the account page when an unsubscribed user is required to activate Pro</li>
+    <li>The landing-page pricing section</li>
+    <li>Signup continuation after email confirmation</li>
+    <li>The Account page for authenticated users</li>
+    <li>The checkout redirect route at <b>/checkout-redirect</b></li>
   </ul>
 
-  <h3>4.2 Checkout Preparation</h3>
-  <p>Before opening Stripe, the system:</p>
+  <h3>4.2 Subscription Checkout Execution Path</h3>
+  <p>The account subscription flow uses the following execution chain:</p>
+  <ol>
+    <li>User selects a Pro, Team, or Enterprise price</li>
+    <li>The app invokes the Supabase Edge Function <b>create-checkout</b></li>
+    <li>The function validates the selected Stripe price and the user account</li>
+    <li>Stripe checkout session is created</li>
+    <li>Success returns to <b>/dashboard?checkout=success</b></li>
+    <li>Cancel returns to the Account page</li>
+  </ol>
+
+  <h3>4.3 Subscription State Refresh</h3>
+  <p>
+    Subscription state is refreshed through the <b>check-subscription</b> Edge Function and
+    frontend auth context. This refresh matters after:
+  </p>
   <ul>
-    <li>Confirms the user is authenticated</li>
-    <li>Finds the user’s account record</li>
-    <li>Finds or creates a Stripe customer</li>
-    <li>Saves the Stripe customer ID to the organization account</li>
-    <li>Checks whether the user already has an active subscription</li>
+    <li>checkout success</li>
+    <li>customer-portal return</li>
+    <li>initial login/session bootstrap</li>
   </ul>
 
-  <h3>4.3 Stripe Checkout Session</h3>
-  <p>If the user is not already subscribed, the system creates a Stripe subscription checkout session using the selected monthly or yearly price. The success and cancel destinations are:</p>
+  <h3>4.4 Manage Subscription Modal</h3>
+  <p>
+    On the Account page, subscribed users open a <b>Manage Subscription</b> modal. The current UI
+    presents two actions:
+  </p>
   <ul>
-    <li><b>Success:</b> dashboard with a successful checkout state</li>
-    <li><b>Cancel:</b> account page</li>
+    <li><b>Change Subscription</b> on the left</li>
+    <li><b>Cancel Subscription</b> on the right</li>
   </ul>
+  <p>
+    Changing a plan opens the existing plan-management flow and current-plan picker. Cancellation
+    continues into the current customer-portal cancellation behavior.
+  </p>
 
-  <h3>4.4 Successful Subscription Outcome</h3>
-  <p>After successful payment:</p>
-  <ul>
-    <li>The user is returned to the dashboard</li>
-    <li>The app refreshes subscription status</li>
-    <li>A welcome message confirms the subscription is active</li>
-    <li>The user now has full Pro access</li>
-  </ul>
-
-  <h3>4.5 Ongoing Subscription Management</h3>
-  <p>From the account page, a subscribed user can open the Stripe customer portal to:</p>
-  <ul>
-    <li>Manage subscription status</li>
-    <li>Resubscribe if cancellation is pending</li>
-    <li>Review renewal timing</li>
-  </ul>
+  <h3>4.5 Customer Portal Usage</h3>
+  <p>
+    Ongoing subscription management is routed through the <b>customer-portal</b> Edge Function.
+    This is used for plan changes, billing management, and cancellation flows for subscribed users.
+  </p>
 
   <div class="note">
-    <b>Important product behavior:</b> protected areas such as the dashboard and dashboard-based creation flow require an active subscription. Unsubscribed authenticated users are redirected to the account page to activate a plan.
+    <b>Operational note:</b> the app assumes Stripe billing-portal settings are correctly configured
+    for the supported prices. Plan changes, renewal visibility, and cancellation behavior depend on
+    that portal configuration being valid in Stripe.
   </div>
 
-  <h2>5. Presentation Creation Process: Form to Generated Slides</h2>
+  <h2>5. Presentation Creation Flow</h2>
 
-  <h3>5.1 Entry Into the Creation Flow</h3>
-  <p>The user enters the creation flow by choosing <b>Create</b> from either the public site or the dashboard. The dashboard version is the Pro workflow. The public version also supports guest usage.</p>
+  <h3>5.1 Entry Routes</h3>
+  <p>The creator is available in two main forms:</p>
+  <ul>
+    <li><b>/create</b> for public and guest creation</li>
+    <li><b>/dashboard/create</b> for authenticated subscribed dashboard usage</li>
+  </ul>
 
-  <h3>5.2 Sermon Form Inputs</h3>
-  <p>The presentation builder starts as a structured form. The user can define:</p>
+  <h3>5.2 Current Form Fields</h3>
+  <p>The sermon creation flow now supports the following structured fields:</p>
   <ul>
     <li>Presentation title</li>
+    <li>Series</li>
+    <li>Presentation date</li>
     <li>Bible translation</li>
     <li>Verse breakdown mode</li>
     <li>Sermon points</li>
-    <li>Verse sections</li>
-    <li>Multiple scripture references within a section</li>
+    <li>Verse sections and scripture references</li>
+    <li>Enterprise-only campus selection</li>
   </ul>
 
-  <h3>5.3 Content Block Types</h3>
+  <h3>5.3 Scripture Lookup Execution</h3>
+  <p>
+    Scripture references are looked up asynchronously while the user types. The frontend calls the
+    Supabase Edge Function <b>scripture-lookup</b>, which resolves scripture content and returns it
+    to the creator flow. Lookup errors are shown inline so the user can correct the reference.
+  </p>
+
+  <h3>5.4 Content Block Types</h3>
   <table>
     <tr>
       <th>Block type</th>
       <th>User enters</th>
-      <th>Result in generated slide set</th>
+      <th>Result</th>
     </tr>
     <tr>
       <td>Point</td>
-      <td>A sermon point title</td>
-      <td>A point slide is created</td>
+      <td>Sermon point title or content block</td>
+      <td>Generates point-oriented slides</td>
     </tr>
     <tr>
       <td>Verse</td>
-      <td>One or more scripture references</td>
-      <td>Scripture slides are created from the lookup results</td>
+      <td>Scripture references</td>
+      <td>Generates scripture slides from lookup results</td>
     </tr>
   </table>
 
-  <h3>5.4 Scripture Lookup</h3>
-  <p>As the user types scripture references, the application automatically looks them up after a short delay. Lookup results are attached to the form state. If the lookup fails, the interface reports the error so the user can correct the reference.</p>
-
   <h3>5.5 Translation and Breakdown Behavior</h3>
-  <p>The user can choose a Bible translation, and the system can regenerate scripture text against that translation. The user can also choose how scripture is split:</p>
+  <p>The creator currently supports translation-aware scripture lookup and two scripture split modes:</p>
   <ul>
-    <li><b>Verse-by-verse:</b> each verse becomes its own slide</li>
-    <li><b>Full verses:</b> the passage stays together in larger scripture slides</li>
+    <li><b>Verse by verse</b></li>
+    <li><b>Full verses</b></li>
   </ul>
 
-  <h3>5.6 Reordering During Form Creation</h3>
-  <p>The user can reorder sermon points and verse sections before generating slides. This ensures the sermon structure and presentation flow match the intended delivery order.</p>
-
-  <h3>5.7 Save and Continue to Editor</h3>
-  <p>When the user submits the form, the application:</p>
+  <h3>5.6 Enterprise Campus Assignment During Creation</h3>
+  <p>
+    Enterprise accounts must assign every presentation to a campus. The campus selector is shown
+    only for Enterprise users and defaults according to the current app state:
+  </p>
   <ul>
-    <li>Creates or updates the presentation record</li>
-    <li>Stores the source form data</li>
-    <li>Calculates the slide count</li>
-    <li>Opens the slide editor for visual refinement</li>
-  </ul>
-  <p>For authenticated users, the presentation is saved in the backend. For guest users, it is stored locally in browser storage.</p>
-
-  <h2>6. Slide Editor Process: Generated Slides to Final Presentation</h2>
-
-  <h3>6.1 Initial Slide Generation</h3>
-  <p>When the editor opens, it loads saved editor slides if they already exist. If not, it generates a default slide deck from the sermon form data. The generated deck includes:</p>
-  <ul>
-    <li>A title slide</li>
-    <li>Point slides for sermon points</li>
-    <li>Scripture slides for looked-up verses</li>
+    <li>If the user came from a campus-filtered dashboard, that campus is preselected</li>
+    <li>Otherwise the user preference or primary campus is used</li>
+    <li>Non-Enterprise flows do not show campus selection</li>
   </ul>
 
-  <h3>6.2 Editing Capabilities</h3>
-  <p>Inside the editor, the user can:</p>
+  <h3>5.7 Save and Continue to the Editor</h3>
+  <p>When the user generates slides, the application saves the presentation state and moves into the editor.</p>
   <ul>
-    <li>Select slides individually or in groups</li>
+    <li>Authenticated account usage saves the presentation to the backend</li>
+    <li>Guest usage stores the presentation locally until later unlock/export steps</li>
+    <li>Series and presentation date are saved as first-class sermon metadata</li>
+    <li>Enterprise presentations also persist campus assignment</li>
+  </ul>
+
+  <h2>6. Slide Editor and Save Lifecycle</h2>
+
+  <h3>6.1 Editor Entry</h3>
+  <p>
+    The slide editor route is <b>/editor/:id</b>. When it opens, the app loads existing editor
+    slides when available. If saved editor slides do not exist yet, it generates a default slide
+    deck from the saved sermon form state.
+  </p>
+
+  <h3>6.2 Main Editing Capabilities</h3>
+  <p>The editor remains the main daily working surface for the product. Users can currently:</p>
+  <ul>
     <li>Reorder slides</li>
-    <li>Add new slides</li>
-    <li>Delete slides</li>
-    <li>Edit text content</li>
-    <li>Adjust fonts and colors</li>
-    <li>Adjust line spacing</li>
-    <li>Apply or upload background images</li>
-    <li>Preview the deck before export</li>
+    <li>Add or delete slides</li>
+    <li>Edit text</li>
+    <li>Adjust visual styling</li>
+    <li>Apply or upload backgrounds</li>
+    <li>Preview the presentation</li>
+    <li>Export when ready</li>
   </ul>
 
-  <h3>6.3 Autosave Behavior</h3>
-  <p>The editor autosaves changes after the user modifies slides. This applies to slide-level design changes, allowing users to return later without losing progress.</p>
+  <h3>6.3 Autosave and Persistence</h3>
+  <p>
+    The editor autosaves slide changes so users can return later without losing work. For saved
+    account presentations, editor changes persist to the backend. This save lifecycle is part of
+    the recurring dashboard workflow for subscribed users.
+  </p>
 
   <h3>6.4 Background Media Handling</h3>
-  <p>If the user uses custom background images, the application resolves and stores those media assets. When slides are removed or changed, the system cleans up obsolete stored backgrounds where appropriate.</p>
+  <p>
+    Custom backgrounds are handled through the background asset pipeline. The app stores and
+    resolves background assets, and removes obsolete stored backgrounds where appropriate as editor
+    content changes.
+  </p>
 
-  <h3>6.5 Editor as the Main Working Surface</h3>
-  <p>At this stage the user has moved from structured sermon data entry into active presentation production. This is the primary daily-use surface for a repeat customer because it turns the generated draft into a polished, stage-ready deck.</p>
+  <h3>6.5 Current Save-State Relationship</h3>
+  <p>The saved presentation model now combines:</p>
+  <ul>
+    <li>summary metadata for dashboard display</li>
+    <li>structured form data used for generation</li>
+    <li>editor slide payload used for final editing and export</li>
+  </ul>
 
-  <h2>7. Export Process and Export Payment Flow</h2>
+  <h2>7. Export and Payment Logic</h2>
 
   <h3>7.1 Export Decision Logic</h3>
-  <p>When the user clicks <b>Export</b>, the platform checks which access model applies:</p>
+  <p>When a user exports from the editor, the platform applies one of two models:</p>
   <table>
     <tr>
-      <th>User type</th>
+      <th>User state</th>
       <th>What happens next</th>
     </tr>
     <tr>
-      <td>Active Pro subscriber</td>
-      <td>Export options open immediately</td>
+      <td>Subscribed account user</td>
+      <td>Export options open directly</td>
     </tr>
     <tr>
-      <td>Non-subscriber with prior unlock for this sermon</td>
-      <td>Export options open immediately</td>
-    </tr>
-    <tr>
-      <td>Non-subscriber without unlock</td>
-      <td>One-time payment prompt opens</td>
+      <td>Guest or non-subscriber without unlock</td>
+      <td>One-time export checkout is required first</td>
     </tr>
   </table>
 
-  <h3>7.2 One-Time Export Payment</h3>
-  <p>For non-subscribers, the system offers a one-time export unlock priced at <b>$9</b>. This unlock is tied to the individual presentation and supports unlimited downloads for that presentation after payment.</p>
+  <h3>7.2 Pay-Per-Export Execution</h3>
+  <p>
+    The pay-per-export path uses the Supabase Edge Function <b>create-guest-checkout</b>. Before
+    redirecting to Stripe, the app stores pending export context locally so that it can restore the
+    presentation after payment.
+  </p>
+  <p>
+    Success returns to <b>/payment-success</b>, where the app restores the pending presentation and
+    routes the user back into the editor.
+  </p>
 
-  <h3>7.3 Checkout Preparation for Pay-Per-Export</h3>
-  <p>Before redirecting the user to Stripe for one-time payment, the app:</p>
-  <ul>
-    <li>Saves current editor slides</li>
-    <li>Stores pending export context locally</li>
-    <li>Stores a snapshot of the presentation so it can be restored after the Stripe round trip if needed</li>
-  </ul>
-
-  <h3>7.4 Stripe Return After One-Time Payment</h3>
-  <p>After successful payment, the user returns to a payment-success page. The app then:</p>
-  <ul>
-    <li>Finds the pending sermon ID or snapshot</li>
-    <li>Restores the presentation if necessary</li>
-    <li>Returns the user to the editor with a successful payment state</li>
-    <li>Marks export as unlocked for that presentation</li>
-    <li>Immediately opens the export options modal</li>
-  </ul>
-
-  <h3>7.5 Export Options Presented to the User</h3>
+  <h3>7.3 Export Formats</h3>
   <table>
     <tr>
       <th>Format</th>
       <th>Description</th>
-      <th>Result</th>
+      <th>Output</th>
     </tr>
     <tr>
       <td>PowerPoint (.pptx)</td>
-      <td>Microsoft PowerPoint-compatible presentation file</td>
-      <td>Downloads a widescreen PowerPoint deck</td>
+      <td>Presentation file for PowerPoint-compatible use</td>
+      <td>Widescreen PowerPoint deck download</td>
     </tr>
     <tr>
       <td>ProPresenter (.probundle)</td>
-      <td>Bundle export for ProPresenter with media support</td>
-      <td>Downloads a ProPresenter bundle containing presentation data and background media</td>
+      <td>Presentation bundle for ProPresenter workflows</td>
+      <td>ProPresenter bundle download with presentation data and media support</td>
     </tr>
   </table>
 
-  <h3>7.6 Export Validation</h3>
-  <p>Before the file is produced, the platform validates the slide deck. If required slide content is missing or invalid, export is blocked until the issue is corrected.</p>
+  <h3>7.4 Export Validation</h3>
+  <p>
+    Export is validated before file creation. If required data is missing or invalid, export is
+    blocked until the user fixes the issue. The export formatting itself is shared across single
+    export and dashboard bulk export flows.
+  </p>
 
-  <h3>7.7 Export Completion</h3>
-  <p>After export succeeds, the file is downloaded to the user’s machine. The user can continue editing and export again as needed.</p>
+  <h3>7.5 Dashboard Bulk Export</h3>
+  <p>
+    The dashboard now supports multi-select export. Users select multiple presentations, click
+    <b>Export Selected</b>, choose one format for the full batch, and receive a single zip file
+    containing the selected exports.
+  </p>
 
-  <h2>8. Dashboard and Ongoing Full-Time User Journey</h2>
+  <h2>8. Dashboard and Ongoing Use</h2>
 
-  <h3>8.1 Dashboard as the Main Hub</h3>
-  <p>For a subscribed user, the dashboard is the default operational home. It provides:</p>
+  <h3>8.1 Dashboard Role</h3>
+  <p>
+    The dashboard at <b>/dashboard</b> is the main operational home for subscribed users. It is
+    where users return each week to create, search, filter, reopen, delete, and export
+    presentations.
+  </p>
+
+  <h3>8.2 Current Dashboard Controls</h3>
+  <p>The dashboard list now supports:</p>
   <ul>
-    <li>Welcome state</li>
-    <li>Quick action to create a new presentation</li>
-    <li>A list of saved presentations</li>
-    <li>Direct access back into the editor</li>
-    <li>Ability to delete presentations</li>
+    <li>Search by title or series</li>
+    <li>Presentation month filter</li>
+    <li>Newest/oldest sorting</li>
+    <li>Refresh button for manual reload</li>
+    <li>Incremental loading with <b>Load More</b></li>
+    <li>Selection mode for bulk delete and bulk export</li>
   </ul>
 
-  <h3>8.2 Saved Presentation Lifecycle</h3>
-  <p>A full-time user typically repeats the following cycle:</p>
+  <h3>8.3 Presentation Card Behavior</h3>
+  <p>Dashboard cards now surface summary metadata instead of just a title.</p>
+  <ul>
+    <li>Series label</li>
+    <li>Presentation title</li>
+    <li>Presentation date</li>
+    <li>Slide count</li>
+    <li>Last modified timestamp</li>
+    <li>Campus and former-campus labeling for Enterprise presentations where applicable</li>
+  </ul>
+
+  <h3>8.4 Selection Mode</h3>
+  <p>When users click <b>Select</b>, the dashboard enters a selection mode that supports:</p>
+  <ul>
+    <li>Selecting individual presentations</li>
+    <li>Selecting all currently loaded presentations</li>
+    <li>Bulk deleting selected presentations</li>
+    <li>Bulk exporting selected presentations into a zip file</li>
+  </ul>
+
+  <h3>8.5 Campus Filtering for Enterprise</h3>
+  <p>
+    Enterprise users now see a campus dropdown on the dashboard. The current default option is
+    <b>All Campuses</b>, but the dashboard can also open to a user-selected default campus based on
+    the Account-page preference.
+  </p>
+  <p>The campus filter supports:</p>
+  <ul>
+    <li>All active campuses</li>
+    <li>Archived former-campus labels for presentations moved off deleted campuses</li>
+    <li>Normal composition with search, month filtering, sort, reload, and pagination</li>
+  </ul>
+
+  <h3>8.6 Ongoing Weekly Workflow</h3>
   <ol>
-    <li>Log in to the dashboard</li>
-    <li>Create a new presentation or reopen an existing one</li>
-    <li>Edit sermon content and slide styling</li>
-    <li>Export for service use</li>
-    <li>Return later to duplicate, revise, or rebuild the next sermon deck</li>
+    <li>User logs in and lands on the dashboard</li>
+    <li>User reviews the current filtered view of saved presentations</li>
+    <li>User creates a new presentation or reopens an existing one</li>
+    <li>User edits and exports the deck</li>
+    <li>User returns later for the next sermon cycle</li>
   </ol>
 
-  <h3>8.3 Account Settings and Profile Maintenance</h3>
-  <p>From the account page, a full-time user can manage:</p>
+  <h2>9. Account Management and Enterprise Campuses</h2>
+
+  <h3>9.1 Account Page Structure</h3>
+  <p>
+    The Account page now uses expandable accordion-style cards. Major sections stay collapsed until
+    the user opens them. The current sections are:
+  </p>
   <ul>
-    <li>Full name</li>
-    <li>Default Bible translation</li>
-    <li>Subscription plan and status</li>
-    <li>Renewal or cancellation state</li>
+    <li>Profile</li>
+    <li>Team</li>
+    <li>Campuses for Enterprise only</li>
+    <li>Subscription</li>
+    <li>Account</li>
   </ul>
 
-  <h3>8.4 Team and Collaboration</h3>
-  <p>For organization owners, the account page also supports team operations:</p>
+  <h3>9.2 Profile Section</h3>
+  <p>The Profile card now contains:</p>
   <ul>
-    <li>View team members</li>
-    <li>Invite additional users by email</li>
-    <li>Track pending invites</li>
-    <li>Resend invites</li>
+    <li>Organization</li>
+    <li>Full Name</li>
+    <li>Email</li>
+    <li>Default Translation</li>
+    <li>Associated Campus for Enterprise accounts</li>
   </ul>
-  <p>This is part of the long-term value of the subscription model because it turns the platform from a one-person tool into an organization-level workflow.</p>
+  <p>
+    The Associated Campus field controls which campus the dashboard should open to by default. The
+    user can still switch dashboard filters afterward.
+  </p>
 
-  <h3>8.5 Long-Term Customer State</h3>
-  <p>A mature, full-time platform user is someone who:</p>
+  <h3>9.3 Team Management</h3>
+  <p>Team operations remain on the Account page and currently support:</p>
   <ul>
-    <li>Maintains an active Pro subscription</li>
-    <li>Uses the dashboard as a regular weekly workspace</li>
-    <li>Stores multiple sermon presentations over time</li>
-    <li>Uses account settings and subscription management when needed</li>
-    <li>Potentially adds collaborators to the same organization account</li>
+    <li>Viewing team members</li>
+    <li>Viewing roles such as owner and member</li>
+    <li>Inviting additional users</li>
+    <li>Tracking and resending pending invites</li>
   </ul>
 
-  <h2>9. End-to-End Journey Summary</h2>
-  <ol>
-    <li>The user lands on the public website.</li>
-    <li>The user reviews features, testimonials, and pricing.</li>
-    <li>The user chooses either a free creation flow or a Pro subscription flow.</li>
-    <li>If pursuing Pro, the user signs up, confirms email, and completes Stripe subscription checkout.</li>
-    <li>The user enters the dashboard and starts a new presentation.</li>
-    <li>The user fills out the sermon form with points, verses, translation, and breakdown preferences.</li>
-    <li>The system performs scripture lookup and saves the presentation source data.</li>
-    <li>The user is taken into the slide editor.</li>
-    <li>The user edits slide order, text styling, backgrounds, and presentation design.</li>
-    <li>The user clicks export.</li>
-    <li>If subscribed, export proceeds immediately. If not subscribed, the user can unlock export for that presentation with a one-time $9 payment.</li>
-    <li>The user downloads the presentation as PowerPoint or ProPresenter.</li>
-    <li>As a full-time user, the person returns to the dashboard regularly to create, manage, and export future presentations.</li>
-  </ol>
+  <h3>9.4 Enterprise Campus Model</h3>
+  <p>
+    Enterprise accounts now support up to <b>5 total campuses</b>. A primary
+    <b>Main Campus</b> is ensured for Enterprise accounts and existing Enterprise presentations are
+    backfilled into a campus when needed.
+  </p>
+  <p>Current campus rules:</p>
+  <ul>
+    <li>Campus management is visible only for Enterprise plans</li>
+    <li>Only account owners can create, rename, set primary, or delete campuses</li>
+    <li>Enterprise presentations must belong to an active campus</li>
+    <li>Deleting a campus moves its presentations to the primary campus</li>
+    <li>Moved presentations keep the deleted campus name as a former-campus label for filtering</li>
+  </ul>
+
+  <h3>9.5 Subscription Section</h3>
+  <p>The Subscription card shows current status, renewal state, and plan actions.</p>
+  <ul>
+    <li>Subscribed users open the Manage Subscription modal</li>
+    <li>Unsubscribed users can activate a plan from the Account page</li>
+    <li>Current plan recognition supports Pro, Team, and Enterprise with monthly or annual billing</li>
+  </ul>
+
+  <h3>9.6 Account Deletion</h3>
+  <p>
+    Account deletion remains a guarded flow. The current implementation requires an exit survey
+    before final deletion is completed.
+  </p>
 
   <h2>10. Operational Notes</h2>
+
+  <h3>10.1 Runtime and Platform Dependencies</h3>
   <ul>
-    <li>The application supports both guest/local-storage usage and authenticated account-based usage.</li>
-    <li>Protected subscription-only areas redirect unsubscribed users to activate billing.</li>
-    <li>Subscription management is handled through Stripe’s customer portal.</li>
-    <li>Pay-per-export users are still able to create and edit before paying.</li>
-    <li>The system includes fallback restoration logic after one-time export payment so a presentation can be recovered even if local state needs to be rebuilt.</li>
+    <li>Frontend app is deployed as a Vite application with Cloudflare Wrangler</li>
+    <li>Supabase handles Auth, database, storage-related flows, and Edge Functions</li>
+    <li>Stripe handles subscription checkout, one-time export payment, and billing portal actions</li>
   </ul>
 
-  <h2>11. Recommended Uses for This Document</h2>
+  <h3>10.2 Important Edge Functions in Current Use</h3>
+  <table>
+    <tr>
+      <th>Function</th>
+      <th>Current purpose</th>
+    </tr>
+    <tr>
+      <td>create-checkout</td>
+      <td>Starts account subscription checkout for the selected price</td>
+    </tr>
+    <tr>
+      <td>customer-portal</td>
+      <td>Starts subscription management and plan-change portal flows</td>
+    </tr>
+    <tr>
+      <td>check-subscription</td>
+      <td>Refreshes account billing state and plan metadata</td>
+    </tr>
+    <tr>
+      <td>create-guest-checkout</td>
+      <td>Starts one-time export checkout for non-subscribed export usage</td>
+    </tr>
+    <tr>
+      <td>scripture-lookup</td>
+      <td>Resolves scripture content during the creator flow</td>
+    </tr>
+    <tr>
+      <td>send-invite</td>
+      <td>Sends organization invite emails</td>
+    </tr>
+    <tr>
+      <td>capture-telemetry</td>
+      <td>Captures app telemetry and error events</td>
+    </tr>
+    <tr>
+      <td>delete-account</td>
+      <td>Supports final account-deletion cleanup flow</td>
+    </tr>
+  </table>
+
+  <h3>10.3 Configuration Dependencies to Watch</h3>
   <ul>
-    <li>Internal product documentation</li>
-    <li>Support team training</li>
-    <li>Sales and onboarding collateral</li>
-    <li>Investor or stakeholder explanation of the customer journey</li>
-    <li>Basis for future SOPs or user manuals</li>
+    <li>Supabase URL configuration must match the production domain for auth email links</li>
+    <li>Stripe price IDs and billing-portal settings must match the plan catalog used by the app</li>
+    <li>Scripture lookup depends on the scripture function being deployed and correctly configured with its secrets</li>
+    <li>Invite delivery depends on the configured email provider and invite function deployment</li>
+    <li>Enterprise campus behavior depends on the current database migrations being applied</li>
+  </ul>
+
+  <h3>10.4 Current Route Map for Support and QA</h3>
+  <ul>
+    <li><b>/</b> landing page</li>
+    <li><b>/create</b> public creator</li>
+    <li><b>/editor/:id</b> slide editor</li>
+    <li><b>/payment-success</b> one-time export return</li>
+    <li><b>/login</b>, <b>/signup</b>, <b>/invite-signup</b>, <b>/auth/confirm</b></li>
+    <li><b>/forgot-password</b>, <b>/reset-password</b></li>
+    <li><b>/dashboard</b>, <b>/dashboard/create</b></li>
+    <li><b>/account</b></li>
+    <li><b>/checkout-redirect</b></li>
+    <li><b>/exit-survey</b></li>
+    <li><b>/contact</b>, <b>/trust-center</b></li>
+  </ul>
+
+  <h2>11. Recommended Internal Uses</h2>
+  <ul>
+    <li>Support-team training on the current customer journey</li>
+    <li>Internal onboarding for product, operations, and QA</li>
+    <li>Reference document for billing, campus, and dashboard behavior</li>
+    <li>Handoff baseline when updating flows tied to checkout, dashboard, or account operations</li>
+    <li>Quick truth source for current route and execution behavior</li>
   </ul>
 </body>
 </html>

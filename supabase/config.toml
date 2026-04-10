@@ -29,3 +29,6 @@ verify_jwt = false
 
 [functions.delete-account]
 verify_jwt = false
+
+[functions.remove-team-member]
+verify_jwt = false

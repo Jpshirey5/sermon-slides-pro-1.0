@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -12,6 +12,7 @@ import { isPasswordStrong } from "@/lib/password";
 
 const ResetPassword = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -20,6 +21,28 @@ const ResetPassword = () => {
 
   useEffect(() => {
     const handleRecovery = async () => {
+      const tokenHash = searchParams.get("token_hash");
+      const queryType = searchParams.get("type");
+
+      if (queryType === "recovery" && tokenHash) {
+        const { error } = await supabase.auth.verifyOtp({
+          token_hash: tokenHash,
+          type: "recovery",
+        });
+
+        if (error) {
+          console.error("Failed to verify recovery token:", error);
+          toast.error("Invalid or expired reset link.");
+          setChecking(false);
+          return;
+        }
+
+        window.history.replaceState(null, "", window.location.pathname);
+        setReady(true);
+        setChecking(false);
+        return;
+      }
+
       // Parse hash fragment for recovery tokens
       const hash = window.location.hash.substring(1);
       const params = new URLSearchParams(hash);
@@ -68,7 +91,7 @@ const ResetPassword = () => {
     };
 
     handleRecovery();
-  }, []);
+  }, [searchParams]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
