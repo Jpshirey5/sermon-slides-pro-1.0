@@ -41,7 +41,9 @@ type SignupNotice = {
 const SignUp = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const inviteToken = searchParams.get("invite");
+  const inviteParam = searchParams.get("invite");
+  const legacyInviteToken = inviteParam && inviteParam !== "complete" ? inviteParam : null;
+  const isInviteCompletionMode = inviteParam === "complete";
   const selectedPriceId = searchParams.get("priceId");
   const nextPath = searchParams.get("next");
   const preselectedPlan = getPlanByPriceId(selectedPriceId);
@@ -61,7 +63,7 @@ const SignUp = () => {
   // Invite state
   const [inviteValid, setInviteValid] = useState(false);
   const [inviteOrgName, setInviteOrgName] = useState("");
-  const [inviteLoading, setInviteLoading] = useState(!!inviteToken);
+  const [inviteLoading, setInviteLoading] = useState(Boolean(inviteParam));
 
   const showNotice = (title: string, description: string, onContinue?: () => void) => {
     setNotice({ title, description, onContinue });
@@ -75,18 +77,19 @@ const SignUp = () => {
 
   useEffect(() => {
     trackEvent("signup_viewed", {
-      invited: Boolean(inviteToken),
+      invited: Boolean(inviteParam),
+      inviteMode: isInviteCompletionMode ? "complete" : legacyInviteToken ? "legacy" : "none",
       hasPreselectedPlan: Boolean(preselectedPlan),
       nextPath: nextPath || "/dashboard",
     });
-  }, [inviteToken, nextPath, preselectedPlan]);
+  }, [inviteParam, isInviteCompletionMode, legacyInviteToken, nextPath, preselectedPlan]);
 
   useEffect(() => {
-    if (!inviteToken) return;
+    if (!legacyInviteToken) return;
 
     const lookupInvite = async () => {
       setInviteLoading(true);
-      const { data, error } = await supabase.rpc("get_invite_by_token", { _token: inviteToken });
+      const { data, error } = await supabase.rpc("get_invite_by_token", { _token: legacyInviteToken });
       if (error || !data || data.length === 0) {
         trackEvent("invite_lookup_failed", { reason: error?.message || "not_found" });
         showNotice("Invite unavailable", "This invite link is invalid or has expired.");
@@ -111,7 +114,85 @@ const SignUp = () => {
       logError(error, { scope: "invite_lookup" });
       setInviteLoading(false);
     });
-  }, [inviteToken]);
+  }, [legacyInviteToken]);
+
+  useEffect(() => {
+    if (!isInviteCompletionMode) return;
+
+    let cancelled = false;
+
+    const loadInviteCompletionContext = async () => {
+      setInviteLoading(true);
+
+      const { data: sessionData } = await supabase.auth.getSession();
+      const invitedUser = sessionData.session?.user ?? null;
+
+      if (!invitedUser) {
+        trackEvent("invite_completion_context_failed", { reason: "missing_session" });
+        if (!cancelled) {
+          showNotice(
+            "Invite session expired",
+            "Please use your invite email again so we can finish setting up your account.",
+            () => navigate("/login"),
+          );
+          setInviteLoading(false);
+        }
+        return;
+      }
+
+      let nextAccountId: string | null = null;
+      for (let attempt = 0; attempt < 12; attempt += 1) {
+        const { data } = await supabase.rpc("get_user_account_id", { _user_id: invitedUser.id });
+        if (data) {
+          nextAccountId = data;
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+
+      const [{ data: accountData }, { data: profileData }] = await Promise.all([
+        nextAccountId
+          ? supabase.from("accounts_public").select("name").eq("id", nextAccountId).maybeSingle()
+          : Promise.resolve({ data: null, error: null }),
+        supabase.from("profiles").select("full_name").eq("id", invitedUser.id).maybeSingle(),
+      ]);
+
+      if (!cancelled) {
+        setInviteValid(true);
+        setInviteOrgName(accountData?.name || "Your organization");
+        setEmail(invitedUser.email || "");
+        setFullName(profileData?.full_name || "");
+        setInviteLoading(false);
+      }
+
+      trackEvent("invite_completion_context_loaded", {
+        hasAccount: Boolean(nextAccountId),
+      });
+
+      if (!nextAccountId && !cancelled) {
+        showNotice(
+          "Finishing your invite",
+          "Your invite was confirmed. Your organization access is still finishing in the background, so the signup page may take a moment to fully reflect it.",
+        );
+      }
+    };
+
+    loadInviteCompletionContext().catch((error) => {
+      logError(error, { scope: "invite_completion_context" });
+      if (!cancelled) {
+        setInviteLoading(false);
+        showNotice(
+          "Invite setup issue",
+          "We couldn't finish preparing your invited account. Please try the invite link again or log in to continue.",
+          () => navigate("/login"),
+        );
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isInviteCompletionMode, navigate]);
 
   const validateForm = () => {
     const normalizedEmail = email.trim().toLowerCase();
@@ -141,7 +222,73 @@ const SignUp = () => {
     return { normalizedEmail, trimmedName };
   };
 
+  const completeInvitedAccount = async () => {
+    const validated = validateForm();
+    if (!validated) return;
+
+    const { trimmedName, normalizedEmail } = validated;
+    setLoading(true);
+
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const invitedUser = sessionData.session?.user ?? null;
+
+      if (!invitedUser) {
+        showNotice("Invite session expired", "Please use your invite email again so we can finish setting up your account.", () => navigate("/login"));
+        return;
+      }
+
+      const { error: updateUserError } = await supabase.auth.updateUser({
+        password,
+        data: {
+          ...invitedUser.user_metadata,
+          full_name: trimmedName,
+        },
+      });
+
+      if (updateUserError) {
+        throw updateUserError;
+      }
+
+      const { error: profileError } = await supabase
+        .from("profiles")
+        .update({
+          full_name: trimmedName,
+          email: normalizedEmail,
+        })
+        .eq("id", invitedUser.id);
+
+      if (profileError) {
+        throw profileError;
+      }
+
+      await supabase.auth.refreshSession();
+      startProductTour(invitedUser.id);
+      trackEvent("invite_completion_succeeded", { invited: true });
+      showNotice(
+        "Account ready",
+        "Your name and login have been set up. Continue to your dashboard.",
+        () => navigate("/dashboard"),
+      );
+    } catch (error) {
+      logError(error, { scope: "invite_completion_submit" });
+      showNotice(
+        "Could not finish setup",
+        error instanceof Error && error.message
+          ? error.message
+          : "We couldn't finish creating your invited account. Please try again.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const createAccount = async (selectedPlanId?: SubscriptionPlanId) => {
+    if (isInviteCompletionMode) {
+      await completeInvitedAccount();
+      return;
+    }
+
     const validated = validateForm();
     if (!validated) return;
 
@@ -153,8 +300,8 @@ const SignUp = () => {
         billingInterval: selectedPlanId || preselectedPlan?.id || "none",
       });
       const metadata: Record<string, string> = { full_name: trimmedName };
-      if (inviteValid && inviteToken) {
-        metadata.invite_token = inviteToken;
+      if (inviteValid && legacyInviteToken) {
+        metadata.invite_token = legacyInviteToken;
         metadata.signup_intent = "dashboard";
       } else {
         metadata.org_name = orgName.trim() || "My Church";
@@ -276,7 +423,13 @@ const SignUp = () => {
   }
 
   const isEmailLocked = inviteValid;
-  const signupSteps = inviteValid
+  const signupSteps = isInviteCompletionMode
+    ? [
+        { title: "Invite confirmed", detail: "Your organization access is already connected.", complete: true },
+        { title: "Finish your account", detail: "Add your name and set your password.", complete: false },
+        { title: "Start building slides", detail: "Open the dashboard and create your first presentation.", complete: false },
+      ]
+    : inviteValid
     ? [
         { title: "Create your account", detail: "Set your password and accept the invitation.", complete: true },
         { title: "Join your organization", detail: `You will be added to ${inviteOrgName || "your organization"}.`, complete: false },
@@ -315,9 +468,13 @@ const SignUp = () => {
               <div className="w-14 h-14 rounded-2xl gradient-hero flex items-center justify-center mx-auto mb-4">
                 <BookOpen className="w-7 h-7 text-primary-foreground" />
               </div>
-              <h1 className="font-serif text-2xl font-bold text-foreground mb-2">Create Account</h1>
+              <h1 className="font-serif text-2xl font-bold text-foreground mb-2">
+                {isInviteCompletionMode ? "Finish Creating Your Account" : "Create Account"}
+              </h1>
               <p className="text-muted-foreground">
-                {inviteValid
+                {isInviteCompletionMode
+                  ? `You're joining ${inviteOrgName} as a team member.`
+                  : inviteValid
                   ? `You've been invited to join ${inviteOrgName}`
                   : showPlanSelection
                   ? "Choose your billing plan to finish setting up your account."
@@ -388,7 +545,11 @@ const SignUp = () => {
                 {inviteValid && (
                   <div className="rounded-lg bg-primary/5 border border-primary/20 p-3">
                     <p className="text-sm text-foreground font-medium">Organization: {inviteOrgName}</p>
-                    <p className="text-xs text-muted-foreground mt-1">You'll be added as a member of this organization.</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {isInviteCompletionMode
+                        ? "Finish your name and password to activate your access."
+                        : "You'll be added as a member of this organization."}
+                    </p>
                   </div>
                 )}
 
@@ -432,7 +593,17 @@ const SignUp = () => {
                 </div>
 
                 <Button variant="hero" className="w-full" size="lg" type="submit" disabled={loading}>
-                  {loading ? "Creating Account..." : inviteValid ? "Sign Up" : preselectedPlan ? `Continue with ${preselectedPlan.label}` : "Continue to Plan Selection"}
+                  {loading
+                    ? isInviteCompletionMode
+                      ? "Finishing Setup..."
+                      : "Creating Account..."
+                    : isInviteCompletionMode
+                    ? "Finish Account Setup"
+                    : inviteValid
+                    ? "Sign Up"
+                    : preselectedPlan
+                    ? `Continue with ${preselectedPlan.label}`
+                    : "Continue to Plan Selection"}
                 </Button>
               </form>
             )}

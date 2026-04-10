@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { Resend } from "npm:resend@6";
+import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -13,7 +13,7 @@ serve(async (req) => {
   }
 
   try {
-    const { email, token, org_name, invited_by_name, site_url } = await req.json();
+    const { email, token, site_url } = await req.json();
 
     if (!email || !token) {
       return new Response(JSON.stringify({ error: "Missing email or token" }), {
@@ -22,15 +22,22 @@ serve(async (req) => {
       });
     }
 
-    const resendApiKey = Deno.env.get("RESEND_API_KEY");
-    if (!resendApiKey) {
-      return new Response(JSON.stringify({ error: "RESEND_API_KEY not configured" }), {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+
+    if (!supabaseUrl || !serviceRoleKey) {
+      return new Response(JSON.stringify({ error: "Supabase admin invite configuration is missing" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const resend = new Resend(resendApiKey);
+    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+      },
+    });
 
     const normalizeBaseUrl = (value: string | null | undefined) => {
       if (!value) return null;
@@ -48,39 +55,19 @@ serve(async (req) => {
     const envSiteUrl = normalizeBaseUrl(Deno.env.get("SITE_URL"));
 
     const siteUrl = bodySiteUrl || requestOrigin || refererOrigin || envSiteUrl || "http://localhost:8080";
-    const signupLink = `${siteUrl}/signup?invite=${token}`;
+    const redirectTo = `${siteUrl}/auth/confirm`;
 
-    const orgDisplay = org_name || "Sermon Slide Pro";
-    const inviterDisplay = invited_by_name || "A team member";
-
-    const { error } = await resend.emails.send({
-      from: "Sermon Slide Pro <onboarding@resend.dev>",
-      to: email,
-      subject: `You've been invited to join ${orgDisplay} on Sermon Slide Pro`,
-      html: `
-        <div style="font-family: Georgia, 'Times New Roman', serif; max-width: 560px; margin: 0 auto; padding: 40px 20px;">
-          <h1 style="font-size: 24px; color: #1a1a2e; margin-bottom: 8px;">You're Invited!</h1>
-          <p style="font-size: 16px; color: #555; line-height: 1.6;">
-            ${inviterDisplay} has invited you to join <strong>${orgDisplay}</strong> on Sermon Slide Pro.
-          </p>
-          <p style="font-size: 16px; color: #555; line-height: 1.6;">
-            Click the button below to create your account and get started.
-          </p>
-          <div style="margin: 32px 0;">
-            <a href="${signupLink}" style="display: inline-block; background-color: #6d28d9; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-size: 16px; font-weight: 600;">
-              Join ${orgDisplay}
-            </a>
-          </div>
-          <p style="font-size: 13px; color: #999; line-height: 1.5;">
-            This invite expires in 7 days. If you didn't expect this email, you can safely ignore it.
-          </p>
-        </div>
-      `,
+    const { error } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
+      redirectTo,
+      data: {
+        invite_token: token,
+        signup_intent: "dashboard",
+      },
     });
 
     if (error) {
-      console.error("Resend error:", error);
-      return new Response(JSON.stringify({ error: "Failed to send email" }), {
+      console.error("Supabase invite error:", error);
+      return new Response(JSON.stringify({ error: error.message || "Failed to send invite email" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });

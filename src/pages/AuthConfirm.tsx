@@ -60,12 +60,14 @@ const AuthConfirm = () => {
           storedPendingCheckout ? "checkout" : (typeof metadata.signup_intent === "string" ? metadata.signup_intent : null);
 
         const destination =
-          intent === "checkout"
-            ? getPendingCheckoutPath(storedPriceId ?? metadataPriceId)
-            : getPostConfirmPath(intent, storedPriceId ?? metadataPriceId);
+          authType === "invite"
+            ? "/signup?invite=complete"
+            : intent === "checkout"
+              ? getPendingCheckoutPath(storedPriceId ?? metadataPriceId)
+              : getPostConfirmPath(intent, storedPriceId ?? metadataPriceId);
 
         trackEvent("email_confirmation_succeeded", {
-          intent: intent ?? "dashboard",
+          intent: authType === "invite" ? "invite" : (intent ?? "dashboard"),
           destination,
         });
 
