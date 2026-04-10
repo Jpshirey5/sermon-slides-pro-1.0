@@ -32,3 +32,6 @@ verify_jwt = false
 
 [functions.remove-team-member]
 verify_jwt = false
+
+[functions.capture-telemetry]
+verify_jwt = false
