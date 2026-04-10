@@ -96,6 +96,7 @@ npx supabase secrets set \
 - Supabase handles signup, login, email confirmation, and password reset.
 - The app uses a dedicated `/auth/confirm` route for email confirmation.
 - Password resets route through `/reset-password`.
+- The app includes a global `PASSWORD_RECOVERY` redirect safeguard so Supabase recovery sessions are pushed onto `/reset-password` even if the initial landing route is different.
 - Team invites are created in the app, but the email is now delivered through Supabase Auth's invite template.
 - New Supabase invite acceptance routes through `/auth/confirm` and then into the signup page to finish name and password setup.
 - Stripe checkout is initiated through the app and Supabase Edge Functions, not directly from the email template.
