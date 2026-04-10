@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { BookOpen, ArrowLeft, CreditCard, User, Crown, Users, Mail, Loader2, AlertTriangle, Trash2, Building2, Check } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
@@ -58,8 +59,11 @@ const Account = () => {
   const { user, profile, subscription, refreshProfile, signOut, checkSubscription, accountId } = useAuth();
   const [fullName, setFullName] = useState(profile?.full_name || "");
   const [defaultTranslation, setDefaultTranslation] = useState(profile?.default_translation || DEFAULT_TRANSLATION);
-  const [saving, setSaving] = useState(false);
+  const [dashboardCampusPreference, setDashboardCampusPreference] = useState(
+    profile?.preferred_dashboard_campus_id || "all"
+  );
   const [savingDefaultTranslation, setSavingDefaultTranslation] = useState(false);
+  const [savingDashboardCampusPreference, setSavingDashboardCampusPreference] = useState(false);
   const [portalLoading, setPortalLoading] = useState(false);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [requiredPlanLoading, setRequiredPlanLoading] = useState<SubscriptionPlanId | null>(null);
@@ -90,6 +94,7 @@ const Account = () => {
   useEffect(() => {
     if (profile?.full_name) setFullName(profile.full_name);
     setDefaultTranslation(profile?.default_translation || DEFAULT_TRANSLATION);
+    setDashboardCampusPreference(profile?.preferred_dashboard_campus_id || "all");
   }, [profile]);
 
   useEffect(() => {
@@ -200,22 +205,6 @@ const Account = () => {
     }
   };
 
-  const handleSaveName = async () => {
-    if (!user) return;
-    setSaving(true);
-    const { error } = await supabase
-      .from("profiles")
-      .update({ full_name: fullName } as any)
-      .eq("id", user.id);
-    if (error) {
-      toast.error("Failed to update name.");
-    } else {
-      toast.success("Name updated!");
-      await refreshProfile();
-    }
-    setSaving(false);
-  };
-
   const handleSaveDefaultTranslation = async () => {
     if (!user) return;
     setSavingDefaultTranslation(true);
@@ -230,6 +219,25 @@ const Account = () => {
       await refreshProfile();
     }
     setSavingDefaultTranslation(false);
+  };
+
+  const handleSaveDashboardCampusPreference = async () => {
+    if (!user) return;
+    setSavingDashboardCampusPreference(true);
+    const preferredCampusId = dashboardCampusPreference === "all" ? null : dashboardCampusPreference;
+    const { error } = await supabase
+      .from("profiles")
+      .update({ preferred_dashboard_campus_id: preferredCampusId })
+      .eq("id", user.id);
+
+    if (error) {
+      toast.error("Failed to update dashboard campus.");
+    } else {
+      toast.success("Dashboard campus updated!");
+      await refreshProfile();
+    }
+
+    setSavingDashboardCampusPreference(false);
   };
 
   const handleInvite = async () => {
@@ -629,410 +637,448 @@ const Account = () => {
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
           <h1 className="font-serif text-3xl font-bold text-foreground mb-8">Account</h1>
 
-          {/* Organization */}
-          {orgName && (
-            <div className="rounded-2xl glass-panel p-6 mb-6">
-              <div className="flex items-center gap-3 mb-4">
-                <BookOpen className="w-5 h-5 text-muted-foreground" />
-                <h2 className="font-serif text-xl font-semibold text-foreground">Organization</h2>
-              </div>
-              <p className="text-foreground">{orgName}</p>
-            </div>
-          )}
-
-          {/* Profile Section */}
-          <div className="rounded-2xl glass-panel p-6 mb-6">
-            <div className="flex items-center gap-3 mb-6">
-              <User className="w-5 h-5 text-muted-foreground" />
-              <h2 className="font-serif text-xl font-semibold text-foreground">Profile</h2>
-            </div>
-            <div className="space-y-4">
-              <div>
-                <Label className="text-muted-foreground text-sm">Email</Label>
-                <p className="text-foreground">{user?.email}</p>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="fullName">Full Name</Label>
-                <div className="flex gap-2">
-                  <Input id="fullName" value={fullName} onChange={(e) => setFullName(e.target.value)} className="h-10" />
-                  <Button onClick={handleSaveName} disabled={saving} size="sm">
-                    {saving ? "Saving..." : "Save"}
-                  </Button>
+          <Accordion type="multiple" className="space-y-6">
+            <AccordionItem value="profile" className="rounded-2xl glass-panel border-none px-6">
+              <AccordionTrigger className="py-6 font-normal no-underline hover:no-underline">
+                <div className="flex items-center gap-3">
+                  <User className="w-5 h-5 text-muted-foreground" />
+                  <h2 className="font-serif text-xl font-semibold text-foreground">Profile</h2>
                 </div>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="defaultTranslation">Default Translation</Label>
-                <div className="flex gap-2">
-                  <Select value={defaultTranslation} onValueChange={setDefaultTranslation}>
-                    <SelectTrigger id="defaultTranslation" className="h-10">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {TRANSLATION_OPTIONS.map((t) => (
-                        <SelectItem key={t.code} value={t.code}>
-                          <span className="font-medium">{t.code}</span>
-                          <span className="text-muted-foreground ml-2">{t.name}</span>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Button
-                    onClick={handleSaveDefaultTranslation}
-                    disabled={savingDefaultTranslation || defaultTranslation === (profile?.default_translation || DEFAULT_TRANSLATION)}
-                    size="sm"
-                  >
-                    {savingDefaultTranslation ? "Saving..." : "Save"}
-                  </Button>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  New presentations will start with this translation by default.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Team Section */}
-          <div className="rounded-2xl glass-panel p-6 mb-6">
-            <div className="flex items-center gap-3 mb-6">
-              <Users className="w-5 h-5 text-muted-foreground" />
-              <h2 className="font-serif text-xl font-semibold text-foreground">Team</h2>
-            </div>
-
-            {teamLoading ? (
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Loading team...</span>
-              </div>
-            ) : (
-              <div className="space-y-3 mb-6">
-                {teamMembers.map(member => (
-                  <div key={member.id} className="flex items-center justify-between p-3 rounded-lg bg-white/65 border border-border/70">
+              </AccordionTrigger>
+              <AccordionContent className="pb-6">
+                <div className="space-y-4">
+                  {orgName && (
                     <div>
-                      <p className="text-sm font-medium text-foreground">{member.full_name || "Unnamed"}</p>
-                      <p className="text-xs text-muted-foreground">{member.email}</p>
+                      <Label className="text-muted-foreground text-sm">Organization</Label>
+                      <p className="text-foreground">{orgName}</p>
                     </div>
-                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-                      member.role === 'owner' ? 'bg-primary/10 text-primary' : 'bg-secondary text-muted-foreground'
-                    }`}>
-                      {member.role === 'owner' ? 'Owner' : 'Member'}
-                    </span>
+                  )}
+                  <div>
+                    <Label className="text-muted-foreground text-sm">Full Name</Label>
+                    <p className="text-foreground">{fullName || "Not set"}</p>
                   </div>
-                ))}
-              </div>
-            )}
-
-            {/* Invite form — owners only */}
-            {isOwner && (
-              <div className="pt-4 border-t border-border">
-                <Label className="text-sm font-medium text-foreground mb-2 block">Invite a team member</Label>
-                <div className="flex gap-2">
-                  <Input
-                    type="email"
-                    placeholder="colleague@church.org"
-                    value={inviteEmail}
-                    onChange={(e) => setInviteEmail(e.target.value)}
-                    className="h-10"
-                    disabled={inviteLimitReached}
-                  />
-                  <Button onClick={handleInvite} disabled={inviting || !inviteEmail || inviteLimitReached} size="sm">
-                    {inviting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
-                    <span className="ml-1">Invite</span>
-                  </Button>
-                </div>
-                <p className="mt-2 text-xs text-muted-foreground">
-                  {inviteLimitReached
-                    ? getInviteCapacityMessage(capacity.maxAdditionalUsers)
-                    : getInviteCapacityMessage(capacity.maxAdditionalUsers)}
-                </p>
-              </div>
-            )}
-
-            {isOwner && (
-              <div className="pt-4 border-t border-border mt-4">
-                <div className="flex items-center justify-between mb-2">
-                  <Label className="text-sm font-medium text-foreground block">Pending invites</Label>
-                  <Button variant="ghost" size="sm" onClick={loadPendingInvites} disabled={pendingInvitesLoading}>
-                    {pendingInvitesLoading ? "Refreshing..." : "Refresh"}
-                  </Button>
-                </div>
-
-                {pendingInvites.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">No pending invites.</p>
-                ) : (
+                  <div>
+                    <Label className="text-muted-foreground text-sm">Email</Label>
+                    <p className="text-foreground">{user?.email}</p>
+                  </div>
                   <div className="space-y-2">
-                    {pendingInvites.map((invite) => (
-                      <div key={invite.id} className="flex items-center justify-between p-3 rounded-lg bg-white/65 border border-border/70">
-                        <div>
-                          <p className="text-sm font-medium text-foreground">{invite.email}</p>
-                          <p className="text-xs text-muted-foreground">
-                            Sent {new Date(invite.created_at).toLocaleDateString()} · Expires {new Date(invite.expires_at).toLocaleDateString()}
-                          </p>
-                        </div>
+                    <Label htmlFor="defaultTranslation">Default Translation</Label>
+                    <div className="flex gap-2">
+                      <Select value={defaultTranslation} onValueChange={setDefaultTranslation}>
+                        <SelectTrigger id="defaultTranslation" className="h-10">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {TRANSLATION_OPTIONS.map((t) => (
+                            <SelectItem key={t.code} value={t.code}>
+                              <span className="font-medium">{t.code}</span>
+                              <span className="text-muted-foreground ml-2">{t.name}</span>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        onClick={handleSaveDefaultTranslation}
+                        disabled={savingDefaultTranslation || defaultTranslation === (profile?.default_translation || DEFAULT_TRANSLATION)}
+                        size="sm"
+                      >
+                        {savingDefaultTranslation ? "Saving..." : "Save"}
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      New presentations will start with this translation by default.
+                    </p>
+                  </div>
+                  {isEnterprisePlan && (
+                    <div className="space-y-2">
+                      <Label htmlFor="dashboardCampusPreference">Associated Campus</Label>
+                      <div className="flex gap-2">
+                        <Select value={dashboardCampusPreference} onValueChange={setDashboardCampusPreference}>
+                          <SelectTrigger id="dashboardCampusPreference" className="h-10">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All Campuses</SelectItem>
+                            {campuses.map((campus) => (
+                              <SelectItem key={campus.id} value={campus.id}>
+                                {campus.isPrimary ? `${campus.name} (Primary)` : campus.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                         <Button
+                          onClick={handleSaveDashboardCampusPreference}
+                          disabled={
+                            campusesLoading ||
+                            savingDashboardCampusPreference ||
+                            dashboardCampusPreference === (profile?.preferred_dashboard_campus_id || "all")
+                          }
                           size="sm"
-                          variant="outline"
-                          onClick={() => resendInvite(invite)}
-                          disabled={resendingInviteId === invite.id}
                         >
-                          {resendingInviteId === invite.id ? "Sending..." : "Resend"}
+                          {savingDashboardCampusPreference ? "Saving..." : "Save"}
                         </Button>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Choose which campus the dashboard should open to by default. You can still switch campuses from the dashboard.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="team" className="rounded-2xl glass-panel border-none px-6">
+              <AccordionTrigger className="py-6 font-normal no-underline hover:no-underline">
+                <div className="flex items-center gap-3">
+                  <Users className="w-5 h-5 text-muted-foreground" />
+                  <h2 className="font-serif text-xl font-semibold text-foreground">Team</h2>
+                </div>
+              </AccordionTrigger>
+              <AccordionContent className="pb-6">
+                {teamLoading ? (
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Loading team...</span>
+                  </div>
+                ) : (
+                  <div className="space-y-3 mb-6">
+                    {teamMembers.map(member => (
+                      <div key={member.id} className="flex items-center justify-between p-3 rounded-lg bg-white/65 border border-border/70">
+                        <div>
+                          <p className="text-sm font-medium text-foreground">{member.full_name || "Unnamed"}</p>
+                          <p className="text-xs text-muted-foreground">{member.email}</p>
+                        </div>
+                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                          member.role === 'owner' ? 'bg-primary/10 text-primary' : 'bg-secondary text-muted-foreground'
+                        }`}>
+                          {member.role === 'owner' ? 'Owner' : 'Member'}
+                        </span>
                       </div>
                     ))}
                   </div>
                 )}
-              </div>
-            )}
-          </div>
 
-          {isEnterprisePlan && (
-            <div className="rounded-2xl glass-panel p-6 mb-6">
-              <div className="flex items-center gap-3 mb-6">
-                <Building2 className="w-5 h-5 text-muted-foreground" />
-                <div>
-                  <h2 className="font-serif text-xl font-semibold text-foreground">Campuses</h2>
-                  <p className="text-sm text-muted-foreground">
-                    Enterprise accounts can organize presentations across up to 5 campuses.
-                  </p>
-                </div>
-              </div>
-
-              {campusesLoading ? (
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Loading campuses...</span>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {campuses.map((campus) => {
-                    const isEditing = editingCampusId === campus.id;
-                    const isOnlyPrimaryCampus = campus.isPrimary && campuses.length === 1;
-                    return (
-                      <div
-                        key={campus.id}
-                        className="rounded-lg border border-border/70 bg-white/65 p-3"
-                      >
-                        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                          <div className="min-w-0 flex-1">
-                            {isEditing ? (
-                              <div className="flex gap-2">
-                                <Input
-                                  value={editingCampusName}
-                                  onChange={(event) => setEditingCampusName(event.target.value)}
-                                  className="h-10"
-                                  maxLength={60}
-                                />
-                                <Button
-                                  size="sm"
-                                  onClick={() => void handleSaveCampusRename(campus.id)}
-                                  disabled={campusActionLoading === `rename:${campus.id}` || !editingCampusName.trim()}
-                                >
-                                  {campusActionLoading === `rename:${campus.id}` ? "Saving..." : "Save"}
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => {
-                                    setEditingCampusId(null);
-                                    setEditingCampusName("");
-                                  }}
-                                >
-                                  Cancel
-                                </Button>
-                              </div>
-                            ) : (
-                              <>
-                                <div className="flex items-center gap-2">
-                                  <p className="text-sm font-medium text-foreground truncate">{campus.name}</p>
-                                  {campus.isPrimary && (
-                                    <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
-                                      Primary
-                                    </span>
-                                  )}
-                                </div>
-                                <p className="text-xs text-muted-foreground mt-1">
-                                  {campus.isPrimary
-                                    ? "New Enterprise presentations default here unless another campus is selected."
-                                    : primaryCampus
-                                    ? `Deleting this campus moves its presentations to ${primaryCampus.name}.`
-                                    : "Presentations in this campus stay filtered together on the dashboard."}
-                                </p>
-                              </>
-                            )}
-                          </div>
-
-                          {isOwner && !isEditing && (
-                            <div className="flex flex-wrap items-center gap-2">
-                              {!campus.isPrimary && (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() => void handleSetPrimaryCampus(campus.id)}
-                                  disabled={Boolean(campusActionLoading)}
-                                >
-                                  <Check className="w-4 h-4 mr-1" />
-                                  Make Primary
-                                </Button>
-                              )}
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => {
-                                  setEditingCampusId(campus.id);
-                                  setEditingCampusName(campus.name);
-                                }}
-                                disabled={Boolean(campusActionLoading)}
-                              >
-                                Rename
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => void handleDeleteCampus(campus)}
-                                disabled={Boolean(campusActionLoading) || isOnlyPrimaryCampus}
-                              >
-                                Delete
-                              </Button>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              {isOwner && (
-                <div className="pt-4 border-t border-border mt-4 space-y-2">
-                  <Label className="text-sm font-medium text-foreground block">Add a campus</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      value={newCampusName}
-                      onChange={(event) => setNewCampusName(event.target.value)}
-                      placeholder="e.g., Downtown Campus"
-                      className="h-10"
-                      disabled={!canCreateMoreCampuses}
-                    />
-                    <Button
-                      onClick={() => void handleCreateCampus()}
-                      disabled={!newCampusName.trim() || !canCreateMoreCampuses || campusActionLoading === "create"}
-                      size="sm"
-                    >
-                      {campusActionLoading === "create" ? "Adding..." : "Add Campus"}
-                    </Button>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {canCreateMoreCampuses
-                      ? `${campuses.length} of 5 campuses used.`
-                      : "You have reached the 5-campus limit for Enterprise."}
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Subscription Section */}
-          <div className="rounded-2xl glass-panel p-6">
-            <div className="flex items-center gap-3 mb-6">
-              <CreditCard className="w-5 h-5 text-muted-foreground" />
-              <h2 className="font-serif text-xl font-semibold text-foreground">Subscription</h2>
-            </div>
-            <div className="space-y-4">
-              <div className="flex items-center gap-3">
-                <span className="text-muted-foreground">Plan:</span>
-                <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium ${
-                  subscription.subscribed ? "bg-primary/10 text-primary" : "bg-secondary text-muted-foreground"
-                }`}>
-                  {subscription.subscribed && <Crown className="w-3.5 h-3.5" />}
-                  {planLabel}
-                </span>
-              </div>
-              {subscription.subscribed && (
-                <div>
-                  <span className="text-muted-foreground">Billing: </span>
-                  <span className="text-foreground">
-                    {resolvedPlan ? resolvedPlan.displayPrice : "Pro"}
-                  </span>
-                </div>
-              )}
-              {subscription.subscribed && (
-                <div>
-                  <span className="text-muted-foreground">Interval: </span>
-                  <span className="text-foreground">
-                    {resolvedPlan
-                      ? resolvedPlan.interval === "annual" ? "Annual" : "Monthly"
-                      : "Unavailable"}
-                  </span>
-                </div>
-              )}
-              <div>
-                <span className="text-muted-foreground">Status: </span>
-                <span className={statusClassName}>
-                  {statusLabel}
-                </span>
-              </div>
-              {subscription.subscribed && (
-                <div>
-                  <span className="text-muted-foreground">
-                    {isCancelingSubscription ? "Ends on: " : "Renews on: "}
-                  </span>
-                  <span className="text-foreground">
-                    {formattedSubscriptionEnd || "Unavailable"}
-                  </span>
-                </div>
-              )}
-              {isCancelingSubscription && formattedSubscriptionEnd && (
-                <div className="rounded-xl border border-amber-300/50 bg-amber-50/60 p-4">
-                  <p className="text-sm text-amber-900">
-                    You still have access till this {formattedSubscriptionEnd}.
-                  </p>
-                </div>
-              )}
-              <div className="pt-4 flex gap-3">
-                {isCancelingSubscription ? (
-                  <Button onClick={handleManageSubscription} disabled={portalLoading} variant="hero">
-                    {portalLoading ? "Opening..." : "Resubscribe"}
-                  </Button>
-                ) : subscription.subscribed ? (
-                  <Button onClick={openSubscriptionModal} disabled={portalLoading} variant="outline">
-                    {portalLoading ? "Opening..." : "Manage Subscription"}
-                  </Button>
-                ) : (
-                  <div className="w-full space-y-4">
-                    <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
-                      <p className="text-sm text-foreground font-medium">Subscription required</p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Choose Pro, Team, or Enterprise with monthly or annual billing to activate your account and continue.
-                      </p>
+                {isOwner && (
+                  <div className="pt-4 border-t border-border">
+                    <Label className="text-sm font-medium text-foreground mb-2 block">Invite a team member</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        type="email"
+                        placeholder="colleague@church.org"
+                        value={inviteEmail}
+                        onChange={(e) => setInviteEmail(e.target.value)}
+                        className="h-10"
+                        disabled={inviteLimitReached}
+                      />
+                      <Button onClick={handleInvite} disabled={inviting || !inviteEmail || inviteLimitReached} size="sm">
+                        {inviting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
+                        <span className="ml-1">Invite</span>
+                      </Button>
                     </div>
-                    <SubscriptionPlanPicker
-                      title="Choose Your Plan"
-                      description="Select the plan and billing interval you want to use for this account."
-                      onSelectPlan={handleSelectRequiredPlan}
-                      loadingPlanId={requiredPlanLoading}
-                    />
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      {inviteLimitReached
+                        ? getInviteCapacityMessage(capacity.maxAdditionalUsers)
+                        : getInviteCapacityMessage(capacity.maxAdditionalUsers)}
+                    </p>
                   </div>
                 )}
-              </div>
-            </div>
-          </div>
 
-          {/* Account Deletion Section */}
-          <div className="rounded-2xl glass-panel p-6 mt-6 border border-red-400/35">
-            <div className="flex items-center gap-3 mb-4">
-              <AlertTriangle className="w-5 h-5 text-red-600" />
-              <h2 className="font-serif text-xl font-semibold text-foreground">Account</h2>
-            </div>
-            <p className="text-sm text-muted-foreground mb-4">
-              Delete your account and permanently remove your data from the platform.
-              {isOwner
-                ? " As an owner, this will also remove all team members and presentations for your organization."
-                : " This action permanently removes your own login and profile access."}
-            </p>
-            <Button variant="destructive" onClick={handleStartDeleteFlow}>
-              <Trash2 className="w-4 h-4 mr-2" />
-              Delete Account
-            </Button>
-          </div>
+                {isOwner && (
+                  <div className="pt-4 border-t border-border mt-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <Label className="text-sm font-medium text-foreground block">Pending invites</Label>
+                      <Button variant="ghost" size="sm" onClick={loadPendingInvites} disabled={pendingInvitesLoading}>
+                        {pendingInvitesLoading ? "Refreshing..." : "Refresh"}
+                      </Button>
+                    </div>
+
+                    {pendingInvites.length === 0 ? (
+                      <p className="text-xs text-muted-foreground">No pending invites.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {pendingInvites.map((invite) => (
+                          <div key={invite.id} className="flex items-center justify-between p-3 rounded-lg bg-white/65 border border-border/70">
+                            <div>
+                              <p className="text-sm font-medium text-foreground">{invite.email}</p>
+                              <p className="text-xs text-muted-foreground">
+                                Sent {new Date(invite.created_at).toLocaleDateString()} · Expires {new Date(invite.expires_at).toLocaleDateString()}
+                              </p>
+                            </div>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => resendInvite(invite)}
+                              disabled={resendingInviteId === invite.id}
+                            >
+                              {resendingInviteId === invite.id ? "Sending..." : "Resend"}
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </AccordionContent>
+            </AccordionItem>
+
+            {isEnterprisePlan && (
+              <AccordionItem value="campuses" className="rounded-2xl glass-panel border-none px-6">
+                <AccordionTrigger className="py-6 font-normal no-underline hover:no-underline">
+                  <div className="flex items-center gap-3">
+                    <Building2 className="w-5 h-5 text-muted-foreground" />
+                    <h2 className="font-serif text-xl font-semibold text-foreground">Campuses</h2>
+                  </div>
+                </AccordionTrigger>
+                <AccordionContent className="pb-6">
+                  <p className="text-sm text-muted-foreground mb-6">
+                    Enterprise accounts can organize presentations across up to 5 campuses.
+                  </p>
+
+                  {campusesLoading ? (
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Loading campuses...</span>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {campuses.map((campus) => {
+                        const isEditing = editingCampusId === campus.id;
+                        const isOnlyPrimaryCampus = campus.isPrimary && campuses.length === 1;
+                        return (
+                          <div
+                            key={campus.id}
+                            className="rounded-lg border border-border/70 bg-white/65 p-3"
+                          >
+                            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                              <div className="min-w-0 flex-1">
+                                {isEditing ? (
+                                  <div className="flex gap-2">
+                                    <Input
+                                      value={editingCampusName}
+                                      onChange={(event) => setEditingCampusName(event.target.value)}
+                                      className="h-10"
+                                      maxLength={60}
+                                    />
+                                    <Button
+                                      size="sm"
+                                      onClick={() => void handleSaveCampusRename(campus.id)}
+                                      disabled={campusActionLoading === `rename:${campus.id}` || !editingCampusName.trim()}
+                                    >
+                                      {campusActionLoading === `rename:${campus.id}` ? "Saving..." : "Save"}
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => {
+                                        setEditingCampusId(null);
+                                        setEditingCampusName("");
+                                      }}
+                                    >
+                                      Cancel
+                                    </Button>
+                                  </div>
+                                ) : (
+                                  <>
+                                    <div className="flex items-center gap-2">
+                                      <p className="text-sm font-medium text-foreground truncate">{campus.name}</p>
+                                      {campus.isPrimary && (
+                                        <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
+                                          Primary
+                                        </span>
+                                      )}
+                                    </div>
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                      {campus.isPrimary
+                                        ? "New Enterprise presentations default here unless another campus is selected."
+                                        : primaryCampus
+                                        ? `Deleting this campus moves its presentations to ${primaryCampus.name}.`
+                                        : "Presentations in this campus stay filtered together on the dashboard."}
+                                    </p>
+                                  </>
+                                )}
+                              </div>
+
+                              {isOwner && !isEditing && (
+                                <div className="flex flex-wrap items-center gap-2">
+                                  {!campus.isPrimary && (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => void handleSetPrimaryCampus(campus.id)}
+                                      disabled={Boolean(campusActionLoading)}
+                                    >
+                                      <Check className="w-4 h-4 mr-1" />
+                                      Make Primary
+                                    </Button>
+                                  )}
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => {
+                                      setEditingCampusId(campus.id);
+                                      setEditingCampusName(campus.name);
+                                    }}
+                                    disabled={Boolean(campusActionLoading)}
+                                  >
+                                    Rename
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => void handleDeleteCampus(campus)}
+                                    disabled={Boolean(campusActionLoading) || isOnlyPrimaryCampus}
+                                  >
+                                    Delete
+                                  </Button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {isOwner && (
+                    <div className="pt-4 border-t border-border mt-4 space-y-2">
+                      <Label className="text-sm font-medium text-foreground block">Add a campus</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          value={newCampusName}
+                          onChange={(event) => setNewCampusName(event.target.value)}
+                          placeholder="e.g., Downtown Campus"
+                          className="h-10"
+                          disabled={!canCreateMoreCampuses}
+                        />
+                        <Button
+                          onClick={() => void handleCreateCampus()}
+                          disabled={!newCampusName.trim() || !canCreateMoreCampuses || campusActionLoading === "create"}
+                          size="sm"
+                        >
+                          {campusActionLoading === "create" ? "Adding..." : "Add Campus"}
+                        </Button>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {canCreateMoreCampuses
+                          ? `${campuses.length} of 5 campuses used.`
+                          : "You have reached the 5-campus limit for Enterprise."}
+                      </p>
+                    </div>
+                  )}
+                </AccordionContent>
+              </AccordionItem>
+            )}
+
+            <AccordionItem value="subscription" className="rounded-2xl glass-panel border-none px-6">
+              <AccordionTrigger className="py-6 font-normal no-underline hover:no-underline">
+                <div className="flex items-center gap-3">
+                  <CreditCard className="w-5 h-5 text-muted-foreground" />
+                  <h2 className="font-serif text-xl font-semibold text-foreground">Subscription</h2>
+                </div>
+              </AccordionTrigger>
+              <AccordionContent className="pb-6">
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3">
+                    <span className="text-muted-foreground">Plan:</span>
+                    <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium ${
+                      subscription.subscribed ? "bg-primary/10 text-primary" : "bg-secondary text-muted-foreground"
+                    }`}>
+                      {subscription.subscribed && <Crown className="w-3.5 h-3.5" />}
+                      {planLabel}
+                    </span>
+                  </div>
+                  {subscription.subscribed && (
+                    <div>
+                      <span className="text-muted-foreground">Billing: </span>
+                      <span className="text-foreground">
+                        {resolvedPlan ? resolvedPlan.displayPrice : "Pro"}
+                      </span>
+                    </div>
+                  )}
+                  {subscription.subscribed && (
+                    <div>
+                      <span className="text-muted-foreground">Interval: </span>
+                      <span className="text-foreground">
+                        {resolvedPlan
+                          ? resolvedPlan.interval === "annual" ? "Annual" : "Monthly"
+                          : "Unavailable"}
+                      </span>
+                    </div>
+                  )}
+                  <div>
+                    <span className="text-muted-foreground">Status: </span>
+                    <span className={statusClassName}>
+                      {statusLabel}
+                    </span>
+                  </div>
+                  {subscription.subscribed && (
+                    <div>
+                      <span className="text-muted-foreground">
+                        {isCancelingSubscription ? "Ends on: " : "Renews on: "}
+                      </span>
+                      <span className="text-foreground">
+                        {formattedSubscriptionEnd || "Unavailable"}
+                      </span>
+                    </div>
+                  )}
+                  {isCancelingSubscription && formattedSubscriptionEnd && (
+                    <div className="rounded-xl border border-amber-300/50 bg-amber-50/60 p-4">
+                      <p className="text-sm text-amber-900">
+                        You still have access till this {formattedSubscriptionEnd}.
+                      </p>
+                    </div>
+                  )}
+                  <div className="pt-4 flex gap-3">
+                    {isCancelingSubscription ? (
+                      <Button onClick={handleManageSubscription} disabled={portalLoading} variant="hero">
+                        {portalLoading ? "Opening..." : "Resubscribe"}
+                      </Button>
+                    ) : subscription.subscribed ? (
+                      <Button onClick={openSubscriptionModal} disabled={portalLoading} variant="outline">
+                        {portalLoading ? "Opening..." : "Manage Subscription"}
+                      </Button>
+                    ) : (
+                      <div className="w-full space-y-4">
+                        <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
+                          <p className="text-sm text-foreground font-medium">Subscription required</p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Choose Pro, Team, or Enterprise with monthly or annual billing to activate your account and continue.
+                          </p>
+                        </div>
+                        <SubscriptionPlanPicker
+                          title="Choose Your Plan"
+                          description="Select the plan and billing interval you want to use for this account."
+                          onSelectPlan={handleSelectRequiredPlan}
+                          loadingPlanId={requiredPlanLoading}
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+
+            <AccordionItem value="account-danger" className="rounded-2xl glass-panel border border-red-400/35 px-6">
+              <AccordionTrigger className="py-6 font-normal no-underline hover:no-underline">
+                <div className="flex items-center gap-3">
+                  <AlertTriangle className="w-5 h-5 text-red-600" />
+                  <h2 className="font-serif text-xl font-semibold text-foreground">Account</h2>
+                </div>
+              </AccordionTrigger>
+              <AccordionContent className="pb-6">
+                <p className="text-sm text-muted-foreground mb-4">
+                  Delete your account and permanently remove your data from the platform.
+                  {isOwner
+                    ? " As an owner, this will also remove all team members and presentations for your organization."
+                    : " This action permanently removes your own login and profile access."}
+                </p>
+                <Button variant="destructive" onClick={handleStartDeleteFlow}>
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Delete Account
+                </Button>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
         </motion.div>
       </main>
 
