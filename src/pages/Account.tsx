@@ -185,7 +185,7 @@ const Account = () => {
     if (!isOwner) return;
     setResendingInviteId(invite.id);
     try {
-      const { error } = await supabase.functions.invoke("send-invite", {
+      const { data, error } = await supabase.functions.invoke("send-invite", {
         body: {
           email: invite.email,
           token: invite.token,
@@ -197,6 +197,10 @@ const Account = () => {
 
       if (error) {
         toast.error("Could not resend invite. Please try again.");
+      } else if (data?.success === false && data?.code === "active_user_exists") {
+        toast.error(data.error || "This person already has an active account. Ask them to log in instead.");
+      } else if (data?.success === true && data?.refreshedExistingAuthUser) {
+        toast.success(`Invite refreshed and resent to ${invite.email}.`);
       } else {
         toast.success(`Invite resent to ${invite.email}.`);
       }
@@ -316,7 +320,7 @@ const Account = () => {
       }
 
       // Send invite email via edge function
-      const { error: sendError } = await supabase.functions.invoke("send-invite", {
+      const { data: sendData, error: sendError } = await supabase.functions.invoke("send-invite", {
         body: {
           email: normalizedInviteEmail,
           token: invite.token,
@@ -328,6 +332,15 @@ const Account = () => {
 
       if (sendError) {
         toast.error("Invite created but failed to send email. Please try again.");
+      } else if (sendData?.success === false && sendData?.code === "active_user_exists") {
+        await supabase
+          .from("account_invites")
+          .delete()
+          .eq("account_id", accountId)
+          .eq("token", invite.token);
+        toast.error(sendData.error || "This person already has an active account. Ask them to log in instead.");
+      } else if (sendData?.success === true && sendData?.refreshedExistingAuthUser) {
+        toast.success(`Previous pending invite refreshed and sent to ${normalizedInviteEmail}!`);
       } else {
         toast.success(`Invite sent to ${normalizedInviteEmail}!`);
       }
