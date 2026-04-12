@@ -134,6 +134,7 @@ Required server-side/runtime variables:
 - `RESEND_API_KEY` for team-member removal emails
 - `RESEND_FROM_EMAIL` for team-member removal emails
 - `RESEND_FROM_NAME` optional sender name override for team-member removal emails
+- `SUPPORT_CONTACT_EMAIL` optional override for contact-form submissions, defaults to `support@sermonslidepro.com`
 
 Supabase Dashboard requirements:
 
@@ -167,6 +168,8 @@ With the current app:
 - team invites pass `redirectTo` as the full `/auth/confirm` route
 - invited team members finish setup on `/signup?invite=complete` after email confirmation
 - owners can remove non-owner team members from the Account page, which deletes that user login and emails a removal notice
+- contact form submissions are sent through the `contact-support` Edge Function to `support@sermonslidepro.com` unless `SUPPORT_CONTACT_EMAIL` is set
+- contact form submissions validate the sender email domain server-side using DNS; clearly invalid domains are blocked, but temporary DNS lookup failures do not block sends
 
 ## Deployment
 

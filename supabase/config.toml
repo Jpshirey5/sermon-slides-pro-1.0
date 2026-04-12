@@ -35,3 +35,6 @@ verify_jwt = false
 
 [functions.capture-telemetry]
 verify_jwt = false
+
+[functions.contact-support]
+verify_jwt = false
