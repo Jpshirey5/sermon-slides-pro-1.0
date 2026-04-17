@@ -44,6 +44,7 @@ export interface DashboardPresentation {
   campusName?: string | null;
   formerCampusName?: string | null;
   slides: number;
+  isDraft?: boolean;
   lastModified: string;
 }
 
@@ -187,6 +188,7 @@ function mapRowToDashboardPresentation(
     former_campus_name?: string | null;
   }
 ): DashboardPresentation {
+  const slideCount = countSlides(row.slides);
   return {
     id: row.id,
     title: row.title,
@@ -195,7 +197,8 @@ function mapRowToDashboardPresentation(
     campusId: row.campus_id || null,
     campusName: row.campus_name || null,
     formerCampusName: row.former_campus_name || null,
-    slides: countSlides(row.slides),
+    slides: slideCount,
+    isDraft: slideCount === 0 && Boolean(extractFormData(row.slides)),
     lastModified: new Date(row.updated_at).toLocaleDateString(),
   };
 }

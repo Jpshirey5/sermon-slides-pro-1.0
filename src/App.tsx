@@ -7,6 +7,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Index from "./pages/Index";
 import CreateSermon from "./pages/CreateSermon";
+import SermonReview from "./pages/SermonReview";
 import SlideEditor from "./pages/SlideEditor";
 import PaymentSuccess from "./pages/PaymentSuccess";
 import Login from "./pages/Login";
@@ -45,6 +46,7 @@ const App = () => (
             <Routes>
               <Route path="/" element={<Index />} />
               <Route path="/create" element={<CreateSermon />} />
+              <Route path="/create/review/:id" element={<SermonReview />} />
               <Route path="/editor/:id" element={<SlideEditor />} />
               <Route path="/payment-success" element={<PaymentSuccess />} />
               <Route path="/login" element={<Login />} />
@@ -55,6 +57,7 @@ const App = () => (
               <Route path="/reset-password" element={<ResetPassword />} />
               <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
               <Route path="/dashboard/create" element={<ProtectedRoute><CreateSermon /></ProtectedRoute>} />
+              <Route path="/dashboard/create/review/:id" element={<ProtectedRoute><SermonReview /></ProtectedRoute>} />
               
               <Route path="/account" element={<ProtectedRoute allowUnsubscribed><Account /></ProtectedRoute>} />
               <Route path="/contact" element={<Contact />} />
