@@ -25,6 +25,7 @@ import {
 import {
   getDashboardPresentationsPage,
   deletePresentation,
+  getPresentation,
   type DashboardPresentation,
   type DashboardPresentationFilters,
 } from "@/lib/presentations";
@@ -252,6 +253,37 @@ const Dashboard = () => {
     } catch (error) {
       logError(error, { scope: "dashboard_delete_presentation", presentationId: id });
       toast.error("Failed to delete presentation");
+    }
+  };
+
+  const handleOpenPresentation = async (presentation: DashboardPresentation) => {
+    if (selectionMode) {
+      togglePresentationSelection(presentation.id);
+      return;
+    }
+
+    if (!presentation.isDraft) {
+      navigate(`/editor/${presentation.id}`, { state: { from: "dashboard" } });
+      return;
+    }
+
+    try {
+      const draft = await getPresentation(presentation.id);
+      if (!draft?.data) {
+        navigate(`/editor/${presentation.id}`, { state: { from: "dashboard" } });
+        return;
+      }
+
+      navigate("/dashboard/create", {
+        state: {
+          editData: draft.data,
+          editId: presentation.id,
+          editCampusId: draft.campusId || null,
+        },
+      });
+    } catch (error) {
+      logError(error, { scope: "dashboard_open_draft", presentationId: presentation.id });
+      toast.error("Could not open draft. Please try again.");
     }
   };
 
@@ -682,13 +714,7 @@ const Dashboard = () => {
                       <div key={p.id} className="rounded-xl border border-border/70 bg-white/75 backdrop-blur-sm p-4 hover:shadow-soft transition-shadow group">
                         <div
                           className="cursor-pointer"
-                          onClick={() => {
-                            if (selectionMode) {
-                              togglePresentationSelection(p.id);
-                              return;
-                            }
-                            navigate(`/editor/${p.id}`, { state: { from: "dashboard" } });
-                          }}
+                          onClick={() => void handleOpenPresentation(p)}
                         >
                           {p.series && (
                             <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground mb-0.5 truncate">
@@ -724,7 +750,11 @@ const Dashboard = () => {
                           </h3>
                           <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground mb-2">
                             <span className="flex items-center gap-1"><Calendar className="w-3 h-3" /> {p.presentationDate}</span>
-                            <span className="flex items-center gap-1"><Layers className="w-3 h-3" /> {p.slides} slides</span>
+                            {p.isDraft ? (
+                              <span className="rounded-full bg-primary/10 px-2 py-0.5 font-medium text-primary">Draft</span>
+                            ) : (
+                              <span className="flex items-center gap-1"><Layers className="w-3 h-3" /> {p.slides} slides</span>
+                            )}
                           </div>
                           <p className="text-xs text-muted-foreground"><Clock className="w-3 h-3 inline mr-1" />{p.lastModified}</p>
                         </div>

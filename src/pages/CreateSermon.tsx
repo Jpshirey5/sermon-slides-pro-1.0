@@ -24,13 +24,12 @@ import {
   Book,
 } from "lucide-react";
 import { lookupScripture } from "@/lib/scripture-api";
-import { savePresentationWithSlides } from "@/lib/presentations";
+import { savePresentation, type SermonPresentation } from "@/lib/presentations";
 import { useAuth } from "@/contexts/AuthContext";
 import { TRANSLATION_OPTIONS, DEFAULT_TRANSLATION } from "@/lib/translations";
 import { logError, trackEvent } from "@/lib/monitoring";
 import ProductTour, { type ProductTourStep } from "@/components/ProductTour";
-import { consumeCreateTourPrompt, readProductTourState, setProductTourStage } from "@/lib/product-tour";
-import { generateSlidesFromPresentation } from "@/lib/slide-generation";
+import { consumeCreateTourPrompt } from "@/lib/product-tour";
 import { listAccountCampuses, type Campus } from "@/lib/campuses";
 
 interface Scripture {
@@ -59,6 +58,7 @@ const CreateSermon = () => {
   const editCampusId = (location.state as any)?.editCampusId || editData?.campusId || "";
   const dashboardCampusFilter = (location.state as any)?.campusFilter || null;
   const isEnterpriseAccount = subscription.plan_tier === "enterprise";
+  const [draftId] = useState(() => editId || crypto.randomUUID());
   const [title, setTitle] = useState(editData?.title || "");
   const [series, setSeries] = useState(editData?.series || "");
   const [presentationDate, setPresentationDate] = useState(
@@ -70,6 +70,7 @@ const CreateSermon = () => {
   const [globalTranslation, setGlobalTranslation] = useState(editData?.translation || DEFAULT_TRANSLATION);
   const [verseBreakdown, setVerseBreakdown] = useState(editData?.verseBreakdown || "verse-by-verse");
   const [showTourBuilderPrompt, setShowTourBuilderPrompt] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [points, setPoints] = useState<SermonPoint[]>(
     editData?.points
       ? editData.points.map((p: any) => ({
@@ -92,6 +93,7 @@ const CreateSermon = () => {
   const lookupVersions = useRef<Record<string, number>>({});
   const appliedDefaultRef = useRef(false);
   const titleInputRef = useRef<HTMLInputElement | null>(null);
+  const lastSavedDraftRef = useRef("");
 
   const clearLookupTimeout = useCallback((key: string) => {
     if (lookupTimeouts.current[key]) {
@@ -396,6 +398,72 @@ const CreateSermon = () => {
       : point.scriptures.some((scripture) => scripture.reference.trim().length > 0)
   );
 
+  const hasMeaningfulDraftContent = Boolean(title.trim() || series.trim() || hasValidContent);
+
+  const buildPresentationPayload = useCallback((): SermonPresentation => ({
+    id: draftId,
+    title: title.trim() || "Untitled Presentation",
+    series: series.trim() || null,
+    campusId: isEnterpriseAccount ? campusId || null : null,
+    presentationDate,
+    date: presentationDate,
+    slides: 0,
+    lastModified: "Just now",
+    data: {
+      title,
+      series: series.trim() || null,
+      date: presentationDate,
+      verseBreakdown,
+      translation: globalTranslation,
+      points: points.map((p) => ({
+        id: p.id,
+        type: p.type,
+        title: p.title,
+        scriptures: p.type === "verse"
+          ? p.scriptures.map((s) => ({
+              reference: s.reference,
+              text: s.text,
+              verses: s.verses,
+            }))
+          : [],
+      })),
+    },
+  }), [campusId, draftId, globalTranslation, isEnterpriseAccount, points, presentationDate, series, title, verseBreakdown]);
+
+  useEffect(() => {
+    if (!hasMeaningfulDraftContent) {
+      setSaveStatus("idle");
+      return;
+    }
+
+    if (isEnterpriseAccount && (campusesLoading || !campusId)) {
+      return;
+    }
+
+    const payload = buildPresentationPayload();
+    const serializedPayload = JSON.stringify(payload);
+    if (serializedPayload === lastSavedDraftRef.current) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(async () => {
+      setSaveStatus("saving");
+      try {
+        const savedId = await savePresentation(payload);
+        if (!savedId) {
+          throw new Error("Draft save returned no id");
+        }
+        lastSavedDraftRef.current = serializedPayload;
+        setSaveStatus("saved");
+      } catch (error) {
+        logError(error, { scope: "create_sermon_autosave", sermonId: draftId });
+        setSaveStatus("error");
+      }
+    }, 1500);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [buildPresentationPayload, campusId, campusesLoading, draftId, hasMeaningfulDraftContent, isEnterpriseAccount]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isEnterpriseAccount && !campusId) {
@@ -412,57 +480,20 @@ const CreateSermon = () => {
       translation: globalTranslation,
     });
     
-    const presentationId = editId || crypto.randomUUID();
-
-    const presentationPayload = {
-      id: presentationId,
-      title: title,
-      series: series.trim() || null,
-      campusId: isEnterpriseAccount ? campusId || null : null,
-      presentationDate,
-      date: presentationDate,
-      slides: 0,
-      lastModified: "Just now",
-      data: {
-        title,
-        series: series.trim() || null,
-        date: presentationDate,
-        verseBreakdown,
-        translation: globalTranslation,
-        points: points.map((p) => ({
-          id: p.id,
-          type: p.type,
-          title: p.title,
-          scriptures: p.type === "verse"
-            ? p.scriptures.map((s) => ({
-                reference: s.reference,
-                text: s.text,
-                verses: s.verses,
-              }))
-            : [],
-        })),
-      },
-    };
-
-    const generatedSlides = generateSlidesFromPresentation(presentationPayload);
-    const slideCount = generatedSlides.length;
-    presentationPayload.slides = slideCount;
+    const presentationPayload = buildPresentationPayload();
 
     try {
-      const savedId = await savePresentationWithSlides(presentationPayload, generatedSlides);
+      setSaveStatus("saving");
+      const savedId = await savePresentation(presentationPayload);
       
       if (savedId) {
-        if (user) {
-          const tourState = readProductTourState(user.id);
-          if (tourState && (tourState.status === "pending" || tourState.status === "active") && tourState.stage === "create") {
-            setProductTourStage(user.id, "editor", 0);
-          }
-        }
-        trackEvent("sermon_generation_succeeded", {
+        lastSavedDraftRef.current = JSON.stringify(presentationPayload);
+        setSaveStatus("saved");
+        trackEvent("sermon_review_started", {
           editingExisting: Boolean(editId),
-          slideCount,
         });
-        navigate(`/editor/${savedId}`);
+        const reviewPath = isFromDashboard ? `/dashboard/create/review/${savedId}` : `/create/review/${savedId}`;
+        navigate(reviewPath, { state: { fromDashboard: isFromDashboard } });
       } else {
         trackEvent("sermon_generation_failed", {
           editingExisting: Boolean(editId),
@@ -475,8 +506,8 @@ const CreateSermon = () => {
       logError(error, {
         scope: "sermon_generation_submit",
         editingExisting: Boolean(editId),
-        slideCount,
       });
+      setSaveStatus("error");
       const { toast } = await import("sonner");
       toast.error("Failed to save presentation. Please try again.");
     }
@@ -866,7 +897,14 @@ const CreateSermon = () => {
             </div>
 
             {/* Submit */}
-            <div className="flex justify-end gap-4 pt-4">
+            <div className="flex flex-col gap-3 pt-4 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-muted-foreground">
+                {saveStatus === "saving" && "Saving draft..."}
+                {saveStatus === "saved" && "Draft saved"}
+                {saveStatus === "error" && "Unable to autosave draft"}
+                {saveStatus === "idle" && "Drafts save automatically once you add sermon content."}
+              </p>
+              <div className="flex justify-end gap-4">
               <Link to="/dashboard">
                 <Button type="button" variant="outline" size="lg">
                   Cancel
@@ -877,11 +915,12 @@ const CreateSermon = () => {
                 type="submit"
                 variant="hero"
                 size="lg"
-                disabled={!title.trim() || !hasValidContent}
+                disabled={!title.trim() || !hasValidContent || (isEnterpriseAccount && (campusesLoading || !campusId))}
               >
                 <Wand2 className="w-5 h-5" />
                 Generate Slides
               </Button>
+              </div>
             </div>
           </form>
         </motion.div>
