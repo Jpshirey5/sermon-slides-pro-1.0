@@ -9,13 +9,81 @@ export interface ScriptureResult {
   verses?: { text: string; verse: number }[];
 }
 
+export function normalizeScriptureReference(reference: string): string {
+  return reference.trim().replace(/\s+/g, " ");
+}
+
+export function getFriendlyScriptureError(message?: string): string {
+  const normalizedMessage = (message || "").toLowerCase();
+
+  if (!normalizedMessage) {
+    return "We couldn't find that passage. Check the reference and try again.";
+  }
+
+  if (
+    normalizedMessage.includes("enter a valid scripture reference") ||
+    normalizedMessage.includes("too short")
+  ) {
+    return "Enter a scripture reference like John 3:16.";
+  }
+
+  if (
+    normalizedMessage.includes("invalid format") ||
+    normalizedMessage.includes("format like") ||
+    normalizedMessage.includes("empty response")
+  ) {
+    return "We couldn't read that reference. Try something like John 3:16 or Genesis 1:1-5.";
+  }
+
+  if (normalizedMessage.includes("unknown book")) {
+    return "We couldn't recognize that Bible book. Check the spelling and try again.";
+  }
+
+  if (
+    normalizedMessage.includes("network") ||
+    normalizedMessage.includes("failed to send") ||
+    normalizedMessage.includes("unexpected server error") ||
+    normalizedMessage.includes("functionsfetcherror")
+  ) {
+    return "We couldn't look that passage up right now. Please try again in a moment.";
+  }
+
+  if (
+    normalizedMessage.includes("could not find") ||
+    normalizedMessage.includes("verse may not exist") ||
+    normalizedMessage.includes("chapter and verse")
+  ) {
+    return "We couldn't find that passage. Check the chapter and verse numbers.";
+  }
+
+  return "We couldn't find that passage. Check the reference and try again.";
+}
+
+async function getScriptureFunctionErrorMessage(error: unknown): Promise<string | undefined> {
+  const maybeError = error as { context?: unknown; message?: string };
+  const context = maybeError.context;
+
+  if (typeof Response !== "undefined" && context instanceof Response) {
+    try {
+      const payload = await context.clone().json();
+      if (typeof payload?.errorMessage === "string") return payload.errorMessage;
+      if (typeof payload?.error === "string") return payload.error;
+    } catch {
+      // Fall back to the Supabase error message below.
+    }
+  }
+
+  return maybeError.message;
+}
+
 export function parseScriptureReference(reference: string): {
   book: string;
   chapter: number;
   verseStart: number;
   verseEnd?: number;
 } | null {
-  const match = reference.match(/^(\d?\s*[A-Za-z]+)\s+(\d+):(\d+)(?:-(\d+))?$/i);
+  const normalizedReference = normalizeScriptureReference(reference);
+  const match = normalizedReference.match(/^(\d?\s*[A-Za-z]+)\s+(\d+):(\d+)(?:-(\d+))?$/i);
   if (!match) return null;
 
   return {
@@ -31,32 +99,34 @@ export async function lookupScripture(
   translation: string = "KJV"
 ): Promise<ScriptureResult | null> {
   const requestedTranslation = translation.toUpperCase();
+  const normalizedReference = normalizeScriptureReference(reference);
 
-  if (!reference || reference.trim().length < 3) {
+  if (!normalizedReference || normalizedReference.length < 3) {
     return {
       text: "",
       reference,
       translation: requestedTranslation,
       error: true,
-      errorMessage: "Please enter a valid scripture reference (e.g., John 3:16)",
+      errorMessage: getFriendlyScriptureError("enter a valid scripture reference"),
     };
   }
 
   try {
     const { data, error } = await supabase.functions.invoke("scripture-lookup", {
       body: {
-        reference,
+        reference: normalizedReference,
         translation: requestedTranslation,
       },
     });
 
     if (error) {
+      const errorMessage = await getScriptureFunctionErrorMessage(error);
       return {
         text: "",
         reference,
         translation: requestedTranslation,
         error: true,
-        errorMessage: error.message || "Could not find scripture. Please try again.",
+        errorMessage: getFriendlyScriptureError(errorMessage),
       };
     }
 
@@ -66,17 +136,17 @@ export async function lookupScripture(
         reference,
         translation: requestedTranslation,
         error: true,
-        errorMessage: "Scripture lookup returned an empty response.",
+        errorMessage: getFriendlyScriptureError("empty response"),
       };
     }
 
     return {
       text: data.text || "",
-      reference: data.reference || reference,
+      reference: data.reference || normalizedReference,
       translation: data.translation || requestedTranslation,
       verses: data.verses,
       error: data.error,
-      errorMessage: data.errorMessage,
+      errorMessage: data.error ? getFriendlyScriptureError(data.errorMessage) : undefined,
     };
   } catch {
     return {
@@ -84,7 +154,7 @@ export async function lookupScripture(
       reference,
       translation: requestedTranslation,
       error: true,
-      errorMessage: "Network error. Please try again.",
+      errorMessage: getFriendlyScriptureError("network error"),
     };
   }
 }

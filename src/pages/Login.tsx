@@ -14,7 +14,8 @@ import { logError, trackEvent } from "@/lib/monitoring";
 const Login = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const nextPath = searchParams.get("next") || "/dashboard";
+  const rawNextPath = searchParams.get("next") || "/dashboard";
+  const nextPath = rawNextPath === "/account" ? "/dashboard" : rawNextPath;
   const signUpHref = `/signup${nextPath ? `?next=${encodeURIComponent(nextPath)}` : ""}`;
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");

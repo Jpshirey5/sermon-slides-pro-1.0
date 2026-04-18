@@ -23,7 +23,7 @@ const GetStartedModal = ({ open, onOpenChange }: GetStartedModalProps) => {
   const handleAccountSetup = () => {
     setProLoading(true);
     onOpenChange(false);
-    navigate(user ? "/account" : "/signup");
+    navigate(user ? "/dashboard" : "/signup");
     setProLoading(false);
   };
 

@@ -18,6 +18,7 @@ import { logError, trackEvent } from "@/lib/monitoring";
 import { useAuth } from "@/contexts/AuthContext";
 import { readProductTourState, setProductTourStage } from "@/lib/product-tour";
 import { toast } from "sonner";
+import ProductTour, { type ProductTourStep } from "@/components/ProductTour";
 
 interface ReviewBlock {
   id: string;
@@ -135,6 +136,25 @@ const SermonReview = () => {
   const [saving, setSaving] = useState(false);
 
   const backToCreatorPath = isDashboardFlow ? "/dashboard/create" : "/create";
+  const reviewTourSteps = useMemo<ProductTourStep[]>(() => [
+    {
+      targetId: "review-title-slide",
+      title: "Title slide stays first",
+      description: "The title anchors the presentation and stays locked.",
+    },
+    {
+      targetId: "review-reorder-list",
+      title: "Reorder points and passages",
+      description: "Drag points and scripture blocks into the order you want. Multi-verse passages stay grouped here.",
+    },
+    {
+      targetId: "review-create-slides",
+      title: "Create editable slides",
+      description: "Create Slides sends the reviewed order into the editor.",
+      nextStage: "editor",
+      nextLabel: "Got it",
+    },
+  ], []);
 
   useEffect(() => {
     let cancelled = false;
@@ -284,7 +304,11 @@ const SermonReview = () => {
 
       if (user) {
         const tourState = readProductTourState(user.id);
-        if (tourState && (tourState.status === "pending" || tourState.status === "active") && tourState.stage === "create") {
+        if (
+          tourState &&
+          (tourState.status === "pending" || tourState.status === "active") &&
+          (tourState.stage === "create" || tourState.stage === "review")
+        ) {
           setProductTourStage(user.id, "editor", 0);
         }
       }
@@ -386,7 +410,7 @@ const SermonReview = () => {
             </p>
           </div>
 
-          <section className="rounded-2xl glass-panel p-5 shadow-soft">
+          <section className="rounded-2xl glass-panel p-5 shadow-soft" data-tour-id="review-title-slide">
             <div className="flex items-start gap-4">
               <div className="mt-1 rounded-xl bg-primary/10 p-2 text-primary">
                 <Type className="h-5 w-5" />
@@ -414,7 +438,7 @@ const SermonReview = () => {
             </div>
           )}
 
-          <Reorder.Group axis="y" values={contentBlocks} onReorder={handleReorderBlocks} className="space-y-3">
+          <Reorder.Group axis="y" values={contentBlocks} onReorder={handleReorderBlocks} className="space-y-3" data-tour-id="review-reorder-list">
             {contentBlocks.map((block, index) => (
               <Reorder.Item
                 key={block.id}
@@ -471,13 +495,20 @@ const SermonReview = () => {
             <p className="text-sm text-muted-foreground">
               {finalSlideCount} slide{finalSlideCount === 1 ? "" : "s"} will be created from this order.
             </p>
-            <Button variant="hero" size="lg" onClick={handleCreateSlides} disabled={saving || finalSlideCount === 0}>
+            <Button variant="hero" size="lg" onClick={handleCreateSlides} disabled={saving || finalSlideCount === 0} data-tour-id="review-create-slides">
               {saving ? <Loader2 className="h-5 w-5 animate-spin" /> : <Wand2 className="h-5 w-5" />}
               {saving ? "Creating Slides..." : "Create Slides"}
             </Button>
           </div>
         </motion.div>
       </main>
+      {user && (
+        <ProductTour
+          userId={user.id}
+          stage="review"
+          steps={reviewTourSteps}
+        />
+      )}
     </div>
   );
 };

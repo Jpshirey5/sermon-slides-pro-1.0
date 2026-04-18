@@ -14,7 +14,6 @@ import {
   Layers,
   Clock,
   User,
-  CreditCard,
   Sparkles,
   Search,
   X,
@@ -414,22 +413,22 @@ const Dashboard = () => {
       : undefined;
   const dashboardTourSteps: ProductTourStep[] = [
     {
-      targetId: "dashboard-account-button",
-      title: "Manage your account here",
-      description: "Use Account to review your plan, billing, and team settings without leaving the app.",
+      targetId: "dashboard-presentations-section",
+      title: "Start from your dashboard",
+      description: "Saved work, drafts, filters, and completed presentations live here so you can return to them anytime.",
     },
     {
       targetId: "dashboard-create-button",
-      title: "Start from the creator",
-      description: "This button opens the guided creator where you add your title, points, and verses.",
+      title: "Create from here",
+      description: "This is the main path for starting a new sermon presentation from your title, points, and scripture.",
     },
     {
-      targetId: "dashboard-presentations-section",
-      title: "Your saved presentations live here",
-      description: "Any presentation you create will appear in this section so you can reopen and edit it later.",
-      nextStage: "create",
-      nextPath: "/dashboard/create",
-      nextLabel: "Open Creator",
+      targetId: "dashboard-account-button",
+      title: "Set your defaults first",
+      description: "Account settings help new presentations start with the right translation, team, and campus defaults.",
+      nextStage: "account",
+      nextPath: "/account",
+      nextLabel: "Open Account",
     },
   ];
 
@@ -534,7 +533,7 @@ const Dashboard = () => {
                     ? "Jump back into the creator to build a new presentation with automatic scripture lookup and export-ready slides."
                     : "Create, edit, and export presentation slides from one place whenever you are ready."}
                 </p>
-                <div className="flex flex-col gap-3 w-full sm:w-auto sm:flex-row">
+                <div className="flex justify-center w-full">
                   <Link to="/dashboard/create" state={createPresentationState}>
                     <Button
                       variant="hero"
@@ -545,12 +544,6 @@ const Dashboard = () => {
                     >
                       <Plus className="w-4 h-4" />
                       Create New Presentation
-                    </Button>
-                  </Link>
-                  <Link to="/account">
-                    <Button variant="outline" className="w-full">
-                      <CreditCard className="w-4 h-4" />
-                      View Plan & Account
                     </Button>
                   </Link>
                 </div>
@@ -785,7 +778,7 @@ const Dashboard = () => {
           steps={dashboardTourSteps}
           onNavigate={navigate}
           introTitle="Welcome to Sermon Slide Pro"
-          introDescription="Take a quick guided tour of the dashboard, creator, and editor so you can learn the full workflow from first presentation to export."
+          introDescription="We'll walk through setting up your defaults, creating, reviewing, editing, and exporting your first presentation."
           introStartLabel="Start Guided Tour"
         />
       )}
