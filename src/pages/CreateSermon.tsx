@@ -23,7 +23,7 @@ import {
   Loader2,
   Book,
 } from "lucide-react";
-import { lookupScripture } from "@/lib/scripture-api";
+import { getFriendlyScriptureError, lookupScripture } from "@/lib/scripture-api";
 import { savePresentation, type SermonPresentation } from "@/lib/presentations";
 import { useAuth } from "@/contexts/AuthContext";
 import { TRANSLATION_OPTIONS, DEFAULT_TRANSLATION } from "@/lib/translations";
@@ -251,7 +251,7 @@ const CreateSermon = () => {
                           text: undefined, 
                           isLoading: false,
                           error: true,
-                          errorMessage: result.errorMessage || 'Could not find scripture'
+                          errorMessage: result.errorMessage || getFriendlyScriptureError()
                         } : s
                       ),
                     }
@@ -292,7 +292,7 @@ const CreateSermon = () => {
                         ...s, 
                         isLoading: false,
                         error: true,
-                        errorMessage: 'Could not find scripture. Please check the reference.'
+                        errorMessage: getFriendlyScriptureError()
                       } : s
                     ),
                   }
@@ -318,7 +318,7 @@ const CreateSermon = () => {
                       ...s, 
                       isLoading: false,
                       error: true,
-                      errorMessage: 'Network error. Please try again.'
+                      errorMessage: getFriendlyScriptureError("network error")
                     } : s
                   ),
                 }
@@ -516,24 +516,24 @@ const CreateSermon = () => {
   const createTourSteps: ProductTourStep[] = [
     {
       targetId: "create-sermon-title",
-      title: "Start with the sermon title",
-      description: "Name the presentation here. This title carries into your saved presentation and editor.",
+      title: "Add sermon details",
+      description: "Start with the title, series, date, and campus if your account uses campuses.",
     },
     {
       targetId: "create-sermon-translation",
-      title: "Choose the translation once",
-      description: "Set the Bible translation here and the scripture lookup uses it throughout the presentation.",
+      title: "Use your default translation",
+      description: "This starts from your Account default but can be changed for this sermon.",
     },
     {
       targetId: "create-sermon-points",
-      title: "Build your outline here",
-      description: "Add sermon points or verse blocks. Scripture entries auto-populate as you type references.",
+      title: "Build the sermon flow",
+      description: "Add points and scripture references. Verses autofill as references are entered.",
     },
     {
       targetId: "create-sermon-generate",
-      title: "Generate slides when ready",
-      description: "When your outline looks right, generate the slides. The tour will continue in the editor after that.",
-      nextStage: "editor",
+      title: "Review before creating slides",
+      description: "Generate moves to the review page before building the editor slides.",
+      nextStage: "review",
       nextLabel: "Got it",
     },
   ];

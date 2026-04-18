@@ -653,22 +653,22 @@ const SlideEditor = () => {
   const editorTourSteps: ProductTourStep[] = [
     {
       targetId: "editor-preview",
-      title: "This is your live slide preview",
-      description: "Edit text directly in the canvas and move through the presentation to check how each slide will look.",
+      title: "Preview and edit",
+      description: "Click through slides and edit text directly on the canvas.",
     },
     {
       targetId: "editor-styles",
-      title: "Style the presentation here",
-      description: "Adjust fonts, colors, spacing, and backgrounds from the toolbar without leaving the editor.",
+      title: "Style the presentation",
+      description: "Adjust fonts, colors, spacing, and backgrounds to match your church or sermon series.",
     },
     {
       targetId: "editor-export-button",
-      title: "Export from this button",
-      description: "When the presentation is ready, export PowerPoint or ProPresenter here.",
+      title: "Export when ready",
+      description: "Export PowerPoint or ProPresenter once the presentation is ready for Sunday.",
     },
     {
-      title: "You are ready to use the platform",
-      description: "That is the full flow from dashboard to export. We will take you back to the dashboard so you can start creating with the tour complete.",
+      title: "Tour complete",
+      description: "We'll take you back to the dashboard so you can keep building or reopen saved work.",
       nextLabel: "Back to Dashboard",
       nextPath: "/dashboard",
     },

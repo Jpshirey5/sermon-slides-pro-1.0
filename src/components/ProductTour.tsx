@@ -39,6 +39,7 @@ interface ProductTourProps {
   stage: ProductTourStage;
   steps: ProductTourStep[];
   onNavigate?: (path: string, options?: ProductTourNavigationOptions) => void;
+  onStepChange?: (step: ProductTourStep | null, index: number | null) => void;
   introTitle?: string;
   introDescription?: string;
   introStartLabel?: string;
@@ -53,6 +54,7 @@ const ProductTour = ({
   stage,
   steps,
   onNavigate,
+  onStepChange,
   introTitle,
   introDescription,
   introStartLabel,
@@ -88,6 +90,10 @@ const ProductTour = ({
   }, [introTitle, stage, steps.length, userId]);
 
   const activeStep = activeIndex != null ? steps[activeIndex] : null;
+
+  useEffect(() => {
+    onStepChange?.(activeStep, activeIndex);
+  }, [activeIndex, activeStep, onStepChange]);
 
   useEffect(() => {
     if (!activeStep?.targetId) {

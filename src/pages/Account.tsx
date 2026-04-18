@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useCallback, useMemo, useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -25,6 +25,7 @@ import {
   deleteCampus as deleteCampusRecord,
   type Campus,
 } from "@/lib/campuses";
+import ProductTour, { type ProductTourStep } from "@/components/ProductTour";
 
 interface TeamMember {
   id: string;
@@ -92,6 +93,7 @@ const Account = () => {
   const [subscriptionModalOpen, setSubscriptionModalOpen] = useState(false);
   const [subscriptionModalStep, setSubscriptionModalStep] = useState<"actions" | "plans">("actions");
   const [planChangeLoading, setPlanChangeLoading] = useState<SubscriptionPlanId | null>(null);
+  const [openSections, setOpenSections] = useState<string[]>([]);
 
   useEffect(() => {
     if (profile?.full_name) setFullName(profile.full_name);
@@ -548,8 +550,74 @@ const Account = () => {
     ? "text-green-600 font-medium"
     : "text-muted-foreground";
   const isEnterprisePlan = activePlanTier === "enterprise";
+  const isTeamOrEnterprisePlan = activePlanTier === "team" || isEnterprisePlan;
   const canCreateMoreCampuses = campuses.length < 5;
   const primaryCampus = campuses.find((campus) => campus.isPrimary) || null;
+
+  const accountTourSteps = useMemo<ProductTourStep[]>(() => {
+    const steps: ProductTourStep[] = [
+      {
+        targetId: "account-profile-section",
+        title: "Your profile and organization",
+        description: "This card holds your organization, name, email, and workflow defaults.",
+      },
+      {
+        targetId: "account-default-translation",
+        title: "Default Bible translation",
+        description: "New sermon forms start with this translation, so pastors do not need to choose it every time.",
+      },
+    ];
+
+    if (isEnterprisePlan) {
+      steps.push({
+        targetId: "account-dashboard-campus",
+        title: "Default dashboard campus view",
+        description: "Choose which campus the dashboard opens to by default. You can still switch to other campuses anytime.",
+      });
+    }
+
+    if (isOwner && isTeamOrEnterprisePlan) {
+      steps.push({
+        targetId: "account-team-invite",
+        title: "Invite your team",
+        description: "Owners can invite pastors, worship leaders, or staff into the organization.",
+      });
+    }
+
+    if (isOwner && isEnterprisePlan) {
+      steps.push({
+        targetId: "account-campuses-management",
+        title: "Manage campuses",
+        description: "Enterprise owners can add, rename, set primary, and remove campuses, up to 5 total.",
+      });
+    }
+
+    steps.push({
+      title: "Ready to create",
+      description: "Continue to the creator with your defaults in place.",
+      nextStage: "create",
+      nextPath: "/dashboard/create",
+      nextLabel: "Open Creator",
+    });
+
+    return steps;
+  }, [isEnterprisePlan, isOwner, isTeamOrEnterprisePlan]);
+
+  const handleAccountTourStepChange = useCallback((step: ProductTourStep | null) => {
+    if (!step?.targetId) return;
+
+    const sectionsByTarget: Record<string, string[]> = {
+      "account-profile-section": ["profile"],
+      "account-default-translation": ["profile"],
+      "account-dashboard-campus": ["profile"],
+      "account-team-invite": ["team"],
+      "account-campuses-management": ["campuses"],
+    };
+    const requiredSections = sectionsByTarget[step.targetId] || [];
+    if (requiredSections.length === 0) return;
+
+    setOpenSections((current) => Array.from(new Set([...current, ...requiredSections])));
+  }, []);
 
   const handleCreateCampus = async () => {
     if (!accountId || !newCampusName.trim()) return;
@@ -692,8 +760,8 @@ const Account = () => {
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
           <h1 className="font-serif text-3xl font-bold text-foreground mb-8">Account</h1>
 
-          <Accordion type="multiple" className="space-y-6">
-            <AccordionItem value="profile" className="rounded-2xl glass-panel border-none px-6">
+          <Accordion type="multiple" value={openSections} onValueChange={setOpenSections} className="space-y-6">
+            <AccordionItem value="profile" className="rounded-2xl glass-panel border-none px-6" data-tour-id="account-profile-section">
               <AccordionTrigger className="py-6 font-normal no-underline hover:no-underline">
                 <div className="flex items-center gap-3">
                   <User className="w-5 h-5 text-muted-foreground" />
@@ -716,7 +784,7 @@ const Account = () => {
                     <Label className="text-muted-foreground text-sm">Email</Label>
                     <p className="text-foreground">{user?.email}</p>
                   </div>
-                  <div className="space-y-2">
+                  <div className="space-y-2" data-tour-id="account-default-translation">
                     <Label htmlFor="defaultTranslation">Default Translation</Label>
                     <div className="flex gap-2">
                       <Select value={defaultTranslation} onValueChange={setDefaultTranslation}>
@@ -745,7 +813,7 @@ const Account = () => {
                     </p>
                   </div>
                   {isEnterprisePlan && (
-                    <div className="space-y-2">
+                    <div className="space-y-2" data-tour-id="account-dashboard-campus">
                       <Label htmlFor="dashboardCampusPreference">Associated Campus</Label>
                       <div className="flex gap-2">
                         <Select value={dashboardCampusPreference} onValueChange={setDashboardCampusPreference}>
@@ -828,7 +896,7 @@ const Account = () => {
                 {isOwner && (
                   <div className="pt-4 border-t border-border">
                     <Label className="text-sm font-medium text-foreground mb-2 block">Invite a team member</Label>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2" data-tour-id="account-team-invite">
                       <Input
                         type="email"
                         placeholder="colleague@church.org"
@@ -889,7 +957,7 @@ const Account = () => {
             </AccordionItem>
 
             {isEnterprisePlan && (
-              <AccordionItem value="campuses" className="rounded-2xl glass-panel border-none px-6">
+              <AccordionItem value="campuses" className="rounded-2xl glass-panel border-none px-6" data-tour-id="account-campuses-management">
                 <AccordionTrigger className="py-6 font-normal no-underline hover:no-underline">
                   <div className="flex items-center gap-3">
                     <Building2 className="w-5 h-5 text-muted-foreground" />
@@ -1313,6 +1381,15 @@ const Account = () => {
           )}
         </DialogContent>
       </Dialog>
+      {user && (
+        <ProductTour
+          userId={user.id}
+          stage="account"
+          steps={accountTourSteps}
+          onNavigate={navigate}
+          onStepChange={handleAccountTourStepChange}
+        />
+      )}
     </div>
   );
 };

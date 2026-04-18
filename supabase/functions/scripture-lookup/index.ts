@@ -111,7 +111,8 @@ function parseScriptureReference(reference: string): {
   verseStart: number;
   verseEnd?: number;
 } | null {
-  const match = reference.match(/^(\d?\s*[A-Za-z]+)\s+(\d+):(\d+)(?:-(\d+))?$/i);
+  const normalizedReference = normalizeScriptureReference(reference);
+  const match = normalizedReference.match(/^(\d?\s*[A-Za-z]+)\s+(\d+):(\d+)(?:-(\d+))?$/i);
   if (!match) return null;
 
   return {
@@ -120,6 +121,10 @@ function parseScriptureReference(reference: string): {
     verseStart: parseInt(match[3], 10),
     verseEnd: match[4] ? parseInt(match[4], 10) : undefined,
   };
+}
+
+function normalizeScriptureReference(reference: string): string {
+  return reference.trim().replace(/\s+/g, " ");
 }
 
 function cleanText(html: string): string {
@@ -211,25 +216,26 @@ serve(async (req) => {
 
     const { reference, translation = "KJV" } = body;
     const requestedTranslation = String(translation).toUpperCase();
+    const normalizedReference = normalizeScriptureReference(String(reference || ""));
 
-    if (!reference || String(reference).trim().length < 3) {
+    if (!normalizedReference || normalizedReference.length < 3) {
       return jsonResponse({
         text: "",
-        reference: String(reference || ""),
+        reference: normalizedReference,
         translation: requestedTranslation,
         error: true,
-        errorMessage: "Please enter a valid scripture reference (e.g., John 3:16)",
+        errorMessage: "Enter a scripture reference like John 3:16.",
       }, 400);
     }
 
-    const parsed = parseScriptureReference(String(reference));
+    const parsed = parseScriptureReference(normalizedReference);
     if (!parsed) {
       return jsonResponse({
         text: "",
-        reference: String(reference),
+        reference: normalizedReference,
         translation: requestedTranslation,
         error: true,
-        errorMessage: `Invalid format: "${reference}". Use format like "John 3:16" or "Genesis 1:1-5"`,
+        errorMessage: "We couldn't read that reference. Try something like John 3:16 or Genesis 1:1-5.",
       }, 400);
     }
 
@@ -237,10 +243,10 @@ serve(async (req) => {
     if (!bookCode) {
       return jsonResponse({
         text: "",
-        reference: String(reference),
+        reference: normalizedReference,
         translation: requestedTranslation,
         error: true,
-        errorMessage: `Unknown book: "${parsed.book}". Please check the spelling.`,
+        errorMessage: "We couldn't recognize that Bible book. Check the spelling and try again.",
       }, 400);
     }
 
@@ -363,7 +369,7 @@ serve(async (req) => {
         throw new Error("Skip KJV-only fallback for requested translation");
       }
 
-      const response = await fetch(`https://bible-api.com/${encodeURIComponent(String(reference))}`, {
+      const response = await fetch(`https://bible-api.com/${encodeURIComponent(normalizedReference)}`, {
         method: "GET",
         headers: { Accept: "application/json" },
       });
@@ -430,7 +436,7 @@ serve(async (req) => {
       reference: formattedRef,
       translation: requestedTranslation,
       error: true,
-      errorMessage: `Could not find "${reference}". The verse may not exist or there may be a network issue. Please check the chapter and verse numbers.`,
+      errorMessage: "We couldn't find that passage. Check the chapter and verse numbers.",
     }, 404);
   } catch (error) {
     console.error("scripture_lookup_unhandled_exception", { error: String(error) });

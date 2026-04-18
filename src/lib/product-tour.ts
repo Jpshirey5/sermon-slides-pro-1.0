@@ -1,4 +1,4 @@
-export type ProductTourStage = "dashboard" | "create" | "editor";
+export type ProductTourStage = "dashboard" | "account" | "create" | "review" | "editor";
 
 type ProductTourStatus = "pending" | "active" | "completed" | "skipped";
 
