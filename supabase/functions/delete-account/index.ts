@@ -11,6 +11,138 @@ const logStep = (step: string, details?: any) => {
   console.log(`[DELETE-ACCOUNT] ${step}${details ? ` - ${JSON.stringify(details)}` : ""}`);
 };
 
+const escapeHtml = (value: string) =>
+  value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+
+const clean = (value: unknown) => String(value ?? "").trim();
+
+const addDays = (date: Date, days: number) => new Date(date.getTime() + days * 24 * 60 * 60 * 1000);
+const maxDate = (a: Date, b: Date | null) => (b && b.getTime() > a.getTime() ? b : a);
+const toIsoOrNull = (date: Date | null) => date ? date.toISOString() : null;
+
+type AlertDetails = {
+  fullName: string;
+  email: string;
+  accountName: string;
+  accountId: string;
+  role: string;
+  wasOwner: boolean;
+  reason: string;
+  additionalFeedback: string;
+  planTier?: string | null;
+  billingInterval?: string | null;
+  subscriptionPeriodEnd?: string | null;
+  cancelableUntil?: string | null;
+  scheduledDeleteAt?: string | null;
+  stripeSchedulingError?: string | null;
+};
+
+async function sendDeletionAlert(details: AlertDetails) {
+  const resendApiKey = Deno.env.get("RESEND_API_KEY") ?? "";
+  const resendFromEmail = Deno.env.get("RESEND_FROM_EMAIL") ?? "";
+  const resendFromName = Deno.env.get("RESEND_FROM_NAME") || "Sermon Slide Pro Support";
+  const supportEmail = Deno.env.get("SUPPORT_CONTACT_EMAIL") || "support@sermonslidepro.com";
+
+  if (!resendApiKey || !resendFromEmail) {
+    throw new Error("Deletion alert email service is not configured");
+  }
+
+  const submittedAt = new Date().toISOString();
+  const subject = details.wasOwner
+    ? "Account Deletion Requested - Save Opportunity"
+    : "Member Account Deleted - Sermon Slide Pro";
+  const title = details.wasOwner
+    ? "Sermon Slide Pro Account Deletion Requested"
+    : "Sermon Slide Pro Member Account Deleted";
+  const safeFullName = escapeHtml(details.fullName || "Not provided");
+  const safeEmail = escapeHtml(details.email || "Not provided");
+  const safeAccountName = escapeHtml(details.accountName || "Unknown organization");
+  const safeAccountId = escapeHtml(details.accountId);
+  const safeRole = escapeHtml(details.wasOwner ? "Owner" : details.role || "Member");
+  const safeReason = escapeHtml(details.reason);
+  const safeFeedback = escapeHtml(details.additionalFeedback).replaceAll("\n", "<br />");
+  const safePlan = escapeHtml(details.planTier || "Unavailable");
+  const safeInterval = escapeHtml(details.billingInterval || "Unavailable");
+  const safePeriodEnd = escapeHtml(details.subscriptionPeriodEnd || "Unavailable");
+  const safeCancelableUntil = escapeHtml(details.cancelableUntil || "Not applicable");
+  const safeScheduledDeleteAt = escapeHtml(details.scheduledDeleteAt || "Not applicable");
+  const safeStripeError = escapeHtml(details.stripeSchedulingError || "");
+
+  const ownerFields = details.wasOwner
+    ? `
+      <p><strong>Plan:</strong> ${safePlan}</p>
+      <p><strong>Billing interval:</strong> ${safeInterval}</p>
+      <p><strong>Subscription period end:</strong> ${safePeriodEnd}</p>
+      <p><strong>Cancelable until:</strong> ${safeCancelableUntil}</p>
+      <p><strong>Scheduled deletion:</strong> ${safeScheduledDeleteAt}</p>
+      ${safeStripeError ? `<p><strong>Stripe scheduling issue:</strong> ${safeStripeError}</p>` : ""}
+    `
+    : "";
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #1f2937;">
+      <h2 style="margin-bottom: 16px;">${title}</h2>
+      ${details.wasOwner ? "<p><strong>Save opportunity:</strong> reach out during the 7-day grace period before deletion is locked in.</p>" : ""}
+      <p><strong>Name:</strong> ${safeFullName}</p>
+      <p><strong>Email:</strong> ${safeEmail}</p>
+      <p><strong>Organization:</strong> ${safeAccountName}</p>
+      <p><strong>Account ID:</strong> ${safeAccountId}</p>
+      <p><strong>Role:</strong> ${safeRole}</p>
+      <p><strong>Submitted at:</strong> ${escapeHtml(submittedAt)}</p>
+      ${ownerFields}
+      <hr style="margin: 24px 0; border: 0; border-top: 1px solid #e5e7eb;" />
+      <p><strong>Reason:</strong> ${safeReason}</p>
+      <p><strong>Additional feedback:</strong></p>
+      <p>${safeFeedback}</p>
+    </div>
+  `;
+  const text = `${title}
+
+${details.wasOwner ? "Save opportunity: reach out during the 7-day grace period before deletion is locked in.\n\n" : ""}Name: ${details.fullName || "Not provided"}
+Email: ${details.email || "Not provided"}
+Organization: ${details.accountName || "Unknown organization"}
+Account ID: ${details.accountId}
+Role: ${details.wasOwner ? "Owner" : details.role || "Member"}
+Submitted at: ${submittedAt}
+${details.wasOwner ? `Plan: ${details.planTier || "Unavailable"}
+Billing interval: ${details.billingInterval || "Unavailable"}
+Subscription period end: ${details.subscriptionPeriodEnd || "Unavailable"}
+Cancelable until: ${details.cancelableUntil || "Not applicable"}
+Scheduled deletion: ${details.scheduledDeleteAt || "Not applicable"}
+${details.stripeSchedulingError ? `Stripe scheduling issue: ${details.stripeSchedulingError}\n` : ""}` : ""}
+Reason:
+${details.reason}
+
+Additional feedback:
+${details.additionalFeedback}`;
+
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${resendApiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from: `${resendFromName} <${resendFromEmail}>`,
+      to: [supportEmail],
+      subject,
+      html,
+      text,
+      reply_to: details.email || undefined,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(`Resend email failed: ${response.status} ${errorBody}`);
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -41,8 +173,8 @@ serve(async (req) => {
     if (!userId) throw new Error("Invalid user claims");
 
     const body = await req.json();
-    const reason = String(body?.reason || "").trim();
-    const additionalFeedback = String(body?.additional_feedback || "").trim();
+    const reason = clean(body?.reason);
+    const additionalFeedback = clean(body?.additional_feedback);
 
     if (!reason) throw new Error("Exit reason is required");
     if (!additionalFeedback) throw new Error("Additional feedback is required");
@@ -50,145 +182,50 @@ serve(async (req) => {
     const { data: accountId } = await supabaseClient.rpc("get_user_account_id", { _user_id: userId });
     if (!accountId) throw new Error("No account found for user");
 
-    const { data: membership } = await supabaseClient
-      .from("account_members")
-      .select("role")
-      .eq("account_id", accountId)
-      .eq("user_id", userId)
-      .maybeSingle();
+    const [{ data: profile }, { data: membership }, { data: account }] = await Promise.all([
+      supabaseClient.from("profiles").select("full_name, email").eq("id", userId).maybeSingle(),
+      supabaseClient.from("account_members").select("role").eq("account_id", accountId).eq("user_id", userId).maybeSingle(),
+      supabaseClient
+        .from("accounts")
+        .select("name, stripe_customer_id, stripe_subscription_id, subscription_period_end, plan_tier, billing_interval")
+        .eq("id", accountId)
+        .maybeSingle(),
+    ]);
 
     const isOwner = membership?.role === "owner";
+    const trustedFullName = clean(profile?.full_name) || clean(body?.full_name) || "Not provided";
+    const trustedEmail = clean(profile?.email) || clean(email) || clean(body?.email) || "";
+    const accountName = clean(account?.name) || "Unknown organization";
 
-    const { data: account } = await supabaseClient
-      .from("accounts")
-      .select("stripe_customer_id, stripe_subscription_id")
-      .eq("id", accountId)
-      .maybeSingle();
-
-    // Do not block account deletion if survey persistence fails (e.g. migration not yet applied).
     try {
-      const { error: surveyError } = await supabaseClient.from("exit_surveys" as any).insert({
+      await supabaseClient.from("exit_surveys" as any).insert({
         requester_user_id: userId,
-        requester_email: email,
+        requester_email: trustedEmail || email,
         account_id: accountId,
         was_owner: isOwner,
         reason,
         additional_feedback: additionalFeedback,
       } as any);
-      if (surveyError) {
-        logStep("Survey insert failed, continuing deletion", { error: surveyError.message });
-      }
     } catch (surveyInsertErr) {
-      logStep("Survey insert threw, continuing deletion", { error: String(surveyInsertErr) });
+      logStep("Survey insert failed, continuing", { error: String(surveyInsertErr) });
     }
 
-    if (isOwner) {
-      const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
-      if (stripeKey) {
-        const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
-
-        const customerId = account?.stripe_customer_id || null;
-        const subscriptionId = account?.stripe_subscription_id || null;
-        const customerIdsToDelete = new Set<string>();
-
-        if (subscriptionId) {
-          try {
-            const subscription = await stripe.subscriptions.retrieve(subscriptionId);
-            if (subscription && subscription.status !== "canceled" && subscription.status !== "incomplete_expired") {
-              await stripe.subscriptions.cancel(subscriptionId);
-              logStep("Canceled subscription by id", { subscriptionId });
-            }
-            if (subscription?.customer && typeof subscription.customer === "string") {
-              customerIdsToDelete.add(subscription.customer);
-            }
-          } catch (err) {
-            logStep("Failed cancel by subscription id", { subscriptionId, error: String(err) });
-          }
-        }
-
-        if (customerId) {
-          customerIdsToDelete.add(customerId);
-          try {
-            const subscriptions = await stripe.subscriptions.list({ customer: customerId, limit: 100 });
-            for (const sub of subscriptions.data) {
-              if (sub.status !== "canceled" && sub.status !== "incomplete_expired") {
-                try {
-                  await stripe.subscriptions.cancel(sub.id);
-                  logStep("Canceled subscription by customer", { subscriptionId: sub.id });
-                } catch (err) {
-                  logStep("Failed cancel subscription", { subscriptionId: sub.id, error: String(err) });
-                }
-              }
-            }
-          } catch (err) {
-            logStep("Failed subscription list by customer", { customerId, error: String(err) });
-          }
-        }
-
-        // Fallback: if account row does not have a customer id, attempt lookup by owner email.
-        if (customerIdsToDelete.size === 0 && email) {
-          try {
-            const customers = await stripe.customers.list({ email, limit: 100 });
-            for (const customer of customers.data) {
-              customerIdsToDelete.add(customer.id);
-            }
-          } catch (err) {
-            logStep("Failed customer lookup by email", { email, error: String(err) });
-          }
-        }
-
-        for (const stripeCustomerId of customerIdsToDelete) {
-          try {
-            // Safety pass: cancel any remaining active subscriptions before deleting the customer.
-            const subscriptions = await stripe.subscriptions.list({ customer: stripeCustomerId, limit: 100 });
-            for (const sub of subscriptions.data) {
-              if (sub.status !== "canceled" && sub.status !== "incomplete_expired") {
-                try {
-                  await stripe.subscriptions.cancel(sub.id);
-                  logStep("Canceled subscription before customer delete", { subscriptionId: sub.id });
-                } catch (err) {
-                  logStep("Failed cancel before customer delete", { subscriptionId: sub.id, error: String(err) });
-                }
-              }
-            }
-          } catch (err) {
-            logStep("Failed pre-delete subscription list", { customerId: stripeCustomerId, error: String(err) });
-          }
-
-          try {
-            await stripe.customers.del(stripeCustomerId);
-            logStep("Deleted stripe customer", { customerId: stripeCustomerId });
-          } catch (err) {
-            logStep("Failed deleting stripe customer", { customerId: stripeCustomerId, error: String(err) });
-          }
-        }
+    if (!isOwner) {
+      try {
+        await sendDeletionAlert({
+          fullName: trustedFullName,
+          email: trustedEmail,
+          accountName,
+          accountId,
+          role: clean(membership?.role) || "member",
+          wasOwner: false,
+          reason,
+          additionalFeedback,
+        });
+      } catch (emailError) {
+        logStep("Member deletion alert email failed, continuing deletion", { error: String(emailError) });
       }
 
-      const { data: members } = await supabaseClient
-        .from("account_members")
-        .select("user_id")
-        .eq("account_id", accountId);
-
-      const memberUserIds = Array.from(new Set((members || []).map((m: any) => m.user_id).filter(Boolean)));
-
-      const { error: deleteAccountError } = await supabaseClient
-        .from("accounts")
-        .delete()
-        .eq("id", accountId);
-
-      if (deleteAccountError) {
-        throw new Error(`Failed deleting account data: ${deleteAccountError.message}`);
-      }
-
-      for (const memberUserId of memberUserIds) {
-        const { error } = await supabaseClient.auth.admin.deleteUser(memberUserId);
-        if (error) {
-          logStep("Failed deleting team auth user", { memberUserId, error: error.message });
-        }
-      }
-
-      logStep("Owner account deletion completed", { accountId, memberCount: memberUserIds.length });
-    } else {
       await supabaseClient
         .from("account_members")
         .delete()
@@ -201,9 +238,158 @@ serve(async (req) => {
       }
 
       logStep("Member account deletion completed", { accountId, userId });
+
+      return new Response(JSON.stringify({ success: true, scope: "member" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      });
     }
 
-    return new Response(JSON.stringify({ success: true }), {
+    const confirmation = clean(body?.organization_confirmation);
+    if (!confirmation || confirmation.toLowerCase() !== accountName.toLowerCase()) {
+      throw new Error("Please type your organization name exactly to request organization deletion.");
+    }
+
+    const { data: existingRequest } = await supabaseClient
+      .from("account_deletion_requests" as any)
+      .select("id, cancelable_until, scheduled_delete_at, subscription_period_end, alert_email_sent")
+      .eq("account_id", accountId)
+      .eq("status", "pending")
+      .maybeSingle();
+
+    if (existingRequest) {
+      return new Response(JSON.stringify({
+        success: true,
+        scope: "owner",
+        alreadyPending: true,
+        deletionRequest: existingRequest,
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      });
+    }
+
+    const now = new Date();
+    const cancelableUntil = addDays(now, 7);
+    let subscriptionPeriodEnd = account?.subscription_period_end ? new Date(account.subscription_period_end) : null;
+    let stripeSchedulingError: string | null = null;
+
+    const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
+    const customerId = account?.stripe_customer_id || null;
+    let subscriptionId = account?.stripe_subscription_id || null;
+
+    if (stripeKey && (subscriptionId || customerId)) {
+      const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
+      try {
+        let subscription: Stripe.Subscription | null = null;
+        if (subscriptionId) {
+          const retrieved = await stripe.subscriptions.retrieve(subscriptionId);
+          if (retrieved.status !== "canceled" && retrieved.status !== "incomplete_expired") {
+            subscription = retrieved;
+          }
+        }
+
+        if (!subscription && customerId) {
+          const subscriptions = await stripe.subscriptions.list({ customer: customerId, status: "all", limit: 10 });
+          subscription = subscriptions.data.find((sub) =>
+            sub.status === "active" || sub.status === "trialing" || sub.status === "past_due"
+          ) || null;
+          subscriptionId = subscription?.id || subscriptionId;
+        }
+
+        if (subscription) {
+          const updated = await stripe.subscriptions.update(subscription.id, { cancel_at_period_end: true });
+          const endTimestamp = typeof updated.current_period_end === "number" ? updated.current_period_end : null;
+          if (endTimestamp) {
+            subscriptionPeriodEnd = new Date(endTimestamp * 1000);
+          }
+
+          await supabaseClient
+            .from("accounts")
+            .update({
+              stripe_subscription_id: updated.id,
+              subscription_period_end: toIsoOrNull(subscriptionPeriodEnd),
+            })
+            .eq("id", accountId);
+          logStep("Subscription set to cancel at period end", { subscriptionId: updated.id });
+        }
+      } catch (stripeError) {
+        stripeSchedulingError = stripeError instanceof Error ? stripeError.message : String(stripeError);
+        logStep("Stripe period-end cancellation failed", { error: stripeSchedulingError });
+      }
+    }
+
+    const scheduledDeleteAt = maxDate(cancelableUntil, subscriptionPeriodEnd);
+    const insertPayload = {
+      account_id: accountId,
+      requester_user_id: userId,
+      requester_email: trustedEmail || email,
+      requester_full_name: trustedFullName,
+      account_name: accountName,
+      requester_role: "owner",
+      plan_tier: account?.plan_tier || null,
+      billing_interval: account?.billing_interval || null,
+      stripe_customer_id: customerId,
+      stripe_subscription_id: subscriptionId,
+      reason,
+      additional_feedback: additionalFeedback,
+      cancelable_until: cancelableUntil.toISOString(),
+      subscription_period_end: toIsoOrNull(subscriptionPeriodEnd),
+      scheduled_delete_at: scheduledDeleteAt.toISOString(),
+      last_error: stripeSchedulingError,
+      alert_email_sent: false,
+    };
+
+    const { data: deletionRequest, error: insertError } = await supabaseClient
+      .from("account_deletion_requests" as any)
+      .insert(insertPayload)
+      .select("id, cancelable_until, scheduled_delete_at, subscription_period_end, alert_email_sent")
+      .single();
+
+    if (insertError || !deletionRequest) {
+      throw new Error(`Failed creating deletion request: ${insertError?.message || "Unknown error"}`);
+    }
+
+    try {
+      await sendDeletionAlert({
+        fullName: trustedFullName,
+        email: trustedEmail,
+        accountName,
+        accountId,
+        role: "owner",
+        wasOwner: true,
+        reason,
+        additionalFeedback,
+        planTier: account?.plan_tier || null,
+        billingInterval: account?.billing_interval || null,
+        subscriptionPeriodEnd: toIsoOrNull(subscriptionPeriodEnd),
+        cancelableUntil: cancelableUntil.toISOString(),
+        scheduledDeleteAt: scheduledDeleteAt.toISOString(),
+        stripeSchedulingError,
+      });
+
+      await supabaseClient
+        .from("account_deletion_requests" as any)
+        .update({ alert_email_sent: true, alert_email_error: null })
+        .eq("id", deletionRequest.id);
+      deletionRequest.alert_email_sent = true;
+      logStep("Save-account deletion request alert sent", { accountId, userId });
+    } catch (emailError) {
+      const emailErrorMessage = emailError instanceof Error ? emailError.message : String(emailError);
+      await supabaseClient
+        .from("account_deletion_requests" as any)
+        .update({ alert_email_sent: false, alert_email_error: emailErrorMessage })
+        .eq("id", deletionRequest.id);
+      logStep("Save-account deletion request alert failed", { error: emailErrorMessage });
+    }
+
+    return new Response(JSON.stringify({
+      success: true,
+      scope: "owner",
+      deletionScheduled: true,
+      deletionRequest,
+      stripeSchedulingError,
+    }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 200,
     });

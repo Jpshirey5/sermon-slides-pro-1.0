@@ -1,13 +1,15 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 
 const parseFunctionError = async (err: any): Promise<string> => {
   if (!err) return "Could not complete account deletion. Please try again.";
@@ -46,9 +48,43 @@ const reasons = [
 
 const ExitSurvey = () => {
   const navigate = useNavigate();
+  const { user, profile, accountId, checkSubscription } = useAuth();
   const [reason, setReason] = useState("");
   const [additionalThoughts, setAdditionalThoughts] = useState("");
+  const [accountName, setAccountName] = useState("");
+  const [isOwner, setIsOwner] = useState(false);
+  const [organizationConfirmation, setOrganizationConfirmation] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const fullName = profile?.full_name || "Not set";
+  const email = profile?.email || user?.email || "Not available";
+
+  useEffect(() => {
+    if (!user || !accountId) return;
+
+    let cancelled = false;
+
+    const loadExitContext = async () => {
+      const [{ data: account }, { data: membership }] = await Promise.all([
+        supabase.from("accounts").select("name").eq("id", accountId).maybeSingle(),
+        supabase
+          .from("account_members")
+          .select("role")
+          .eq("account_id", accountId)
+          .eq("user_id", user.id)
+          .maybeSingle(),
+      ]);
+
+      if (cancelled) return;
+      setAccountName(account?.name || "");
+      setIsOwner(membership?.role === "owner");
+    };
+
+    void loadExitContext();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [accountId, user]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -63,6 +99,11 @@ const ExitSurvey = () => {
       return;
     }
 
+    if (isOwner && organizationConfirmation.trim().toLowerCase() !== accountName.trim().toLowerCase()) {
+      toast.error("Please type your organization name exactly to confirm.");
+      return;
+    }
+
     setSubmitting(true);
 
     try {
@@ -73,11 +114,14 @@ const ExitSurvey = () => {
         return;
       }
 
-      const { error } = await supabase.functions.invoke("delete-account", {
+      const { data, error } = await supabase.functions.invoke("delete-account", {
         headers: { Authorization: `Bearer ${session.access_token}` },
         body: {
           reason,
           additional_feedback: additionalThoughts.trim(),
+          full_name: fullName,
+          email,
+          organization_confirmation: organizationConfirmation.trim(),
         },
       });
 
@@ -86,7 +130,18 @@ const ExitSurvey = () => {
         return;
       }
 
-      toast.success("Account deletion completed.");
+      if (data?.scope === "owner") {
+        toast.success(
+          data?.alreadyPending
+            ? "Organization deletion is already scheduled."
+            : "Deletion request received. You have 7 days to cancel, and support may reach out."
+        );
+        await checkSubscription();
+        navigate("/account?deletion=requested", { replace: true });
+        return;
+      }
+
+      toast.success("Your login has been deleted.");
       await supabase.auth.signOut();
       navigate("/", { replace: true });
     } catch (err) {
@@ -114,10 +169,55 @@ const ExitSurvey = () => {
           <div className="rounded-2xl glass-panel p-6 border border-red-400/35">
             <h1 className="font-serif text-3xl font-bold text-foreground mb-2">Exit Survey</h1>
             <p className="text-muted-foreground mb-6">
-              This survey is required to complete account deletion.
+              {isOwner
+                ? "This creates a deletion request for your organization. You can cancel it for 7 days, and your team keeps access through the current billing term."
+                : "This survey is required before your login is deleted."}
             </p>
 
             <form onSubmit={handleSubmit} className="space-y-5">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Full Name</Label>
+                  <div className="rounded-lg border border-border/70 bg-muted/40 px-3 py-2 text-sm text-foreground">
+                    {fullName}
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Email</Label>
+                  <div className="rounded-lg border border-border/70 bg-muted/40 px-3 py-2 text-sm text-foreground">
+                    {email}
+                  </div>
+                </div>
+              </div>
+
+              {isOwner && (
+                <>
+                  <div className="space-y-2">
+                    <Label>Organization</Label>
+                    <div className="rounded-lg border border-border/70 bg-muted/40 px-3 py-2 text-sm text-foreground">
+                      {accountName || "Not available"}
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-amber-300/60 bg-amber-50/70 p-4 text-sm text-amber-900">
+                    <p className="font-medium">7-day grace period</p>
+                    <p className="mt-1">
+                      After you submit, deletion can be canceled for 7 days. After that, deletion is final and the organization will be deleted at the end of the current billing term.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="organizationConfirmation">Type your organization name to confirm *</Label>
+                    <Input
+                      id="organizationConfirmation"
+                      value={organizationConfirmation}
+                      onChange={(e) => setOrganizationConfirmation(e.target.value)}
+                      placeholder={accountName || "Organization name"}
+                    />
+                  </div>
+                </>
+              )}
+
               <div className="space-y-2">
                 <Label>Why are you leaving? *</Label>
                 <Select value={reason} onValueChange={setReason}>
@@ -151,10 +251,10 @@ const ExitSurvey = () => {
                   {submitting ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                      Completing Deletion...
+                      {isOwner ? "Scheduling Request..." : "Completing Deletion..."}
                     </>
                   ) : (
-                    "Submit Survey & Delete Account"
+                    isOwner ? "Submit Survey & Request Deletion" : "Submit Survey & Delete My Login"
                   )}
                 </Button>
               </div>

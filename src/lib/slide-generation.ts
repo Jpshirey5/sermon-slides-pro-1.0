@@ -1,6 +1,14 @@
 import type { SermonPresentation } from "@/lib/presentations";
 import type { SlideData } from "@/lib/export-pptx";
 import { splitVerseText } from "@/lib/scripture-api";
+import { formatDateOnlyForDisplay } from "@/lib/date-format";
+
+const titleSlideDateOptions: Intl.DateTimeFormatOptions = {
+  weekday: "long",
+  year: "numeric",
+  month: "long",
+  day: "numeric",
+};
 
 export function generateSlidesFromPresentation(presentation: SermonPresentation): SlideData[] {
   const slides: SlideData[] = [];
@@ -14,19 +22,10 @@ export function generateSlidesFromPresentation(presentation: SermonPresentation)
     type: "title",
     content: {
       title: presentation.data?.title || presentation.title,
-      subtitle: presentation.data?.date
-        ? `${new Date(presentation.data.date).toLocaleDateString("en-US", {
-            weekday: "long",
-            year: "numeric",
-            month: "long",
-            day: "numeric",
-          })}`
-        : new Date(presentation.date).toLocaleDateString("en-US", {
-            weekday: "long",
-            year: "numeric",
-            month: "long",
-            day: "numeric",
-          }),
+      subtitle: formatDateOnlyForDisplay(
+        presentation.data?.date || presentation.date,
+        titleSlideDateOptions
+      ),
     },
     background: defaultBackground,
     fontFamily: defaultFont,

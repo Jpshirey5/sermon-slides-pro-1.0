@@ -138,17 +138,41 @@ serve(async (req) => {
     const { data: accountId } = await supabaseClient.rpc("get_user_account_id", { _user_id: userId });
     let customerId: string | null = null;
 
-    if (accountId) {
-      const { data: account } = await supabaseClient
+    if (!accountId) {
+      throw new Error("No account found for user");
+    }
+
+    const [{ data: account }, { data: membership }, { data: activeDeletionRequest }] = await Promise.all([
+      supabaseClient
         .from("accounts")
         .select("stripe_customer_id")
         .eq("id", accountId)
-        .maybeSingle();
+        .maybeSingle(),
+      supabaseClient
+        .from("account_members")
+        .select("role")
+        .eq("account_id", accountId)
+        .eq("user_id", userId)
+        .maybeSingle(),
+      supabaseClient
+        .from("account_deletion_requests" as any)
+        .select("id")
+        .eq("account_id", accountId)
+        .eq("status", "pending")
+        .maybeSingle(),
+    ]);
 
-      customerId = account?.stripe_customer_id || null;
-      if (customerId) {
-        logStep("Using account stripe customer", { accountId, customerId });
-      }
+    if (membership?.role !== "owner") {
+      throw new Error("Only the account owner can manage billing for this organization");
+    }
+
+    if (activeDeletionRequest) {
+      throw new Error("Cancel the organization deletion request before changing billing");
+    }
+
+    customerId = account?.stripe_customer_id || null;
+    if (customerId) {
+      logStep("Using account stripe customer", { accountId, customerId });
     }
 
     if (!customerId) {

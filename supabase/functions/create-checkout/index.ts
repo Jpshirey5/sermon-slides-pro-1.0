@@ -102,6 +102,29 @@ serve(async (req) => {
     if (!accountId) throw new Error("No account found for user");
     logStep("Found account", { accountId });
 
+    const [{ data: membership }, { data: activeDeletionRequest }] = await Promise.all([
+      supabaseClient
+        .from("account_members")
+        .select("role")
+        .eq("account_id", accountId)
+        .eq("user_id", userId)
+        .maybeSingle(),
+      supabaseClient
+        .from("account_deletion_requests" as any)
+        .select("id")
+        .eq("account_id", accountId)
+        .eq("status", "pending")
+        .maybeSingle(),
+    ]);
+
+    if (membership?.role !== "owner") {
+      throw new Error("Only the account owner can manage billing for this organization");
+    }
+
+    if (activeDeletionRequest) {
+      throw new Error("Cancel the organization deletion request before changing billing");
+    }
+
     const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
 
     // Look up or create Stripe customer

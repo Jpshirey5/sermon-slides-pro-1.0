@@ -431,38 +431,52 @@ const CreateSermon = () => {
   }), [campusId, draftId, globalTranslation, isEnterpriseAccount, points, presentationDate, series, title, verseBreakdown]);
 
   useEffect(() => {
-    if (!hasMeaningfulDraftContent) {
+    if (saveStatus !== "saved") return;
+
+    const serializedPayload = JSON.stringify(buildPresentationPayload());
+    if (serializedPayload !== lastSavedDraftRef.current) {
       setSaveStatus("idle");
+    }
+  }, [buildPresentationPayload, saveStatus]);
+
+  const handleSaveDraft = async () => {
+    if (!hasMeaningfulDraftContent) {
+      const { toast } = await import("sonner");
+      toast.error("Add a title, series, point, or verse before saving.");
       return;
     }
 
-    if (isEnterpriseAccount && (campusesLoading || !campusId)) {
+    if (isEnterpriseAccount && !campusId) {
+      const { toast } = await import("sonner");
+      toast.error("Select a campus before saving.");
       return;
     }
 
-    const payload = buildPresentationPayload();
-    const serializedPayload = JSON.stringify(payload);
-    if (serializedPayload === lastSavedDraftRef.current) {
-      return;
-    }
+    const presentationPayload = buildPresentationPayload();
 
-    const timeoutId = window.setTimeout(async () => {
+    try {
       setSaveStatus("saving");
-      try {
-        const savedId = await savePresentation(payload);
-        if (!savedId) {
-          throw new Error("Draft save returned no id");
-        }
-        lastSavedDraftRef.current = serializedPayload;
-        setSaveStatus("saved");
-      } catch (error) {
-        logError(error, { scope: "create_sermon_autosave", sermonId: draftId });
-        setSaveStatus("error");
-      }
-    }, 1500);
+      const savedId = await savePresentation(presentationPayload);
 
-    return () => window.clearTimeout(timeoutId);
-  }, [buildPresentationPayload, campusId, campusesLoading, draftId, hasMeaningfulDraftContent, isEnterpriseAccount]);
+      if (!savedId) {
+        throw new Error("Manual draft save returned no id");
+      }
+
+      lastSavedDraftRef.current = JSON.stringify(presentationPayload);
+      setSaveStatus("saved");
+      trackEvent("sermon_draft_saved", {
+        editingExisting: Boolean(editId),
+        hasTitle: Boolean(title.trim()),
+      });
+      const { toast } = await import("sonner");
+      toast.success("Draft saved.");
+    } catch (error) {
+      logError(error, { scope: "create_sermon_manual_save", sermonId: draftId });
+      setSaveStatus("error");
+      const { toast } = await import("sonner");
+      toast.error("Could not save draft. Please try again.");
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -530,9 +544,14 @@ const CreateSermon = () => {
       description: "Add points and scripture references. Verses autofill as references are entered.",
     },
     {
+      targetId: "create-sermon-save",
+      title: "Save a draft manually",
+      description: "Use Save when you want to keep sermon form progress without creating slides yet. Nothing is saved automatically.",
+    },
+    {
       targetId: "create-sermon-generate",
       title: "Review before creating slides",
-      description: "Generate moves to the review page before building the editor slides.",
+      description: "Generate moves to the review page and updates this same presentation when slides are finalized.",
       nextStage: "review",
       nextLabel: "Got it",
     },
@@ -565,15 +584,31 @@ const CreateSermon = () => {
               </span>
             </Link>
 
-            {/* Generate */}
-            <Button
-              variant="hero"
-              onClick={handleSubmit}
-              disabled={!title.trim() || !hasValidContent || (isEnterpriseAccount && (campusesLoading || !campusId))}
-            >
-              <Wand2 className="w-4 h-4" />
-              <span className="hidden sm:inline">Generate Slides</span>
-            </Button>
+            {/* Save / Generate */}
+            <div className="flex items-center gap-2">
+              <Button
+                data-tour-id="create-sermon-save"
+                type="button"
+                variant="outline"
+                onClick={handleSaveDraft}
+                disabled={
+                  saveStatus === "saving" ||
+                  !hasMeaningfulDraftContent ||
+                  (isEnterpriseAccount && (campusesLoading || !campusId))
+                }
+              >
+                <span className="hidden sm:inline">Save as Draft</span>
+                <span className="sm:hidden">Save</span>
+              </Button>
+              <Button
+                variant="hero"
+                onClick={handleSubmit}
+                disabled={!title.trim() || !hasValidContent || (isEnterpriseAccount && (campusesLoading || !campusId))}
+              >
+                <Wand2 className="w-4 h-4" />
+                <span className="hidden sm:inline">Generate Slides</span>
+              </Button>
+            </div>
           </div>
         </div>
       </header>
@@ -896,20 +931,7 @@ const CreateSermon = () => {
               </div>
             </div>
 
-            {/* Submit */}
-            <div className="flex flex-col gap-3 pt-4 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-sm text-muted-foreground">
-                {saveStatus === "saving" && "Saving draft..."}
-                {saveStatus === "saved" && "Draft saved"}
-                {saveStatus === "error" && "Unable to autosave draft"}
-                {saveStatus === "idle" && "Drafts save automatically once you add sermon content."}
-              </p>
-              <div className="flex justify-end gap-4">
-              <Link to="/dashboard">
-                <Button type="button" variant="outline" size="lg">
-                  Cancel
-                </Button>
-              </Link>
+            <div className="flex justify-end pt-4">
               <Button
                 data-tour-id="create-sermon-generate"
                 type="submit"
@@ -920,7 +942,6 @@ const CreateSermon = () => {
                 <Wand2 className="w-5 h-5" />
                 Generate Slides
               </Button>
-              </div>
             </div>
           </form>
         </motion.div>
