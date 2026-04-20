@@ -39,6 +39,8 @@ interface TeamMember {
   role: string;
   full_name: string | null;
   email: string | null;
+  church_role: string | null;
+  default_translation: string | null;
 }
 
 interface PendingInvite {
@@ -65,11 +67,13 @@ const Account = () => {
   const navigate = useNavigate();
   const { user, profile, subscription, refreshProfile, signOut, checkSubscription, accountId } = useAuth();
   const [fullName, setFullName] = useState(profile?.full_name || "");
+  const [churchRole, setChurchRole] = useState(profile?.church_role || "");
   const [defaultTranslation, setDefaultTranslation] = useState(profile?.default_translation || DEFAULT_TRANSLATION);
   const [dashboardCampusPreference, setDashboardCampusPreference] = useState(
     profile?.preferred_dashboard_campus_id || "all"
   );
   const [savingDefaultTranslation, setSavingDefaultTranslation] = useState(false);
+  const [savingChurchRole, setSavingChurchRole] = useState(false);
   const [savingDashboardCampusPreference, setSavingDashboardCampusPreference] = useState(false);
   const [portalLoading, setPortalLoading] = useState(false);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
@@ -105,6 +109,7 @@ const Account = () => {
 
   useEffect(() => {
     if (profile?.full_name) setFullName(profile.full_name);
+    setChurchRole(profile?.church_role || "");
     setDefaultTranslation(profile?.default_translation || DEFAULT_TRANSLATION);
     setDashboardCampusPreference(profile?.preferred_dashboard_campus_id || "all");
   }, [profile]);
@@ -155,7 +160,7 @@ const Account = () => {
       const userIds = members.map((m: any) => m.user_id);
       const { data: profiles } = await supabase
         .from("profiles")
-        .select("id, full_name, email")
+        .select("id, full_name, email, church_role, default_translation")
         .in("id", userIds);
 
       const profileMap = new Map(profiles?.map(p => [p.id, p]) || []);
@@ -166,9 +171,29 @@ const Account = () => {
         role: m.role,
         full_name: profileMap.get(m.user_id)?.full_name || null,
         email: profileMap.get(m.user_id)?.email || null,
+        church_role: profileMap.get(m.user_id)?.church_role || null,
+        default_translation: profileMap.get(m.user_id)?.default_translation || null,
       })));
     }
     setTeamLoading(false);
+  };
+
+  const handleSaveChurchRole = async () => {
+    if (!user) return;
+    setSavingChurchRole(true);
+    const { error } = await supabase.rpc("update_my_church_role", {
+      _church_role: churchRole.trim() || null,
+    });
+
+    if (error) {
+      toast.error("Failed to update church role.");
+    } else {
+      toast.success("Church role updated!");
+      await loadTeam();
+      await refreshProfile();
+    }
+
+    setSavingChurchRole(false);
   };
 
   const loadPendingInvites = async () => {
@@ -236,15 +261,27 @@ const Account = () => {
 
   const handleSaveDefaultTranslation = async () => {
     if (!user) return;
+    if (isEnterprisePlan && !isOwner) {
+      toast.error("Enterprise Bible translation is inherited from the organization owner.");
+      return;
+    }
+
     setSavingDefaultTranslation(true);
-    const { error } = await supabase
-      .from("profiles")
-      .update({ default_translation: defaultTranslation })
-      .eq("id", user.id);
+    const { error } = isEnterprisePlan && accountId
+      ? await supabase.rpc("set_enterprise_account_default_translation", {
+          _account_id: accountId,
+          _translation: defaultTranslation,
+        })
+      : await supabase
+          .from("profiles")
+          .update({ default_translation: defaultTranslation })
+          .eq("id", user.id);
+
     if (error) {
       toast.error("Failed to update default translation.");
     } else {
-      toast.success("Default translation updated!");
+      toast.success(isEnterprisePlan ? "Enterprise default translation updated for the team!" : "Default translation updated!");
+      await loadTeam();
       await refreshProfile();
     }
     setSavingDefaultTranslation(false);
@@ -611,6 +648,15 @@ const Account = () => {
   const canCreateMoreCampuses = campuses.length < 5;
   const primaryCampus = campuses.find((campus) => campus.isPrimary) || null;
   const deletionCancelable = isDeletionCancelable(activeDeletionRequest);
+  const enterpriseOwnerDefaultTranslation =
+    teamMembers.find((member) => member.role === "owner")?.default_translation || DEFAULT_TRANSLATION;
+  const defaultTranslationInherited = isEnterprisePlan && !isOwner;
+
+  useEffect(() => {
+    if (defaultTranslationInherited) {
+      setDefaultTranslation(enterpriseOwnerDefaultTranslation);
+    }
+  }, [defaultTranslationInherited, enterpriseOwnerDefaultTranslation]);
 
   const accountTourSteps = useMemo<ProductTourStep[]>(() => {
     const steps: ProductTourStep[] = [
@@ -893,10 +939,32 @@ const Account = () => {
                     <Label className="text-muted-foreground text-sm">Email</Label>
                     <p className="text-foreground">{user?.email}</p>
                   </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="churchRole">Role at Church</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        id="churchRole"
+                        value={churchRole}
+                        onChange={(event) => setChurchRole(event.target.value)}
+                        placeholder="Lead Pastor, Worship Director, Ministry Assistant"
+                        className="h-10"
+                      />
+                      <Button
+                        onClick={handleSaveChurchRole}
+                        disabled={savingChurchRole || churchRole.trim() === (profile?.church_role || "")}
+                        size="sm"
+                      >
+                        {savingChurchRole ? "Saving..." : "Save"}
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      This helps your organization know how you serve at the church.
+                    </p>
+                  </div>
                   <div className="space-y-2" data-tour-id="account-default-translation">
                     <Label htmlFor="defaultTranslation">Default Translation</Label>
                     <div className="flex gap-2">
-                      <Select value={defaultTranslation} onValueChange={setDefaultTranslation}>
+                      <Select value={defaultTranslation} onValueChange={setDefaultTranslation} disabled={defaultTranslationInherited}>
                         <SelectTrigger id="defaultTranslation" className="h-10">
                           <SelectValue />
                         </SelectTrigger>
@@ -911,14 +979,22 @@ const Account = () => {
                       </Select>
                       <Button
                         onClick={handleSaveDefaultTranslation}
-                        disabled={savingDefaultTranslation || defaultTranslation === (profile?.default_translation || DEFAULT_TRANSLATION)}
+                        disabled={
+                          defaultTranslationInherited ||
+                          savingDefaultTranslation ||
+                          defaultTranslation === (profile?.default_translation || DEFAULT_TRANSLATION)
+                        }
                         size="sm"
                       >
                         {savingDefaultTranslation ? "Saving..." : "Save"}
                       </Button>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      New presentations will start with this translation by default.
+                      {defaultTranslationInherited
+                        ? "Enterprise team members inherit this from the organization owner."
+                        : isEnterprisePlan
+                        ? "Enterprise team members will inherit this translation for new presentations."
+                        : "New presentations will start with this translation by default."}
                     </p>
                   </div>
                   {isEnterprisePlan && (
@@ -979,6 +1055,11 @@ const Account = () => {
                         <div className="min-w-0">
                           <p className="text-sm font-medium text-foreground">{member.full_name || "Unnamed"}</p>
                           <p className="text-xs text-muted-foreground truncate">{member.email}</p>
+                          {member.church_role && (
+                            <p className="text-xs text-muted-foreground truncate">
+                              Role: {member.church_role}
+                            </p>
+                          )}
                         </div>
                         <div className="flex items-center gap-2">
                           <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
