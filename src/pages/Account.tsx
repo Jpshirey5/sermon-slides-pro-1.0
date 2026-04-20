@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { BookOpen, ArrowLeft, CreditCard, User, Crown, Users, Mail, Loader2, AlertTriangle, Trash2, Building2, Check } from "lucide-react";
+import { BookOpen, ArrowLeft, CreditCard, User, Crown, Users, Mail, Loader2, AlertTriangle, Building2, Check } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -26,6 +26,12 @@ import {
   type Campus,
 } from "@/lib/campuses";
 import ProductTour, { type ProductTourStep } from "@/components/ProductTour";
+import {
+  formatDeletionDate,
+  getActiveAccountDeletionRequest,
+  isDeletionCancelable,
+  type AccountDeletionRequest,
+} from "@/lib/account-deletion";
 
 interface TeamMember {
   id: string;
@@ -94,6 +100,8 @@ const Account = () => {
   const [subscriptionModalStep, setSubscriptionModalStep] = useState<"actions" | "plans">("actions");
   const [planChangeLoading, setPlanChangeLoading] = useState<SubscriptionPlanId | null>(null);
   const [openSections, setOpenSections] = useState<string[]>([]);
+  const [activeDeletionRequest, setActiveDeletionRequest] = useState<AccountDeletionRequest | null>(null);
+  const [cancelingDeletionRequest, setCancelingDeletionRequest] = useState(false);
 
   useEffect(() => {
     if (profile?.full_name) setFullName(profile.full_name);
@@ -118,6 +126,19 @@ const Account = () => {
       .single();
     if (data) setOrgName(`${data.name}${data.city ? ` — ${data.city}, ${data.state}` : ''}`);
   };
+
+  const loadActiveDeletionRequest = useCallback(async () => {
+    if (!accountId) {
+      setActiveDeletionRequest(null);
+      return;
+    }
+
+    try {
+      setActiveDeletionRequest(await getActiveAccountDeletionRequest(accountId));
+    } catch {
+      setActiveDeletionRequest(null);
+    }
+  }, [accountId]);
 
   const loadTeam = async () => {
     if (!user) return;
@@ -397,6 +418,11 @@ const Account = () => {
   };
 
   const handleManageSubscription = async (options?: { action?: "cancel" | "change_plan"; targetPriceId?: string }) => {
+    if (activeDeletionRequest) {
+      toast.error("Cancel the organization deletion request before changing billing.");
+      return;
+    }
+
     setPortalLoading(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -453,10 +479,6 @@ const Account = () => {
     }
   };
 
-  const handleStartDeleteFlow = () => {
-    setDeleteWarningOpen(true);
-  };
-
   const openSubscriptionModal = () => {
     setSubscriptionModalStep("actions");
     setSubscriptionModalOpen(true);
@@ -472,7 +494,42 @@ const Account = () => {
 
   const handleCancelSubscription = async () => {
     setSubscriptionModalOpen(false);
-    await handleManageSubscription({ action: "cancel" });
+    setSubscriptionModalStep("actions");
+    setDeleteWarningOpen(true);
+  };
+
+  const handleCancelDeletionRequest = async () => {
+    if (!activeDeletionRequest) return;
+
+    setCancelingDeletionRequest(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        toast.error("Please log in again.");
+        return;
+      }
+
+      const { data, error } = await supabase.functions.invoke("cancel-account-deletion", {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+
+      if (error || data?.error) {
+        toast.error(data?.error || error?.message || "Could not cancel the deletion request.");
+        return;
+      }
+
+      toast.success(
+        data?.stripeRestoreError
+          ? "Deletion request canceled. Please check billing because Stripe needs manual review."
+          : "Deletion request canceled."
+      );
+      await loadActiveDeletionRequest();
+      await checkSubscription();
+    } catch {
+      toast.error("Could not cancel the deletion request.");
+    } finally {
+      setCancelingDeletionRequest(false);
+    }
   };
 
   const handleChangePlanSelection = async (planId: SubscriptionPlanId) => {
@@ -553,6 +610,7 @@ const Account = () => {
   const isTeamOrEnterprisePlan = activePlanTier === "team" || isEnterprisePlan;
   const canCreateMoreCampuses = campuses.length < 5;
   const primaryCampus = campuses.find((campus) => campus.isPrimary) || null;
+  const deletionCancelable = isDeletionCancelable(activeDeletionRequest);
 
   const accountTourSteps = useMemo<ProductTourStep[]>(() => {
     const steps: ProductTourStep[] = [
@@ -705,6 +763,15 @@ const Account = () => {
   }, [searchParams, setSearchParams, checkSubscription]);
 
   useEffect(() => {
+    if (searchParams.get("deletion") === "requested") {
+      void loadActiveDeletionRequest();
+      const next = new URLSearchParams(searchParams.toString());
+      next.delete("deletion");
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchParams, setSearchParams, loadActiveDeletionRequest]);
+
+  useEffect(() => {
     const pendingProCheckout = localStorage.getItem("pending_pro_checkout") === "true";
     const shouldAutoStartCheckout = searchParams.get("startCheckout") === "pro" || pendingProCheckout;
     if (!shouldAutoStartCheckout || !user || !accountId) return;
@@ -736,6 +803,10 @@ const Account = () => {
     void loadCampuses();
   }, [accountId, isEnterprisePlan]);
 
+  useEffect(() => {
+    void loadActiveDeletionRequest();
+  }, [loadActiveDeletionRequest]);
+
   return (
     <div className="app-shell">
       <header className="border-b border-border/60 bg-white/65 backdrop-blur-md sticky top-0 z-50">
@@ -759,6 +830,44 @@ const Account = () => {
       <main className="container mx-auto px-4 py-8 max-w-2xl">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
           <h1 className="font-serif text-3xl font-bold text-foreground mb-8">Account</h1>
+
+          {activeDeletionRequest && (
+            <div className="mb-6 rounded-2xl border border-amber-300/60 bg-amber-50/70 p-5">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 text-amber-900">
+                    <AlertTriangle className="h-5 w-5" />
+                    <p className="font-medium">Organization deletion is scheduled</p>
+                  </div>
+                  {deletionCancelable ? (
+                    <p className="text-sm text-amber-900">
+                      You can cancel this request until {formatDeletionDate(activeDeletionRequest.cancelableUntil)}.
+                      After that, deletion is locked in. Your organization remains available until the end of the current billing term.
+                    </p>
+                  ) : (
+                    <p className="text-sm text-amber-900">
+                      The 7-day grace period has ended, so this deletion request is locked in. Your organization remains available until
+                      {" "}{formatDeletionDate(activeDeletionRequest.scheduledDeleteAt)}, then it will be permanently deleted.
+                    </p>
+                  )}
+                  <p className="text-xs text-amber-800">
+                    Scheduled deletion date: {formatDeletionDate(activeDeletionRequest.scheduledDeleteAt)}
+                  </p>
+                </div>
+                {isOwner && deletionCancelable && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void handleCancelDeletionRequest()}
+                    disabled={cancelingDeletionRequest}
+                    className="border-amber-400 bg-white/70"
+                  >
+                    {cancelingDeletionRequest ? "Canceling..." : "Cancel Deletion Request"}
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
 
           <Accordion type="multiple" value={openSections} onValueChange={setOpenSections} className="space-y-6">
             <AccordionItem value="profile" className="rounded-2xl glass-panel border-none px-6" data-tour-id="account-profile-section">
@@ -1163,9 +1272,20 @@ const Account = () => {
                       </p>
                     </div>
                   )}
+                  {activeDeletionRequest && (
+                    <div className="rounded-xl border border-amber-300/50 bg-amber-50/60 p-4">
+                      <p className="text-sm text-amber-900">
+                        Billing changes are paused while organization deletion is scheduled. Cancel the deletion request during the 7-day grace period if you want to keep this account.
+                      </p>
+                    </div>
+                  )}
                   <div className="pt-4 flex gap-3">
                     {isOwner ? (
-                      isCancelingSubscription ? (
+                      activeDeletionRequest ? (
+                        <Button variant="outline" disabled>
+                          Deletion Scheduled
+                        </Button>
+                      ) : isCancelingSubscription ? (
                         <Button onClick={handleManageSubscription} disabled={portalLoading} variant="hero">
                           {portalLoading ? "Opening..." : "Resubscribe"}
                         </Button>
@@ -1199,26 +1319,6 @@ const Account = () => {
               </AccordionContent>
             </AccordionItem>
 
-            <AccordionItem value="account-danger" className="rounded-2xl glass-panel border border-red-400/35 px-6">
-              <AccordionTrigger className="py-6 font-normal no-underline hover:no-underline">
-                <div className="flex items-center gap-3">
-                  <AlertTriangle className="w-5 h-5 text-red-600" />
-                  <h2 className="font-serif text-xl font-semibold text-foreground">Nothing to See Here</h2>
-                </div>
-              </AccordionTrigger>
-              <AccordionContent className="pb-6">
-                <p className="text-sm text-muted-foreground mb-4">
-                  Delete your account and permanently remove your data from the platform.
-                  {isOwner
-                    ? " As an owner, this will also remove all team members and presentations for your organization."
-                    : " This action permanently removes only your own login and profile access. Presentations you created will stay with your organization."}
-                </p>
-                <Button variant="destructive" onClick={handleStartDeleteFlow}>
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  Delete Account
-                </Button>
-              </AccordionContent>
-            </AccordionItem>
           </Accordion>
         </motion.div>
       </main>
@@ -1269,28 +1369,27 @@ const Account = () => {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-red-600">
               <AlertTriangle className="w-5 h-5" />
-              Warning: Permanent Account Deletion
+              {isOwner ? "Request Organization Deletion" : "Leave Organization"}
             </DialogTitle>
             <DialogDescription className="pt-2 text-left">
-              This action is permanent and cannot be undone.
+              {isOwner
+                ? "This starts a protected offboarding process for your organization."
+                : "This permanently removes only your login and profile access."}
             </DialogDescription>
           </DialogHeader>
           <div className="text-sm text-foreground space-y-2">
-            <p>Deleting your account will permanently remove your profile and access.</p>
             {isOwner ? (
-              <p>All presentations tied to your organization account will be deleted.</p>
+              <>
+                <p>You will have 7 days to cancel this deletion request.</p>
+                <p>After 7 days, deletion is locked in. Your organization stays available until the end of the current billing term.</p>
+                <p>At the scheduled deletion date, all team members, presentations, campuses, and organization data will be permanently removed.</p>
+              </>
             ) : (
-              <p>Presentations you created will remain with your organization and stay available to the team.</p>
-            )}
-            {isOwner && (
-              <p className="font-medium text-red-700">
-                Because you are an owner, all associated team members will be removed and lose access.
-              </p>
-            )}
-            {isOwner ? (
-              <p>Any active Stripe subscription for your organization account will be canceled.</p>
-            ) : (
-              <p>Your organization's subscription and the rest of the team will remain active.</p>
+              <>
+                <p>Your profile and login access will be deleted.</p>
+                <p>Presentations you created will remain with your organization and stay available to the team.</p>
+                <p>Your organization's subscription and the rest of the team will remain active.</p>
+              </>
             )}
           </div>
           <DialogFooter>
@@ -1303,14 +1402,22 @@ const Account = () => {
       <Dialog open={deleteFinalOpen} onOpenChange={setDeleteFinalOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle className="text-red-600">Final Confirmation</DialogTitle>
+            <DialogTitle className="text-red-600">{isOwner ? "Final Step Before Exit Survey" : "Final Confirmation"}</DialogTitle>
             <DialogDescription className="pt-2 text-left">
-              You are about to start the final deactivation process.
+              {isOwner
+                ? "The exit survey creates the deletion request and sends support your feedback."
+                : "You are about to delete your own login and leave this organization."}
             </DialogDescription>
           </DialogHeader>
           <div className="text-sm text-foreground space-y-2">
-            <p>You must complete a required exit survey to finish account deletion.</p>
-            <p className="font-medium">Once submitted, your account and data will be permanently deleted.</p>
+            <p>You must complete a required exit survey to continue.</p>
+            {isOwner ? (
+              <p className="font-medium">
+                Once submitted, you can cancel for 7 days. After that, deletion is final and completes at the end of the current billing term.
+              </p>
+            ) : (
+              <p className="font-medium">Once submitted, your login and profile will be permanently deleted.</p>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleteFinalOpen(false)}>Go Back</Button>
@@ -1326,7 +1433,7 @@ const Account = () => {
               <DialogHeader>
                 <DialogTitle>Manage Subscription</DialogTitle>
                 <DialogDescription>
-                  Choose whether you want to change your subscription or cancel it.
+                  Choose whether you want to change your subscription or start organization offboarding.
                 </DialogDescription>
               </DialogHeader>
               <div className="grid gap-4 md:grid-cols-2">
@@ -1347,7 +1454,7 @@ const Account = () => {
                 >
                   <p className="font-medium text-foreground">Cancel Subscription</p>
                   <p className="text-sm text-muted-foreground mt-2">
-                    End your current subscription when you're ready.
+                    Start the 7-day cancellation request. Your organization keeps access through the current billing term.
                   </p>
                 </button>
               </div>

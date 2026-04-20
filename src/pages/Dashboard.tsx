@@ -20,6 +20,7 @@ import {
   Download,
   RefreshCw,
   CheckSquare,
+  AlertTriangle,
 } from "lucide-react";
 import {
   getDashboardPresentationsPage,
@@ -36,6 +37,13 @@ import { consumeProductTourCompletion } from "@/lib/product-tour";
 import { ExportOptionsModal } from "@/components/ExportOptionsModal";
 import { exportPresentationsAsZip } from "@/lib/bulk-export";
 import { getEnterpriseCampusFilterOptions, type CampusFilterOption } from "@/lib/campuses";
+import { supabase } from "@/integrations/supabase/client";
+import {
+  formatDeletionDate,
+  getActiveAccountDeletionRequest,
+  isDeletionCancelable,
+  type AccountDeletionRequest,
+} from "@/lib/account-deletion";
 
 const DASHBOARD_PAGE_SIZE = 12;
 const DASHBOARD_SORT_OPTIONS = [
@@ -80,6 +88,9 @@ const Dashboard = () => {
   const [showBulkExportModal, setShowBulkExportModal] = useState(false);
   const [isBulkExporting, setIsBulkExporting] = useState(false);
   const [showTourCompletionPrompt, setShowTourCompletionPrompt] = useState(false);
+  const [activeDeletionRequest, setActiveDeletionRequest] = useState<AccountDeletionRequest | null>(null);
+  const [isAccountOwner, setIsAccountOwner] = useState(false);
+  const [cancelingDeletionRequest, setCancelingDeletionRequest] = useState(false);
   const isEnterpriseAccount = subscription.plan_tier === "enterprise";
   const latestPresentationLoadIdRef = useRef(0);
 
@@ -95,6 +106,63 @@ const Dashboard = () => {
       setSearchParams({}, { replace: true });
     }
   }, [checkSubscription, searchParams, setSearchParams]);
+
+  const loadDeletionRequestState = useCallback(async () => {
+    if (!accountId || !user) {
+      setActiveDeletionRequest(null);
+      setIsAccountOwner(false);
+      return;
+    }
+
+    try {
+      const [request, { data: membership }] = await Promise.all([
+        getActiveAccountDeletionRequest(accountId),
+        supabase
+          .from("account_members")
+          .select("role")
+          .eq("account_id", accountId)
+          .eq("user_id", user.id)
+          .maybeSingle(),
+      ]);
+      setActiveDeletionRequest(request);
+      setIsAccountOwner(membership?.role === "owner");
+    } catch {
+      setActiveDeletionRequest(null);
+      setIsAccountOwner(false);
+    }
+  }, [accountId, user]);
+
+  useEffect(() => {
+    void loadDeletionRequestState();
+  }, [loadDeletionRequestState]);
+
+  const handleCancelDeletionRequest = async () => {
+    setCancelingDeletionRequest(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        toast.error("Please log in again.");
+        return;
+      }
+
+      const { data, error } = await supabase.functions.invoke("cancel-account-deletion", {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+
+      if (error || data?.error) {
+        toast.error(data?.error || error?.message || "Could not cancel the deletion request.");
+        return;
+      }
+
+      toast.success("Deletion request canceled.");
+      await loadDeletionRequestState();
+      await checkSubscription();
+    } catch {
+      toast.error("Could not cancel the deletion request.");
+    } finally {
+      setCancelingDeletionRequest(false);
+    }
+  };
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
@@ -398,6 +466,7 @@ const Dashboard = () => {
   };
 
   const displayName = profile?.full_name || user?.email || "User";
+  const deletionCancelable = isDeletionCancelable(activeDeletionRequest);
   const hasPresentations = presentations.length > 0;
   const hasActiveFilters = Boolean(
     searchInput.trim() ||
@@ -476,6 +545,45 @@ const Dashboard = () => {
             </h1>
             <p className="text-muted-foreground">{displayName}</p>
           </motion.div>
+
+          {activeDeletionRequest && (
+            <div className="mb-8 rounded-3xl border border-amber-300/60 bg-amber-50/75 px-6 py-5 shadow-sm">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 text-amber-900">
+                    <AlertTriangle className="h-5 w-5" />
+                    <p className="font-medium">Organization deletion is scheduled</p>
+                  </div>
+                  {deletionCancelable ? (
+                    <p className="text-sm text-amber-900">
+                      This request can be canceled until {formatDeletionDate(activeDeletionRequest.cancelableUntil)}. After that, deletion is final and the account remains available through the current billing term.
+                    </p>
+                  ) : (
+                    <p className="text-sm text-amber-900">
+                      The 7-day grace period has ended. Your organization remains available until {formatDeletionDate(activeDeletionRequest.scheduledDeleteAt)}, then it will be permanently deleted.
+                    </p>
+                  )}
+                </div>
+                {isAccountOwner && deletionCancelable ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void handleCancelDeletionRequest()}
+                    disabled={cancelingDeletionRequest}
+                    className="border-amber-400 bg-white/70"
+                  >
+                    {cancelingDeletionRequest ? "Canceling..." : "Cancel Deletion"}
+                  </Button>
+                ) : (
+                  <Link to="/account">
+                    <Button variant="outline" size="sm" className="border-amber-400 bg-white/70">
+                      View Account
+                    </Button>
+                  </Link>
+                )}
+              </div>
+            </div>
+          )}
 
           <motion.div
             initial={{ opacity: 0, y: 20 }}

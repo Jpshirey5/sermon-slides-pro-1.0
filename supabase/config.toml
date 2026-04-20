@@ -30,6 +30,12 @@ verify_jwt = false
 [functions.delete-account]
 verify_jwt = false
 
+[functions.cancel-account-deletion]
+verify_jwt = false
+
+[functions.finalize-account-deletions]
+verify_jwt = false
+
 [functions.remove-team-member]
 verify_jwt = false
 

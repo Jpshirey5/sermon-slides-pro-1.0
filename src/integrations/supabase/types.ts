@@ -59,6 +59,93 @@ export type Database = {
           },
         ]
       }
+      account_deletion_requests: {
+        Row: {
+          account_id: string
+          account_name: string | null
+          additional_feedback: string | null
+          alert_email_error: string | null
+          alert_email_sent: boolean
+          billing_interval: string | null
+          cancelable_until: string
+          canceled_at: string | null
+          canceled_by: string | null
+          completed_at: string | null
+          created_at: string
+          id: string
+          last_error: string | null
+          plan_tier: string | null
+          reason: string
+          requested_at: string
+          requester_email: string | null
+          requester_full_name: string | null
+          requester_role: string
+          requester_user_id: string | null
+          scheduled_delete_at: string
+          status: string
+          stripe_customer_id: string | null
+          stripe_subscription_id: string | null
+          subscription_period_end: string | null
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          account_name?: string | null
+          additional_feedback?: string | null
+          alert_email_error?: string | null
+          alert_email_sent?: boolean
+          billing_interval?: string | null
+          cancelable_until: string
+          canceled_at?: string | null
+          canceled_by?: string | null
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          last_error?: string | null
+          plan_tier?: string | null
+          reason: string
+          requested_at?: string
+          requester_email?: string | null
+          requester_full_name?: string | null
+          requester_role?: string
+          requester_user_id?: string | null
+          scheduled_delete_at: string
+          status?: string
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          subscription_period_end?: string | null
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          account_name?: string | null
+          additional_feedback?: string | null
+          alert_email_error?: string | null
+          alert_email_sent?: boolean
+          billing_interval?: string | null
+          cancelable_until?: string
+          canceled_at?: string | null
+          canceled_by?: string | null
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          last_error?: string | null
+          plan_tier?: string | null
+          reason?: string
+          requested_at?: string
+          requester_email?: string | null
+          requester_full_name?: string | null
+          requester_role?: string
+          requester_user_id?: string | null
+          scheduled_delete_at?: string
+          status?: string
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          subscription_period_end?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       account_members: {
         Row: {
           accepted_at: string | null
