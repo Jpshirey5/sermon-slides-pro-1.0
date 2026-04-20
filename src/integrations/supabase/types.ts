@@ -287,6 +287,7 @@ export type Database = {
       profiles: {
         Row: {
           avatar_url: string | null
+          church_role: string | null
           created_at: string
           default_translation: string | null
           email: string | null
@@ -301,6 +302,7 @@ export type Database = {
         }
         Insert: {
           avatar_url?: string | null
+          church_role?: string | null
           created_at?: string
           default_translation?: string | null
           email?: string | null
@@ -315,6 +317,7 @@ export type Database = {
         }
         Update: {
           avatar_url?: string | null
+          church_role?: string | null
           created_at?: string
           default_translation?: string | null
           email?: string | null
@@ -516,6 +519,14 @@ export type Database = {
       is_account_owner: {
         Args: { _account_id: string; _user_id: string }
         Returns: boolean
+      }
+      set_enterprise_account_default_translation: {
+        Args: { _account_id: string; _translation: string }
+        Returns: undefined
+      }
+      update_my_church_role: {
+        Args: { _church_role: string | null }
+        Returns: string | null
       }
       rename_campus: {
         Args: { _campus_id: string; _name: string }

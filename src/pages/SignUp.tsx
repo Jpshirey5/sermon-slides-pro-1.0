@@ -49,6 +49,7 @@ const SignUp = () => {
   const preselectedPlan = getPlanByPriceId(selectedPriceId);
 
   const [fullName, setFullName] = useState("");
+  const [churchRole, setChurchRole] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -154,7 +155,7 @@ const SignUp = () => {
         nextAccountId
           ? supabase.from("accounts_public").select("name").eq("id", nextAccountId).maybeSingle()
           : Promise.resolve({ data: null, error: null }),
-        supabase.from("profiles").select("full_name").eq("id", invitedUser.id).maybeSingle(),
+        supabase.from("profiles").select("full_name, church_role").eq("id", invitedUser.id).maybeSingle(),
       ]);
 
       if (!cancelled) {
@@ -162,6 +163,7 @@ const SignUp = () => {
         setInviteOrgName(accountData?.name || "Your organization");
         setEmail(invitedUser.email || "");
         setFullName(profileData?.full_name || "");
+        setChurchRole(profileData?.church_role || "");
         setInviteLoading(false);
       }
 
@@ -197,8 +199,9 @@ const SignUp = () => {
   const validateForm = () => {
     const normalizedEmail = email.trim().toLowerCase();
     const trimmedName = fullName.trim();
+    const trimmedChurchRole = churchRole.trim();
 
-    if (!trimmedName || !normalizedEmail || !password || !confirmPassword) {
+    if (!trimmedName || !trimmedChurchRole || !normalizedEmail || !password || !confirmPassword) {
       trackEvent("signup_validation_failed", { reason: "missing_details", invited: inviteValid });
       showNotice("Missing details", "Please fill in all fields.");
       return null;
@@ -219,14 +222,14 @@ const SignUp = () => {
       return null;
     }
 
-    return { normalizedEmail, trimmedName };
+    return { normalizedEmail, trimmedName, trimmedChurchRole };
   };
 
   const completeInvitedAccount = async () => {
     const validated = validateForm();
     if (!validated) return;
 
-    const { trimmedName, normalizedEmail } = validated;
+    const { trimmedName, normalizedEmail, trimmedChurchRole } = validated;
     setLoading(true);
 
     try {
@@ -243,6 +246,7 @@ const SignUp = () => {
         data: {
           ...invitedUser.user_metadata,
           full_name: trimmedName,
+          church_role: trimmedChurchRole,
         },
       });
 
@@ -254,6 +258,7 @@ const SignUp = () => {
         .from("profiles")
         .update({
           full_name: trimmedName,
+          church_role: trimmedChurchRole,
           email: normalizedEmail,
         })
         .eq("id", invitedUser.id);
@@ -292,14 +297,14 @@ const SignUp = () => {
     const validated = validateForm();
     if (!validated) return;
 
-    const { normalizedEmail, trimmedName } = validated;
+    const { normalizedEmail, trimmedName, trimmedChurchRole } = validated;
     setLoading(true);
     try {
       trackEvent("signup_submitted", {
         invited: inviteValid,
         billingInterval: selectedPlanId || preselectedPlan?.id || "none",
       });
-      const metadata: Record<string, string> = { full_name: trimmedName };
+      const metadata: Record<string, string> = { full_name: trimmedName, church_role: trimmedChurchRole };
       if (inviteValid && legacyInviteToken) {
         metadata.invite_token = legacyInviteToken;
         metadata.signup_intent = "dashboard";
@@ -506,6 +511,18 @@ const SignUp = () => {
                 <div className="space-y-2">
                   <Label htmlFor="fullName">Full Name</Label>
                   <Input id="fullName" type="text" placeholder="John Smith" value={fullName} onChange={(e) => setFullName(e.target.value)} className="h-12" required />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="churchRole">Role at Church</Label>
+                  <Input
+                    id="churchRole"
+                    type="text"
+                    placeholder="Lead Pastor, Worship Director, Ministry Assistant"
+                    value={churchRole}
+                    onChange={(e) => setChurchRole(e.target.value)}
+                    className="h-12"
+                    required
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="email">Email</Label>

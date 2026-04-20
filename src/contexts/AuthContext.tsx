@@ -16,6 +16,7 @@ interface Profile {
   id: string;
   full_name: string | null;
   email: string | null;
+  church_role: string | null;
   default_translation: string | null;
   preferred_dashboard_campus_id: string | null;
   plan_tier: string | null;
