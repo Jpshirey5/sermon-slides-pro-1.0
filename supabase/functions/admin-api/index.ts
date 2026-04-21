@@ -300,9 +300,9 @@ const overview = async (ctx: AdminContext) => {
     ctx.supabaseAdmin.from("accounts").select("id", { count: "exact", head: true }).in("subscription_status", ["active", "trialing"]),
     ctx.supabaseAdmin.from("accounts").select("id", { count: "exact", head: true }).eq("subscription_status", "canceled"),
     ctx.supabaseAdmin.from("accounts").select("id", { count: "exact", head: true }).eq("subscription_status", "past_due"),
-    ctx.supabaseAdmin.from("support_requests").select("id", { count: "exact", head: true }),
+    ctx.supabaseAdmin.from("support_requests").select("id", { count: "exact", head: true }).eq("status", "active"),
     ctx.supabaseAdmin.from("profiles").select("id, full_name, email, created_at").order("created_at", { ascending: false }).limit(8),
-    ctx.supabaseAdmin.from("support_requests").select("*").order("created_at", { ascending: false }).limit(6),
+    ctx.supabaseAdmin.from("support_requests").select("*").eq("status", "active").order("created_at", { ascending: false }).limit(6),
     ctx.supabaseAdmin.from("admin_audit_logs").select("*").eq("action", "refund_issued").order("created_at", { ascending: false }).limit(6),
   ]);
 
@@ -387,6 +387,244 @@ const overviewActivity = async (ctx: AdminContext, body: any) => {
   };
 };
 
+const listPaidInvoicesInRange = async (
+  stripe: Stripe,
+  startUnix: number,
+  endUnix: number,
+) => {
+  const invoices: Stripe.Invoice[] = [];
+  let startingAfter: string | undefined;
+
+  for (let page = 0; page < 20; page += 1) {
+    const response = await stripe.invoices.list({
+      status: "paid",
+      created: { gte: startUnix, lte: endUnix },
+      limit: 100,
+      ...(startingAfter ? { starting_after: startingAfter } : {}),
+    });
+
+    invoices.push(...response.data);
+    if (!response.has_more || response.data.length === 0) break;
+    startingAfter = response.data[response.data.length - 1].id;
+  }
+
+  return invoices;
+};
+
+const listRefundsInRange = async (
+  stripe: Stripe,
+  startUnix: number,
+  endUnix: number,
+) => {
+  const refunds: Stripe.Refund[] = [];
+  let startingAfter: string | undefined;
+
+  for (let page = 0; page < 20; page += 1) {
+    const response = await stripe.refunds.list({
+      created: { gte: startUnix, lte: endUnix },
+      limit: 100,
+      ...(startingAfter ? { starting_after: startingAfter } : {}),
+    });
+
+    refunds.push(...response.data);
+    if (!response.has_more || response.data.length === 0) break;
+    startingAfter = response.data[response.data.length - 1].id;
+  }
+
+  return refunds;
+};
+
+const listBalanceTransactionsInRange = async (
+  stripe: Stripe,
+  startUnix: number,
+  endUnix: number,
+) => {
+  const transactions: Stripe.BalanceTransaction[] = [];
+  let startingAfter: string | undefined;
+
+  for (let page = 0; page < 20; page += 1) {
+    const response = await stripe.balanceTransactions.list({
+      created: { gte: startUnix, lte: endUnix },
+      limit: 100,
+      ...(startingAfter ? { starting_after: startingAfter } : {}),
+    });
+
+    transactions.push(...response.data);
+    if (!response.has_more || response.data.length === 0) break;
+    startingAfter = response.data[response.data.length - 1].id;
+  }
+
+  return transactions;
+};
+
+const listActiveSubscriptions = async (stripe: Stripe) => {
+  const subscriptions: Stripe.Subscription[] = [];
+  let startingAfter: string | undefined;
+
+  for (let page = 0; page < 20; page += 1) {
+    const response = await stripe.subscriptions.list({
+      status: "active",
+      limit: 100,
+      expand: ["data.items.data.price"],
+      ...(startingAfter ? { starting_after: startingAfter } : {}),
+    });
+
+    subscriptions.push(...response.data);
+    if (!response.has_more || response.data.length === 0) break;
+    startingAfter = response.data[response.data.length - 1].id;
+  }
+
+  return subscriptions;
+};
+
+const normalizeRecurringAmountToMonthly = (price: Stripe.Price, quantity = 1) => {
+  const recurring = price.recurring;
+  const amount = price.unit_amount ?? 0;
+  if (!recurring || amount <= 0) return 0;
+
+  const intervalCount = Math.max(recurring.interval_count || 1, 1);
+  const totalAmount = amount * Math.max(quantity || 1, 1);
+
+  if (recurring.interval === "month") return totalAmount / intervalCount;
+  if (recurring.interval === "year") return totalAmount / (12 * intervalCount);
+  if (recurring.interval === "week") return (totalAmount * 52) / (12 * intervalCount);
+  if (recurring.interval === "day") return (totalAmount * 365) / (12 * intervalCount);
+  return 0;
+};
+
+const overviewRevenue = async (_ctx: AdminContext, body: any) => {
+  const days = Number(body?.days) || 30;
+  const { start, end, buckets } = buildDailyBuckets(days);
+  for (const bucket of Object.values(buckets)) {
+    bucket.grossRevenueCents = 0;
+    bucket.refundedCents = 0;
+    bucket.stripeFeesCents = 0;
+    bucket.netRevenueCents = 0;
+    bucket.netAfterFeesCents = 0;
+  }
+
+  const stripe = getStripe();
+  const emptyItems = Object.values(buckets);
+  if (!stripe) {
+    return {
+      rangeDays: Math.min(Math.max(days, 7), 90),
+      items: emptyItems,
+      summary: {
+        grossRevenueCents: 0,
+        refundedCents: 0,
+        stripeFeesCents: 0,
+        netRevenueCents: 0,
+        netAfterFeesCents: 0,
+        currentMrrCents: 0,
+        paidInvoiceCount: 0,
+        balanceTransactionCount: 0,
+        activeSubscriptionCount: 0,
+        currency: "usd",
+        mixedCurrencies: false,
+      },
+      error: "Stripe is not configured.",
+    };
+  }
+
+  try {
+    const startUnix = Math.floor(start.getTime() / 1000);
+    const endUnix = Math.floor(end.getTime() / 1000);
+    const [invoices, refunds, balanceTransactions, subscriptions] = await Promise.all([
+      listPaidInvoicesInRange(stripe, startUnix, endUnix),
+      listRefundsInRange(stripe, startUnix, endUnix),
+      listBalanceTransactionsInRange(stripe, startUnix, endUnix),
+      listActiveSubscriptions(stripe),
+    ]);
+
+    const currencies = new Set<string>();
+    let grossRevenueCents = 0;
+    let refundedCents = 0;
+    let stripeFeesCents = 0;
+    let netAfterFeesCents = 0;
+    let currentMrrCents = 0;
+
+    for (const invoice of invoices) {
+      const key = dateKey(new Date(invoice.created * 1000));
+      const amount = invoice.amount_paid || 0;
+      if (!buckets[key]) continue;
+      buckets[key].grossRevenueCents += amount;
+      grossRevenueCents += amount;
+      if (invoice.currency) currencies.add(invoice.currency);
+    }
+
+    for (const refund of refunds) {
+      const key = dateKey(new Date(refund.created * 1000));
+      const amount = refund.amount || 0;
+      if (!buckets[key]) continue;
+      buckets[key].refundedCents += amount;
+      refundedCents += amount;
+      if (refund.currency) currencies.add(refund.currency);
+    }
+
+    for (const transaction of balanceTransactions) {
+      const key = dateKey(new Date(transaction.created * 1000));
+      if (!buckets[key]) continue;
+      buckets[key].stripeFeesCents += transaction.fee || 0;
+      buckets[key].netAfterFeesCents += transaction.net || 0;
+      stripeFeesCents += transaction.fee || 0;
+      netAfterFeesCents += transaction.net || 0;
+      if (transaction.currency) currencies.add(transaction.currency);
+    }
+
+    for (const subscription of subscriptions) {
+      for (const item of subscription.items?.data || []) {
+        const price = item.price;
+        currentMrrCents += normalizeRecurringAmountToMonthly(price, item.quantity || 1);
+        if (price.currency) currencies.add(price.currency);
+      }
+    }
+
+    for (const bucket of Object.values(buckets)) {
+      bucket.netRevenueCents = bucket.grossRevenueCents - bucket.refundedCents;
+    }
+
+    const currency = Array.from(currencies)[0] || "usd";
+    return {
+      rangeDays: Math.min(Math.max(days, 7), 90),
+      items: Object.values(buckets),
+      summary: {
+        grossRevenueCents,
+        refundedCents,
+        stripeFeesCents,
+        netRevenueCents: grossRevenueCents - refundedCents,
+        netAfterFeesCents,
+        currentMrrCents: Math.round(currentMrrCents),
+        paidInvoiceCount: invoices.length,
+        balanceTransactionCount: balanceTransactions.length,
+        activeSubscriptionCount: subscriptions.length,
+        currency,
+        mixedCurrencies: currencies.size > 1,
+      },
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logStep("Stripe revenue overview failed", { error: message });
+    return {
+      rangeDays: Math.min(Math.max(days, 7), 90),
+      items: emptyItems,
+      summary: {
+        grossRevenueCents: 0,
+        refundedCents: 0,
+        stripeFeesCents: 0,
+        netRevenueCents: 0,
+        netAfterFeesCents: 0,
+        currentMrrCents: 0,
+        paidInvoiceCount: 0,
+        balanceTransactionCount: 0,
+        activeSubscriptionCount: 0,
+        currency: "usd",
+        mixedCurrencies: false,
+      },
+      error: message,
+    };
+  }
+};
+
 const getProfilesByUserIds = async (ctx: AdminContext, userIds: string[]) => {
   const uniqueUserIds = Array.from(new Set(userIds.filter(Boolean)));
   if (uniqueUserIds.length === 0) return new Map<string, any>();
@@ -448,7 +686,7 @@ const customers = async (ctx: AdminContext, body: any) => {
   const accountIds = (accountRows || []).map((account: any) => account.id);
   const ownerMap = await getOwnerProfilesForAccounts(ctx, accountIds);
   const { data: supportRows } = accountIds.length
-    ? await ctx.supabaseAdmin.from("support_requests").select("id, email, account_id")
+    ? await ctx.supabaseAdmin.from("support_requests").select("id, email, account_id").eq("status", "active")
     : { data: [] as any[] };
 
   const supportByEmail = new Map<string, number>();
@@ -511,6 +749,7 @@ const customerDetail = async (ctx: AdminContext, body: any) => {
       .from("support_requests")
       .select("*")
       .eq("account_id", accountId)
+      .eq("status", "active")
       .order("created_at", { ascending: false }),
     ownerEmail
       ? ctx.supabaseAdmin
@@ -518,6 +757,7 @@ const customerDetail = async (ctx: AdminContext, body: any) => {
           .select("*")
           .is("account_id", null)
           .ilike("email", ownerEmail)
+          .eq("status", "active")
           .order("created_at", { ascending: false })
       : Promise.resolve({ data: [] as any[] }),
   ]);
@@ -858,12 +1098,28 @@ const customerHardDeleteOrg = async (ctx: AdminContext, body: any) => {
   return { success: true, deletedUsers: memberUserIds.length };
 };
 
+const purgeExpiredArchivedSupportRequests = async (ctx: AdminContext) => {
+  const { error } = await ctx.supabaseAdmin
+    .from("support_requests")
+    .delete()
+    .eq("status", "archived")
+    .not("archived_until", "is", null)
+    .lt("archived_until", new Date().toISOString());
+
+  if (error) {
+    logStep("Expired support request purge failed", { error: error.message });
+  }
+};
+
 const supportList = async (ctx: AdminContext, body: any) => {
+  await purgeExpiredArchivedSupportRequests(ctx);
   const search = clean(body?.search).toLowerCase();
+  const status = clean(body?.status) === "archived" ? "archived" : "active";
   const { data, error } = await ctx.supabaseAdmin
     .from("support_requests")
     .select("*")
-    .order("created_at", { ascending: false })
+    .eq("status", status)
+    .order(status === "archived" ? "completed_at" : "created_at", { ascending: false, nullsFirst: false })
     .limit(200);
   if (error) throw new Error(error.message);
   const accountIds = Array.from(new Set((data || []).map((item: any) => item.account_id).filter(Boolean)));
@@ -882,18 +1138,55 @@ const supportList = async (ctx: AdminContext, body: any) => {
           .some((value) => clean(value).toLowerCase().includes(search))
       )
     : enriched;
-  return { items };
+  return { items, status };
 };
 
 const supportComplete = async (ctx: AdminContext, body: any) => {
-  const id = clean(body?.id);
-  if (!isUuid(id)) throw new Error("A valid support request id is required");
-  const { data: existing } = await ctx.supabaseAdmin.from("support_requests").select("*").eq("id", id).maybeSingle();
-  if (!existing) throw new Error("Support request not found");
-  const { error } = await ctx.supabaseAdmin.from("support_requests").delete().eq("id", id);
+  await purgeExpiredArchivedSupportRequests(ctx);
+  const ids = Array.from(
+    new Set(
+      (Array.isArray(body?.ids) ? body.ids : [body?.id])
+        .map((value: any) => clean(value))
+        .filter(Boolean),
+    ),
+  );
+
+  if (ids.length === 0 || ids.some((id) => !isUuid(id))) {
+    throw new Error("One or more valid support request ids are required");
+  }
+
+  const { data: existing, error: fetchError } = await ctx.supabaseAdmin
+    .from("support_requests")
+    .select("*")
+    .in("id", ids)
+    .eq("status", "active");
+  if (fetchError) throw new Error(fetchError.message);
+  if (!existing || existing.length === 0) throw new Error("No active support requests were found");
+
+  const now = new Date();
+  const archivedUntil = addDays(now, 7);
+  const existingIds = existing.map((item: any) => item.id);
+  const { error } = await ctx.supabaseAdmin
+    .from("support_requests")
+    .update({
+      status: "archived",
+      completed_at: now.toISOString(),
+      completed_by_admin_id: ctx.admin.id,
+      archived_until: archivedUntil.toISOString(),
+    })
+    .in("id", existingIds)
+    .eq("status", "active");
   if (error) throw new Error(error.message);
-  await audit(ctx, "support_request_completed", "support_request", id, { email: existing.email, subject: existing.subject });
-  return { success: true };
+
+  for (const item of existing) {
+    await audit(ctx, "support_request_completed", "support_request", item.id, {
+      email: item.email,
+      subject: item.subject,
+      archivedUntil: archivedUntil.toISOString(),
+    });
+  }
+
+  return { success: true, completedCount: existing.length, ids: existingIds, archivedUntil: archivedUntil.toISOString() };
 };
 
 const adminUsers = async (ctx: AdminContext) => {
@@ -1045,6 +1338,8 @@ serve(async (req) => {
         return json({ admin: ctx.admin });
       case "overview":
         return json(await overview(ctx));
+      case "overview_revenue":
+        return json(await overviewRevenue(ctx, body));
       case "overview_activity":
         return json(await overviewActivity(ctx, body));
       case "customers":

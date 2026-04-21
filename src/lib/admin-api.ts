@@ -4,6 +4,7 @@ export type AdminApiAction =
   | "me"
   | "bootstrap"
   | "overview"
+  | "overview_revenue"
   | "customers"
   | "customer_detail"
   | "support_list"

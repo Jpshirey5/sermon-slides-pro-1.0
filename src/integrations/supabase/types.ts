@@ -525,6 +525,10 @@ export type Database = {
       }
       support_requests: {
         Row: {
+          account_id: string | null
+          archived_until: string | null
+          completed_at: string | null
+          completed_by_admin_id: string | null
           created_at: string
           email: string
           id: string
@@ -534,12 +538,17 @@ export type Database = {
           notification_sent: boolean
           organization: string | null
           phone: string | null
+          status: string
           subject: string
           submitted_from: string | null
           updated_at: string
           user_id: string | null
         }
         Insert: {
+          account_id?: string | null
+          archived_until?: string | null
+          completed_at?: string | null
+          completed_by_admin_id?: string | null
           created_at?: string
           email: string
           id?: string
@@ -549,12 +558,17 @@ export type Database = {
           notification_sent?: boolean
           organization?: string | null
           phone?: string | null
+          status?: string
           subject?: string
           submitted_from?: string | null
           updated_at?: string
           user_id?: string | null
         }
         Update: {
+          account_id?: string | null
+          archived_until?: string | null
+          completed_at?: string | null
+          completed_by_admin_id?: string | null
           created_at?: string
           email?: string
           id?: string
@@ -564,12 +578,28 @@ export type Database = {
           notification_sent?: boolean
           organization?: string | null
           phone?: string | null
+          status?: string
           subject?: string
           submitted_from?: string | null
           updated_at?: string
           user_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "support_requests_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "support_requests_completed_by_admin_id_fkey"
+            columns: ["completed_by_admin_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       training_guides: {
         Row: {
