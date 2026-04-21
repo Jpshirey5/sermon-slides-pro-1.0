@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Copy, Crown, MapPin, RotateCcw, ShieldAlert, UserMinus } from "lucide-react";
+import { Copy, Crown, MapPin, RotateCcw, ShieldAlert, Sparkles, UserMinus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { adminApi, formatAdminDate, formatMoney } from "@/lib/admin-api";
+import { formatBetaTrialCountdown, getBetaTrialDaysRemaining } from "@/lib/beta";
 import { toast } from "sonner";
 
 const memberName = (member: any) => member?.profile?.full_name || "Unnamed";
@@ -147,6 +148,20 @@ const AdminCustomerDetail = () => {
     }
   };
 
+  const updateBetaStatus = async (enabled: boolean) => {
+    if (!id) return;
+    setActionLoading("beta");
+    try {
+      await adminApi("customer_beta_update", { accountId: id, enabled });
+      toast.success(enabled ? "Beta access enabled for 30 days." : "Beta label removed.");
+      await load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not update beta status.");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   const availableReplacementOwners = useMemo(
     () => (data?.members || []).filter((member: any) => member.user_id !== ownerToTransfer?.user_id),
     [data?.members, ownerToTransfer?.user_id],
@@ -161,15 +176,31 @@ const AdminCustomerDetail = () => {
   const members = data.members || [];
   const organizationName = account.name || "";
   const canHardDelete = hardDeleteConfirmation.trim().toLowerCase() === organizationName.trim().toLowerCase();
+  const betaCountdown = formatBetaTrialCountdown(getBetaTrialDaysRemaining(account.beta_trial_ends_at));
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
-          <h1 className="font-serif text-3xl font-bold">{organizationName}</h1>
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="font-serif text-3xl font-bold">{organizationName}</h1>
+            {account.is_beta_user && (
+              <span className="rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
+                Beta
+              </span>
+            )}
+          </div>
           <p className="text-muted-foreground">{ownerProfile?.email || account.id}</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Button
+            variant={account.is_beta_user ? "outline" : "hero"}
+            onClick={() => updateBetaStatus(!account.is_beta_user)}
+            disabled={actionLoading === "beta"}
+          >
+            <Sparkles className="h-4 w-4" />
+            {account.is_beta_user ? "Remove Beta" : "Mark Beta"}
+          </Button>
           <Button variant="outline" onClick={() => setScheduleOpen(true)}>
             Schedule Offboarding
           </Button>
@@ -187,6 +218,7 @@ const AdminCustomerDetail = () => {
             <div><p className="text-xs text-muted-foreground">Email</p><p>{ownerProfile?.email || "Unavailable"}</p></div>
             <div><p className="text-xs text-muted-foreground">Church Location</p><p className="flex items-center gap-1"><MapPin className="h-3.5 w-3.5" /> {data.location?.label || "Unavailable"}</p></div>
             <div><p className="text-xs text-muted-foreground">Plan</p><p className="capitalize">{account.plan_tier || "free"}</p></div>
+            <div><p className="text-xs text-muted-foreground">Beta Program</p><p>{account.is_beta_user ? betaCountdown : "Not beta"}</p></div>
             <div><p className="text-xs text-muted-foreground">Subscription</p><p>{account.subscription_status}</p></div>
             <div><p className="text-xs text-muted-foreground">Presentations</p><p>{data.presentationCount}</p></div>
             <div><p className="text-xs text-muted-foreground">Created</p><p>{formatAdminDate(account.created_at)}</p></div>

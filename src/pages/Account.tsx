@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { BookOpen, ArrowLeft, CreditCard, User, Crown, Users, Mail, Loader2, AlertTriangle, Building2, Check } from "lucide-react";
+import { BookOpen, ArrowLeft, CreditCard, User, Crown, Users, Mail, Loader2, AlertTriangle, Building2, Check, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -32,6 +32,7 @@ import {
   isDeletionCancelable,
   type AccountDeletionRequest,
 } from "@/lib/account-deletion";
+import { formatBetaTrialCountdown } from "@/lib/beta";
 
 interface TeamMember {
   id: string;
@@ -648,6 +649,7 @@ const Account = () => {
   const canCreateMoreCampuses = campuses.length < 5;
   const primaryCampus = campuses.find((campus) => campus.isPrimary) || null;
   const deletionCancelable = isDeletionCancelable(activeDeletionRequest);
+  const betaCountdown = formatBetaTrialCountdown(subscription.beta_trial_days_remaining);
   const enterpriseOwnerDefaultTranslation =
     teamMembers.find((member) => member.role === "owner")?.default_translation || DEFAULT_TRANSLATION;
   const defaultTranslationInherited = isEnterprisePlan && !isOwner;
@@ -911,6 +913,20 @@ const Account = () => {
                     {cancelingDeletionRequest ? "Canceling..." : "Cancel Deletion Request"}
                   </Button>
                 )}
+              </div>
+            </div>
+          )}
+
+          {subscription.is_beta_user && (
+            <div className="mb-6 rounded-2xl border border-primary/20 bg-primary/5 p-5">
+              <div className="flex items-start gap-3">
+                <Sparkles className="mt-0.5 h-5 w-5 text-primary" />
+                <div>
+                  <p className="font-medium text-foreground">Beta user</p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Thank you for making Sermon Slide Pro a better platform. {betaCountdown}.
+                  </p>
+                </div>
               </div>
             </div>
           )}

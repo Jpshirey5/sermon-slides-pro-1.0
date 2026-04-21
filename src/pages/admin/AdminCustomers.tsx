@@ -13,6 +13,7 @@ const filters = [
   { value: "past_due", label: "Past Due" },
   { value: "failed_payment", label: "Failed Payment" },
   { value: "free", label: "Free" },
+  { value: "beta", label: "Beta" },
   { value: "recent", label: "Recent Signups" },
   { value: "support", label: "Open Support" },
 ];
@@ -88,7 +89,16 @@ const AdminCustomers = () => {
                     <p className="font-medium text-foreground">{item.owner?.full_name || "No owner profile"}</p>
                     <p className="text-xs text-muted-foreground">{item.owner?.email || item.account.stripe_customer_id || item.account.id}</p>
                   </td>
-                  <td className="px-4 py-3 font-medium text-foreground">{item.account.name}</td>
+                  <td className="px-4 py-3 font-medium text-foreground">
+                    <div className="flex items-center gap-2">
+                      <span>{item.account.name}</span>
+                      {item.account.is_beta_user && (
+                        <span className="rounded-full border border-primary/20 bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                          Beta
+                        </span>
+                      )}
+                    </div>
+                  </td>
                   <td className="px-4 py-3 text-muted-foreground">{location || "Unavailable"}</td>
                   <td className="px-4 py-3 capitalize">{item.account.plan_tier || "free"}</td>
                   <td className="px-4 py-3">{item.account.subscription_status}</td>
