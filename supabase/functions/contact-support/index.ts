@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
+import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -28,6 +29,11 @@ type DnsResponse = {
   Status?: number;
   Answer?: DnsAnswer[];
 };
+
+type AuthContext = {
+  userId: string;
+  email: string;
+} | null;
 
 const lookupDnsRecord = async (domain: string, recordType: "MX" | "A" | "AAAA") => {
   const controller = new AbortController();
@@ -90,6 +96,24 @@ const domainLooksMailCapable = async (email: string) => {
   }
 };
 
+const getAuthenticatedUser = async (req: Request, supabaseUrl: string, anonKey: string): Promise<AuthContext> => {
+  const authHeader = req.headers.get("Authorization");
+  if (!authHeader) return null;
+
+  const token = authHeader.replace("Bearer ", "");
+  const anonClient = createClient(supabaseUrl, anonKey, {
+    global: { headers: { Authorization: authHeader } },
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+
+  const { data, error } = await anonClient.auth.getUser(token);
+  if (error || !data?.user) throw new Error("Authentication failed");
+  return {
+    userId: data.user.id,
+    email: data.user.email?.trim().toLowerCase() || "",
+  };
+};
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -100,12 +124,18 @@ serve(async (req) => {
     const resendFromEmail = Deno.env.get("RESEND_FROM_EMAIL") ?? "";
     const resendFromName = Deno.env.get("RESEND_FROM_NAME") || "Sermon Slide Pro";
     const supportEmail = Deno.env.get("SUPPORT_CONTACT_EMAIL") || "support@sermonslidepro.com";
-
-    if (!resendApiKey || !resendFromEmail) {
-      throw new Error("Contact email service is not configured");
-    }
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
+    const supabaseAdmin = createClient(
+      supabaseUrl,
+      serviceRoleKey,
+      { auth: { persistSession: false, autoRefreshToken: false } },
+    );
 
     const body = await req.json();
+    const isSupportTicket = Boolean(body?.supportTicket);
+    const authenticatedUser = isSupportTicket ? await getAuthenticatedUser(req, supabaseUrl, anonKey) : null;
     const firstName = clean(body?.firstName);
     const lastName = clean(body?.lastName);
     const organization = clean(body?.organization);
@@ -117,7 +147,48 @@ serve(async (req) => {
     const submittedFrom = clean(req.headers.get("origin")) || clean(req.headers.get("referer")) || "Unknown origin";
     const submittedAt = new Date().toISOString();
 
-    if (!firstName || !lastName || !organization || !email || !phoneCountry || !phoneNumber || !message || !agreedToPolicies) {
+    let trustedAccountId: string | null = null;
+    let trustedUserId: string | null = null;
+    let trustedName = "";
+    let trustedEmail = "";
+    let trustedOrganization = "";
+    let trustedPhone = "";
+
+    if (isSupportTicket) {
+      if (!authenticatedUser) {
+        throw new Error("Please log in before submitting support.");
+      }
+
+      trustedUserId = authenticatedUser.userId;
+      const [{ data: profile }, { data: accountId }] = await Promise.all([
+        supabaseAdmin
+          .from("profiles")
+          .select("full_name, email")
+          .eq("id", authenticatedUser.userId)
+          .maybeSingle(),
+        supabaseAdmin.rpc("get_user_account_id", { _user_id: authenticatedUser.userId }),
+      ]);
+
+      trustedAccountId = accountId || null;
+      const { data: account } = trustedAccountId
+        ? await supabaseAdmin.from("accounts").select("name").eq("id", trustedAccountId).maybeSingle()
+        : { data: null as any };
+
+      trustedName = clean(profile?.full_name) || clean(authenticatedUser.email) || "Signed-in user";
+      trustedEmail = clean(profile?.email).toLowerCase() || authenticatedUser.email;
+      trustedOrganization = clean(account?.name) || "Unknown organization";
+      trustedPhone = phoneNumber ? [phoneCountry || "US", phoneNumber].filter(Boolean).join(" ") : "";
+
+      if (!message) {
+        return new Response(
+          JSON.stringify({ error: "Please describe what you need help with." }),
+          {
+            status: 400,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          },
+        );
+      }
+    } else if (!firstName || !lastName || !organization || !email || !phoneCountry || !phoneNumber || !message || !agreedToPolicies) {
       return new Response(
         JSON.stringify({ error: "All contact form fields are required" }),
         {
@@ -127,7 +198,12 @@ serve(async (req) => {
       );
     }
 
-    const emailValidation = await domainLooksMailCapable(email);
+    const submissionEmail = trustedEmail || email;
+    const submissionName = trustedName || [firstName, lastName].filter(Boolean).join(" ").trim() || "Unknown sender";
+    const submissionOrganization = trustedOrganization || organization;
+    const submissionPhone = trustedPhone || [phoneCountry, phoneNumber].filter(Boolean).join(" ");
+
+    const emailValidation = await domainLooksMailCapable(submissionEmail);
     if (!emailValidation.valid) {
       return new Response(
         JSON.stringify({ error: INVALID_EMAIL_MESSAGE }),
@@ -138,23 +214,66 @@ serve(async (req) => {
       );
     }
 
-    const fullName = [firstName, lastName].filter(Boolean).join(" ").trim() || "Unknown sender";
+    let supportRequestId: string | null = null;
+
+    const { data: supportRequest, error: supportInsertError } = await supabaseAdmin
+      .from("support_requests")
+      .insert({
+        account_id: trustedAccountId,
+        user_id: trustedUserId,
+        name: submissionName,
+        email: submissionEmail,
+        organization: submissionOrganization,
+        phone: submissionPhone,
+        subject: isSupportTicket ? "Support Request" : "Customer Support",
+        message,
+        submitted_from: submittedFrom,
+        notification_sent: false,
+      })
+      .select("id")
+      .single();
+
+    if (supportInsertError || !supportRequest) {
+      throw new Error(`Could not save support request: ${supportInsertError?.message || "Unknown error"}`);
+    }
+
+    supportRequestId = supportRequest.id;
+
+    if (!resendApiKey || !resendFromEmail) {
+      const emailError = "Contact email service is not configured";
+      await supabaseAdmin
+        .from("support_requests")
+        .update({ notification_sent: false, notification_error: emailError })
+        .eq("id", supportRequestId);
+      return new Response(
+        JSON.stringify({
+          error: "Your request was saved, but the email notification could not be sent. Support can still see it in the queue.",
+          supportRequestId,
+        }),
+        {
+          status: 502,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
+    }
     const safeMessage = escapeHtml(message).replaceAll("\n", "<br />");
-    const safeOrganization = organization ? escapeHtml(organization) : "Not provided";
-    const safePhone = phoneNumber ? escapeHtml([phoneCountry, phoneNumber].filter(Boolean).join(" ")) : "Not provided";
-    const safeEmail = escapeHtml(email);
-    const safeName = escapeHtml(fullName);
+    const safeOrganization = submissionOrganization ? escapeHtml(submissionOrganization) : "Not provided";
+    const safePhone = submissionPhone ? escapeHtml(submissionPhone) : "Not provided";
+    const safeEmail = escapeHtml(submissionEmail);
+    const safeName = escapeHtml(submissionName);
     const safeOrigin = escapeHtml(submittedFrom);
 
-    const subject = "Customer Support";
+    const subject = isSupportTicket ? "Customer Support - Signed-In Request" : "Customer Support";
     const html = `
       <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #1f2937;">
-        <h2 style="margin-bottom: 16px;">New Sermon Slide Pro Contact Form Submission</h2>
+        <h2 style="margin-bottom: 16px;">${isSupportTicket ? "New Sermon Slide Pro Support Request" : "New Sermon Slide Pro Contact Form Submission"}</h2>
         <p><strong>Name:</strong> ${safeName}</p>
         <p><strong>Email:</strong> ${safeEmail}</p>
         <p><strong>Organization:</strong> ${safeOrganization}</p>
         <p><strong>Phone:</strong> ${safePhone}</p>
-        <p><strong>Agreed to privacy policy:</strong> ${agreedToPolicies ? "Yes" : "No"}</p>
+        <p><strong>Request type:</strong> ${isSupportTicket ? "Signed-in support ticket" : "Public contact form"}</p>
+        <p><strong>Account ID:</strong> ${trustedAccountId ? escapeHtml(trustedAccountId) : "Not linked"}</p>
+        <p><strong>Agreed to privacy policy:</strong> ${agreedToPolicies || isSupportTicket ? "Yes" : "No"}</p>
         <p><strong>Submitted from:</strong> ${safeOrigin}</p>
         <p><strong>Submitted at:</strong> ${escapeHtml(submittedAt)}</p>
         <hr style="margin: 24px 0; border: 0; border-top: 1px solid #e5e7eb;" />
@@ -162,13 +281,15 @@ serve(async (req) => {
         <p>${safeMessage}</p>
       </div>
     `;
-    const text = `New Sermon Slide Pro contact form submission
+    const text = `${isSupportTicket ? "New Sermon Slide Pro support request" : "New Sermon Slide Pro contact form submission"}
 
-Name: ${fullName}
-Email: ${email}
-Organization: ${organization || "Not provided"}
-Phone: ${[phoneCountry, phoneNumber].filter(Boolean).join(" ") || "Not provided"}
-Agreed to privacy policy: ${agreedToPolicies ? "Yes" : "No"}
+Name: ${submissionName}
+Email: ${submissionEmail}
+Organization: ${submissionOrganization || "Not provided"}
+Phone: ${submissionPhone || "Not provided"}
+Request type: ${isSupportTicket ? "Signed-in support ticket" : "Public contact form"}
+Account ID: ${trustedAccountId || "Not linked"}
+Agreed to privacy policy: ${agreedToPolicies || isSupportTicket ? "Yes" : "No"}
 Submitted from: ${submittedFrom}
 Submitted at: ${submittedAt}
 
@@ -187,17 +308,36 @@ ${message}`;
         subject,
         html,
         text,
-        reply_to: email,
+        reply_to: submissionEmail,
       }),
     });
 
     if (!resendResponse.ok) {
       const errorBody = await resendResponse.text();
-      throw new Error(`Resend email failed: ${resendResponse.status} ${errorBody}`);
+      const emailError = `Resend email failed: ${resendResponse.status} ${errorBody}`;
+      await supabaseAdmin
+        .from("support_requests")
+        .update({ notification_sent: false, notification_error: emailError })
+        .eq("id", supportRequestId);
+      return new Response(
+        JSON.stringify({
+          error: "Your request was saved, but the email notification could not be sent. Support can still see it in the queue.",
+          supportRequestId,
+        }),
+        {
+          status: 502,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
     }
 
+    await supabaseAdmin
+      .from("support_requests")
+      .update({ notification_sent: true, notification_error: null })
+      .eq("id", supportRequestId);
+
     return new Response(
-      JSON.stringify({ success: true }),
+      JSON.stringify({ success: true, supportRequestId }),
       {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },

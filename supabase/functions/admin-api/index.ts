@@ -1,0 +1,1088 @@
+import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
+import Stripe from "https://esm.sh/stripe@18.5.0";
+import { createClient } from "npm:@supabase/supabase-js@2.57.2";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+};
+
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+
+const clean = (value: unknown) => String(value ?? "").trim();
+const normalizeEmail = (value: unknown) => clean(value).toLowerCase();
+const isUuid = (value: string) =>
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+
+const logStep = (step: string, details?: Record<string, unknown>) => {
+  console.log(`[ADMIN-API] ${step}${details ? ` - ${JSON.stringify(details)}` : ""}`);
+};
+
+type AdminContext = {
+  userId: string;
+  email: string;
+  admin: any;
+  supabaseAdmin: ReturnType<typeof createClient>;
+};
+
+const getSupabaseAdmin = () =>
+  createClient(
+    Deno.env.get("SUPABASE_URL") ?? "",
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+    { auth: { persistSession: false, autoRefreshToken: false } },
+  );
+
+const getAnonClient = (authHeader: string) =>
+  createClient(
+    Deno.env.get("SUPABASE_URL") ?? "",
+    Deno.env.get("SUPABASE_ANON_KEY") ?? "",
+    {
+      global: { headers: { Authorization: authHeader } },
+      auth: { persistSession: false, autoRefreshToken: false },
+    },
+  );
+
+const getAuthenticatedUser = async (authHeader: string) => {
+  const token = authHeader.replace("Bearer ", "");
+  const anonClient = getAnonClient(authHeader);
+  const { data, error } = await anonClient.auth.getUser(token);
+  if (error || !data?.user) throw new Error("Authentication failed");
+  const userId = data.user.id;
+  const email = data.user.email;
+  if (!userId || !email) throw new Error("Invalid user claims");
+  return { userId, email: normalizeEmail(email) };
+};
+
+const requireAdmin = async (req: Request, supabaseAdmin: ReturnType<typeof createClient>): Promise<AdminContext> => {
+  const authHeader = req.headers.get("Authorization");
+  if (!authHeader) throw new Error("No authorization header");
+
+  const { userId, email } = await getAuthenticatedUser(authHeader);
+  const { data: admin } = await supabaseAdmin
+    .from("admin_users")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("status", "active")
+    .maybeSingle();
+
+  if (!admin) throw new Error("Admin access required");
+  return { userId, email, admin, supabaseAdmin };
+};
+
+const audit = async (
+  ctx: AdminContext | { admin?: any; userId?: string; supabaseAdmin: ReturnType<typeof createClient> },
+  action: string,
+  targetType?: string,
+  targetId?: string,
+  metadata: Record<string, unknown> = {},
+) => {
+  await ctx.supabaseAdmin.from("admin_audit_logs").insert({
+    actor_admin_id: ctx.admin?.id ?? null,
+    actor_user_id: ctx.userId ?? null,
+    action,
+    target_type: targetType ?? null,
+    target_id: targetId ?? null,
+    metadata,
+  });
+};
+
+const getSiteUrl = () =>
+  Deno.env.get("SITE_URL") ||
+  Deno.env.get("VITE_SITE_URL") ||
+  "https://www.sermonslidepro.com";
+
+const sendAdminInviteEmail = async (email: string, token: string) => {
+  const resendApiKey = Deno.env.get("RESEND_API_KEY") ?? "";
+  const resendFromEmail = Deno.env.get("RESEND_FROM_EMAIL") ?? "";
+  const resendFromName = Deno.env.get("RESEND_FROM_NAME") || "Sermon Slide Pro Support";
+  if (!resendApiKey || !resendFromEmail) throw new Error("Resend is not configured");
+
+  const acceptUrl = `${getSiteUrl().replace(/\/$/, "")}/admin/accept-invite?token=${encodeURIComponent(token)}`;
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${resendApiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from: `${resendFromName} <${resendFromEmail}>`,
+      to: [email],
+      subject: "Sermon Slide Pro Admin Invite",
+      html: `
+        <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #1f2937;">
+          <h2>Sermon Slide Pro Admin Invite</h2>
+          <p>You have been invited to help manage Sermon Slide Pro internally.</p>
+          <p><a href="${acceptUrl}">Accept admin invite</a></p>
+          <p>This invite expires in 7 days.</p>
+        </div>
+      `,
+      text: `You have been invited to help manage Sermon Slide Pro internally.\n\nAccept invite: ${acceptUrl}\n\nThis invite expires in 7 days.`,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Resend invite failed: ${response.status} ${await response.text()}`);
+  }
+};
+
+const getStripe = () => {
+  const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
+  if (!stripeKey) return null;
+  return new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
+};
+
+const addDays = (date: Date, days: number) => {
+  const copy = new Date(date);
+  copy.setDate(copy.getDate() + days);
+  return copy;
+};
+
+const maxDate = (a: Date, b: Date | null) => {
+  if (!b) return a;
+  return a.getTime() >= b.getTime() ? a : b;
+};
+
+const toIsoOrNull = (date: Date | null) => date ? date.toISOString() : null;
+
+const sendTeamRemovalEmail = async (options: {
+  toEmail: string;
+  recipientName: string;
+  accountName: string;
+}) => {
+  const resendApiKey = Deno.env.get("RESEND_API_KEY") ?? "";
+  const resendFromEmail = Deno.env.get("RESEND_FROM_EMAIL") ?? "";
+  const resendFromName = Deno.env.get("RESEND_FROM_NAME") || "Sermon Slide Pro Support";
+  if (!resendApiKey || !resendFromEmail || !options.toEmail) return false;
+
+  const greeting = options.recipientName.trim() || "there";
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${resendApiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from: `${resendFromName} <${resendFromEmail}>`,
+      to: [options.toEmail],
+      subject: `You were removed from ${options.accountName}`,
+      html: `
+        <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #1f2937;">
+          <p>Hi ${greeting},</p>
+          <p>Your access to <strong>${options.accountName}</strong> in Sermon Slide Pro has been removed by an administrator.</p>
+          <p>Your login for this organization has been deleted. Presentations remain with the organization, so no shared church content was removed with your account.</p>
+          <p>If you think this was a mistake, please contact Sermon Slide Pro support.</p>
+        </div>
+      `,
+      text: `Hi ${greeting},
+
+Your access to ${options.accountName} in Sermon Slide Pro has been removed by an administrator.
+
+Your login for this organization has been deleted. Presentations remain with the organization, so no shared church content was removed with your account.
+
+If you think this was a mistake, please contact Sermon Slide Pro support.`,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Resend removal email failed: ${response.status} ${await response.text()}`);
+  }
+  return true;
+};
+
+const cancelAndDeleteStripeCustomer = async (
+  stripe: Stripe,
+  customerId: string,
+  subscriptionId: string | null,
+) => {
+  const subscriptionIds = new Set<string>();
+  if (subscriptionId) subscriptionIds.add(subscriptionId);
+
+  try {
+    const subscriptions = await stripe.subscriptions.list({ customer: customerId, status: "all", limit: 100 });
+    for (const sub of subscriptions.data) subscriptionIds.add(sub.id);
+  } catch (error) {
+    logStep("Failed listing Stripe subscriptions before hard delete", { customerId, error: String(error) });
+  }
+
+  for (const id of subscriptionIds) {
+    try {
+      const subscription = await stripe.subscriptions.retrieve(id);
+      if (subscription.status !== "canceled" && subscription.status !== "incomplete_expired") {
+        await stripe.subscriptions.cancel(id);
+      }
+    } catch (error) {
+      logStep("Failed canceling Stripe subscription during hard delete", { subscriptionId: id, error: String(error) });
+    }
+  }
+
+  try {
+    await stripe.customers.del(customerId);
+  } catch (error) {
+    logStep("Failed deleting Stripe customer during hard delete", { customerId, error: String(error) });
+  }
+};
+
+const dateKey = (date: Date) => date.toISOString().slice(0, 10);
+
+const buildDailyBuckets = (days: number) => {
+  const safeDays = Math.min(Math.max(days, 7), 90);
+  const end = new Date();
+  end.setUTCHours(23, 59, 59, 999);
+  const start = new Date(end);
+  start.setUTCDate(end.getUTCDate() - safeDays + 1);
+  start.setUTCHours(0, 0, 0, 0);
+
+  const buckets: Record<string, any> = {};
+  for (let cursor = new Date(start); cursor <= end; cursor.setUTCDate(cursor.getUTCDate() + 1)) {
+    buckets[dateKey(cursor)] = {
+      date: dateKey(cursor),
+      orgSignups: 0,
+      userSignups: 0,
+      orgDeletions: 0,
+      userDeletions: 0,
+    };
+  }
+  return { start, end, buckets };
+};
+
+const bootstrap = async (req: Request, supabaseAdmin: ReturnType<typeof createClient>) => {
+  const authHeader = req.headers.get("Authorization");
+  if (!authHeader) throw new Error("No authorization header");
+  const { userId, email } = await getAuthenticatedUser(authHeader);
+  const allowedEmails = (Deno.env.get("ADMIN_BOOTSTRAP_EMAILS") ?? "")
+    .split(",")
+    .map((entry) => normalizeEmail(entry))
+    .filter(Boolean);
+
+  if (!allowedEmails.includes(email)) {
+    throw new Error("This email is not allowed to bootstrap admin access");
+  }
+
+  const { count } = await supabaseAdmin
+    .from("admin_users")
+    .select("id", { count: "exact", head: true })
+    .eq("status", "active");
+
+  if ((count ?? 0) > 0) {
+    throw new Error("Admin bootstrap is closed because an active admin already exists");
+  }
+
+  const { data: admin, error } = await supabaseAdmin
+    .from("admin_users")
+    .insert({ user_id: userId, email, status: "active" })
+    .select("*")
+    .single();
+
+  if (error) throw new Error(error.message);
+  await audit({ admin, userId, supabaseAdmin }, "admin_bootstrap", "admin_user", admin.id, { email });
+  return { admin };
+};
+
+const overview = async (ctx: AdminContext) => {
+  const [
+    { count: profileCount },
+    { count: accountCount },
+    { count: activeCount },
+    { count: canceledCount },
+    { count: pastDueCount },
+    { count: supportCount },
+    { data: recentProfiles },
+    { data: recentSupport },
+    { data: recentRefunds },
+  ] = await Promise.all([
+    ctx.supabaseAdmin.from("profiles").select("id", { count: "exact", head: true }),
+    ctx.supabaseAdmin.from("accounts").select("id", { count: "exact", head: true }),
+    ctx.supabaseAdmin.from("accounts").select("id", { count: "exact", head: true }).in("subscription_status", ["active", "trialing"]),
+    ctx.supabaseAdmin.from("accounts").select("id", { count: "exact", head: true }).eq("subscription_status", "canceled"),
+    ctx.supabaseAdmin.from("accounts").select("id", { count: "exact", head: true }).eq("subscription_status", "past_due"),
+    ctx.supabaseAdmin.from("support_requests").select("id", { count: "exact", head: true }),
+    ctx.supabaseAdmin.from("profiles").select("id, full_name, email, created_at").order("created_at", { ascending: false }).limit(8),
+    ctx.supabaseAdmin.from("support_requests").select("*").order("created_at", { ascending: false }).limit(6),
+    ctx.supabaseAdmin.from("admin_audit_logs").select("*").eq("action", "refund_issued").order("created_at", { ascending: false }).limit(6),
+  ]);
+
+  return {
+    metrics: {
+      totalUsers: profileCount ?? 0,
+      totalAccounts: accountCount ?? 0,
+      activeSubscribers: activeCount ?? 0,
+      canceledSubscriptions: canceledCount ?? 0,
+      pastDueAccounts: pastDueCount ?? 0,
+      failedPayments: pastDueCount ?? 0,
+      openSupportRequests: supportCount ?? 0,
+      mrrCents: null,
+    },
+    recentProfiles: recentProfiles || [],
+    recentSupport: recentSupport || [],
+    recentRefunds: recentRefunds || [],
+  };
+};
+
+const overviewActivity = async (ctx: AdminContext, body: any) => {
+  const days = Number(body?.days) || 30;
+  const { start, end, buckets } = buildDailyBuckets(days);
+  const startIso = start.toISOString();
+  const endIso = end.toISOString();
+
+  const [
+    { data: orgSignups },
+    { data: userSignups },
+    { data: orgDeletionRequests },
+    { data: userDeletionLogs },
+  ] = await Promise.all([
+    ctx.supabaseAdmin.from("accounts").select("created_at").gte("created_at", startIso).lte("created_at", endIso),
+    ctx.supabaseAdmin.from("profiles").select("created_at").gte("created_at", startIso).lte("created_at", endIso),
+    ctx.supabaseAdmin
+      .from("account_deletion_requests" as any)
+      .select("requested_at, completed_at, status")
+      .or(`requested_at.gte.${startIso},completed_at.gte.${startIso}`),
+    ctx.supabaseAdmin
+      .from("admin_audit_logs")
+      .select("created_at, action, metadata")
+      .in("action", ["customer_member_removed", "customer_org_hard_deleted"])
+      .gte("created_at", startIso)
+      .lte("created_at", endIso),
+  ]);
+
+  for (const row of orgSignups || []) {
+    const key = dateKey(new Date(row.created_at));
+    if (buckets[key]) buckets[key].orgSignups += 1;
+  }
+
+  for (const row of userSignups || []) {
+    const key = dateKey(new Date(row.created_at));
+    if (buckets[key]) buckets[key].userSignups += 1;
+  }
+
+  for (const row of orgDeletionRequests || []) {
+    const timestamp = row.completed_at || row.requested_at;
+    if (!timestamp) continue;
+    const date = new Date(timestamp);
+    if (date < start || date > end) continue;
+    const key = dateKey(date);
+    if (buckets[key]) buckets[key].orgDeletions += 1;
+  }
+
+  for (const row of userDeletionLogs || []) {
+    const key = dateKey(new Date(row.created_at));
+    if (!buckets[key]) continue;
+    const metadata = row.metadata || {};
+    const count = row.action === "customer_org_hard_deleted"
+      ? Math.max(Number(metadata.memberCount) || 0, 0)
+      : 1;
+    buckets[key].userDeletions += count;
+  }
+
+  return {
+    rangeDays: Math.min(Math.max(days, 7), 90),
+    items: Object.values(buckets),
+    notes: {
+      userDeletions: "User deletion history is counted from admin audit logs going forward; older user deletions may be unavailable.",
+    },
+  };
+};
+
+const getProfilesByUserIds = async (ctx: AdminContext, userIds: string[]) => {
+  const uniqueUserIds = Array.from(new Set(userIds.filter(Boolean)));
+  if (uniqueUserIds.length === 0) return new Map<string, any>();
+
+  const { data: profiles, error } = await ctx.supabaseAdmin
+    .from("profiles")
+    .select("id, full_name, email, church_role, created_at, updated_at")
+    .in("id", uniqueUserIds);
+  if (error) throw new Error(error.message);
+
+  const profileMap = new Map<string, any>();
+  for (const profile of profiles || []) {
+    profileMap.set(profile.id, profile);
+  }
+  return profileMap;
+};
+
+const getOwnerProfilesForAccounts = async (ctx: AdminContext, accountIds: string[]) => {
+  if (accountIds.length === 0) return new Map<string, any>();
+  const { data: owners, error } = await ctx.supabaseAdmin
+    .from("account_members")
+    .select("account_id, user_id, role")
+    .in("account_id", accountIds)
+    .eq("role", "owner");
+  if (error) throw new Error(error.message);
+
+  const profileMap = await getProfilesByUserIds(ctx, (owners || []).map((owner: any) => owner.user_id));
+
+  const map = new Map<string, any>();
+  for (const owner of owners || []) {
+    if (!map.has(owner.account_id)) {
+      map.set(owner.account_id, {
+        ...owner,
+        profiles: profileMap.get(owner.user_id) || null,
+      });
+    }
+  }
+  return map;
+};
+
+const customers = async (ctx: AdminContext, body: any) => {
+  const search = clean(body?.search).toLowerCase();
+  const status = clean(body?.status) || "all";
+  const limit = Math.min(Math.max(Number(body?.limit) || 25, 1), 100);
+  const offset = Math.max(Number(body?.offset) || 0, 0);
+
+  let query = ctx.supabaseAdmin.from("accounts").select("*", { count: "exact" }).order("created_at", { ascending: false });
+  if (status === "active") query = query.in("subscription_status", ["active", "trialing"]);
+  if (status === "canceled") query = query.eq("subscription_status", "canceled");
+  if (status === "past_due" || status === "failed_payment") query = query.eq("subscription_status", "past_due");
+  if (status === "free") query = query.or("plan_tier.eq.free,subscription_status.eq.inactive");
+  if (status === "recent") {
+    const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    query = query.gte("created_at", cutoff);
+  }
+
+  const { data: accountRows, count, error } = await query.range(offset, offset + limit - 1);
+  if (error) throw new Error(error.message);
+  const accountIds = (accountRows || []).map((account: any) => account.id);
+  const ownerMap = await getOwnerProfilesForAccounts(ctx, accountIds);
+  const { data: supportRows } = accountIds.length
+    ? await ctx.supabaseAdmin.from("support_requests").select("id, email, account_id")
+    : { data: [] as any[] };
+
+  const supportByEmail = new Map<string, number>();
+  const supportByAccount = new Map<string, number>();
+  for (const support of supportRows || []) {
+    const email = normalizeEmail(support.email);
+    supportByEmail.set(email, (supportByEmail.get(email) || 0) + 1);
+    if (support.account_id) {
+      supportByAccount.set(support.account_id, (supportByAccount.get(support.account_id) || 0) + 1);
+    }
+  }
+
+  let items = (accountRows || []).map((account: any) => {
+    const owner = ownerMap.get(account.id);
+    const profile = owner?.profiles || null;
+    return {
+      account,
+      owner: profile,
+      supportRequestCount:
+        supportByAccount.get(account.id) ||
+        (profile?.email ? supportByEmail.get(normalizeEmail(profile.email)) || 0 : 0),
+    };
+  });
+
+  if (search) {
+    items = items.filter((item: any) =>
+      [item.account?.name, item.owner?.full_name, item.owner?.email, item.account?.stripe_customer_id]
+        .some((value) => clean(value).toLowerCase().includes(search))
+    );
+  }
+
+  if (status === "support") {
+    items = items.filter((item: any) => item.supportRequestCount > 0);
+  }
+
+  return { items, total: count ?? items.length, limit, offset };
+};
+
+const customerDetail = async (ctx: AdminContext, body: any) => {
+  const accountId = clean(body?.accountId);
+  if (!isUuid(accountId)) throw new Error("A valid account id is required");
+
+  const [{ data: account }, { data: members, error: membersError }, { count: presentationCount }] = await Promise.all([
+    ctx.supabaseAdmin.from("accounts").select("*").eq("id", accountId).maybeSingle(),
+    ctx.supabaseAdmin.from("account_members").select("*").eq("account_id", accountId).order("created_at", { ascending: true }),
+    ctx.supabaseAdmin.from("sermons").select("id", { count: "exact", head: true }).eq("account_id", accountId),
+  ]);
+
+  if (!account) throw new Error("Customer account not found");
+  if (membersError) throw new Error(membersError.message);
+  const profileMap = await getProfilesByUserIds(ctx, (members || []).map((member: any) => member.user_id));
+  const membersWithProfiles = (members || []).map((member: any) => ({
+    ...member,
+    profiles: profileMap.get(member.user_id) || null,
+  }));
+  const owner = membersWithProfiles.find((member: any) => member.role === "owner") || null;
+  const ownerEmail = owner?.profiles?.email ? normalizeEmail(owner.profiles.email) : "";
+  const [{ data: accountSupportRequests }, { data: legacySupportRequests }] = await Promise.all([
+    ctx.supabaseAdmin
+      .from("support_requests")
+      .select("*")
+      .eq("account_id", accountId)
+      .order("created_at", { ascending: false }),
+    ownerEmail
+      ? ctx.supabaseAdmin
+          .from("support_requests")
+          .select("*")
+          .is("account_id", null)
+          .ilike("email", ownerEmail)
+          .order("created_at", { ascending: false })
+      : Promise.resolve({ data: [] as any[] }),
+  ]);
+  const supportById = new Map<string, any>();
+  for (const request of [...(accountSupportRequests || []), ...(legacySupportRequests || [])]) {
+    supportById.set(request.id, request);
+  }
+  const supportRequests = Array.from(supportById.values()).sort((a, b) =>
+    new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  );
+
+  let stripeContext: any = null;
+  const stripe = getStripe();
+  if (stripe && account.stripe_customer_id) {
+    try {
+      const [customer, subscriptions, invoices, refunds] = await Promise.all([
+        stripe.customers.retrieve(account.stripe_customer_id),
+        stripe.subscriptions.list({ customer: account.stripe_customer_id, status: "all", limit: 5 }),
+        stripe.invoices.list({ customer: account.stripe_customer_id, limit: 10 }),
+        stripe.refunds.list({ limit: 10 }),
+      ]);
+
+      stripeContext = {
+        customer,
+        subscriptions: subscriptions.data,
+        invoices: invoices.data.map((invoice: any) => ({
+          id: invoice.id,
+          number: invoice.number,
+          status: invoice.status,
+          amount_paid: invoice.amount_paid,
+          amount_due: invoice.amount_due,
+          currency: invoice.currency,
+          created: invoice.created,
+          hosted_invoice_url: invoice.hosted_invoice_url,
+          payment_intent: typeof invoice.payment_intent === "string" ? invoice.payment_intent : invoice.payment_intent?.id || null,
+        })),
+        refunds: refunds.data.filter((refund: any) =>
+          subscriptions.data.some((sub: any) => sub.customer === refund.destination_details?.card?.reference) ? true : true
+        ),
+      };
+    } catch (error) {
+      stripeContext = { error: error instanceof Error ? error.message : String(error) };
+    }
+  }
+
+  const normalizedMembers = membersWithProfiles.map((member: any) => ({
+    id: member.id,
+    account_id: member.account_id,
+    user_id: member.user_id,
+    role: member.role,
+    invited_email: member.invited_email,
+    invited_at: member.invited_at,
+    accepted_at: member.accepted_at,
+    created_at: member.created_at,
+    profile: member.profiles || null,
+  }));
+
+  return {
+    account,
+    location: {
+      city: account.city || null,
+      state: account.state || null,
+      label: [account.city, account.state].filter(Boolean).join(", ") || null,
+    },
+    members: normalizedMembers,
+    owner,
+    presentationCount: presentationCount ?? 0,
+    supportRequests: supportRequests || [],
+    stripeContext,
+  };
+};
+
+const customerRemoveMember = async (ctx: AdminContext, body: any) => {
+  const accountId = clean(body?.accountId);
+  const targetUserId = clean(body?.targetUserId);
+  if (!isUuid(accountId) || !isUuid(targetUserId)) throw new Error("A valid account and user are required");
+
+  const [{ data: account }, { data: targetMembership }, { count: ownerCount }] = await Promise.all([
+    ctx.supabaseAdmin.from("accounts").select("id, name").eq("id", accountId).maybeSingle(),
+    ctx.supabaseAdmin
+      .from("account_members")
+      .select("user_id, role")
+      .eq("account_id", accountId)
+      .eq("user_id", targetUserId)
+      .maybeSingle(),
+    ctx.supabaseAdmin
+      .from("account_members")
+      .select("id", { count: "exact", head: true })
+      .eq("account_id", accountId)
+      .eq("role", "owner"),
+  ]);
+
+  if (!account) throw new Error("Customer account not found");
+  if (!targetMembership) throw new Error("Team member not found");
+  if (targetMembership.role === "owner" && (ownerCount ?? 0) <= 1) {
+    throw new Error("Transfer ownership before removing the only owner");
+  }
+
+  const profileMap = await getProfilesByUserIds(ctx, [targetUserId]);
+  const profile = profileMap.get(targetUserId) || {};
+  const targetEmail = clean(profile.email);
+  const targetName = clean(profile.full_name) || "there";
+  const { data: targetAdmin } = await ctx.supabaseAdmin
+    .from("admin_users")
+    .select("id")
+    .eq("user_id", targetUserId)
+    .eq("status", "active")
+    .maybeSingle();
+
+  await ctx.supabaseAdmin.from("account_members").delete().eq("account_id", accountId).eq("user_id", targetUserId);
+  if (!targetAdmin) {
+    const { error: deleteUserError } = await ctx.supabaseAdmin.auth.admin.deleteUser(targetUserId);
+    if (deleteUserError) throw new Error(`Failed deleting team member account: ${deleteUserError.message}`);
+  }
+
+  let emailSent = false;
+  try {
+    emailSent = await sendTeamRemovalEmail({
+      toEmail: targetEmail,
+      recipientName: targetName,
+      accountName: clean(account.name) || "your organization",
+    });
+  } catch (error) {
+    logStep("Admin customer member removal email failed", { accountId, targetUserId, error: String(error) });
+  }
+
+  await audit(ctx, "customer_member_removed", "user", targetUserId, {
+    accountId,
+    email: targetEmail,
+    role: targetMembership.role,
+    emailSent,
+    authUserDeleted: !targetAdmin,
+  });
+  return { success: true, emailSent };
+};
+
+const customerTransferOwner = async (ctx: AdminContext, body: any) => {
+  const accountId = clean(body?.accountId);
+  const newOwnerUserId = clean(body?.newOwnerUserId);
+  const previousOwnerUserId = clean(body?.previousOwnerUserId);
+  if (!isUuid(accountId) || !isUuid(newOwnerUserId) || !isUuid(previousOwnerUserId)) {
+    throw new Error("A valid account, current owner, and new owner are required");
+  }
+  if (newOwnerUserId === previousOwnerUserId) throw new Error("Choose a different user to become owner");
+
+  const { data: memberships } = await ctx.supabaseAdmin
+    .from("account_members")
+    .select("user_id, role")
+    .eq("account_id", accountId)
+    .in("user_id", [newOwnerUserId, previousOwnerUserId]);
+
+  const previousOwner = (memberships || []).find((member: any) => member.user_id === previousOwnerUserId);
+  const newOwner = (memberships || []).find((member: any) => member.user_id === newOwnerUserId);
+  if (!previousOwner || previousOwner.role !== "owner") throw new Error("Current owner membership not found");
+  if (!newOwner) throw new Error("Replacement owner must already belong to this organization");
+  const profileMap = await getProfilesByUserIds(ctx, [previousOwnerUserId, newOwnerUserId]);
+  const previousOwnerProfile = profileMap.get(previousOwnerUserId) || null;
+  const newOwnerProfile = profileMap.get(newOwnerUserId) || null;
+
+  const { error: promoteError } = await ctx.supabaseAdmin
+    .from("account_members")
+    .update({ role: "owner" })
+    .eq("account_id", accountId)
+    .eq("user_id", newOwnerUserId);
+  if (promoteError) throw new Error(promoteError.message);
+
+  const { error: demoteError } = await ctx.supabaseAdmin
+    .from("account_members")
+    .update({ role: "member" })
+    .eq("account_id", accountId)
+    .eq("user_id", previousOwnerUserId);
+  if (demoteError) throw new Error(demoteError.message);
+
+  await audit(ctx, "customer_owner_transferred", "account", accountId, {
+    previousOwnerUserId,
+    previousOwnerEmail: previousOwnerProfile?.email || null,
+    newOwnerUserId,
+    newOwnerEmail: newOwnerProfile?.email || null,
+  });
+  return { success: true };
+};
+
+const customerScheduleOrgDeletion = async (ctx: AdminContext, body: any) => {
+  const accountId = clean(body?.accountId);
+  const reason = clean(body?.reason) || "Admin scheduled organization deletion";
+  if (!isUuid(accountId)) throw new Error("A valid account id is required");
+
+  const { data: existingRequest } = await ctx.supabaseAdmin
+    .from("account_deletion_requests" as any)
+    .select("*")
+    .eq("account_id", accountId)
+    .eq("status", "pending")
+    .maybeSingle();
+  if (existingRequest) return { success: true, alreadyPending: true, deletionRequest: existingRequest };
+
+  const [{ data: account }, { data: owner }] = await Promise.all([
+    ctx.supabaseAdmin.from("accounts").select("*").eq("id", accountId).maybeSingle(),
+    ctx.supabaseAdmin
+      .from("account_members")
+      .select("user_id")
+      .eq("account_id", accountId)
+      .eq("role", "owner")
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+  if (!account) throw new Error("Customer account not found");
+  const ownerProfileMap = await getProfilesByUserIds(ctx, owner?.user_id ? [owner.user_id] : []);
+  const ownerProfile = owner?.user_id ? ownerProfileMap.get(owner.user_id) : null;
+
+  const now = new Date();
+  const cancelableUntil = addDays(now, 7);
+  let subscriptionPeriodEnd = account.subscription_period_end ? new Date(account.subscription_period_end) : null;
+  let stripeSchedulingError: string | null = null;
+  const stripe = getStripe();
+  let subscriptionId = account.stripe_subscription_id || null;
+
+  if (stripe && (subscriptionId || account.stripe_customer_id)) {
+    try {
+      let subscription: Stripe.Subscription | null = null;
+      if (subscriptionId) {
+        const retrieved = await stripe.subscriptions.retrieve(subscriptionId);
+        if (retrieved.status !== "canceled" && retrieved.status !== "incomplete_expired") subscription = retrieved;
+      }
+      if (!subscription && account.stripe_customer_id) {
+        const subscriptions = await stripe.subscriptions.list({ customer: account.stripe_customer_id, status: "all", limit: 10 });
+        subscription = subscriptions.data.find((sub) =>
+          sub.status === "active" || sub.status === "trialing" || sub.status === "past_due"
+        ) || null;
+        subscriptionId = subscription?.id || subscriptionId;
+      }
+      if (subscription) {
+        const updated = await stripe.subscriptions.update(subscription.id, { cancel_at_period_end: true });
+        const endTimestamp = typeof updated.current_period_end === "number" ? updated.current_period_end : null;
+        if (endTimestamp) subscriptionPeriodEnd = new Date(endTimestamp * 1000);
+        await ctx.supabaseAdmin
+          .from("accounts")
+          .update({
+            stripe_subscription_id: updated.id,
+            subscription_period_end: toIsoOrNull(subscriptionPeriodEnd),
+          })
+          .eq("id", accountId);
+      }
+    } catch (error) {
+      stripeSchedulingError = error instanceof Error ? error.message : String(error);
+    }
+  }
+
+  const scheduledDeleteAt = maxDate(cancelableUntil, subscriptionPeriodEnd);
+  const { data: deletionRequest, error } = await ctx.supabaseAdmin
+    .from("account_deletion_requests" as any)
+    .insert({
+      account_id: accountId,
+      requester_user_id: owner?.user_id || null,
+      requester_email: ownerProfile?.email || ctx.email,
+      requester_full_name: ownerProfile?.full_name || "Admin scheduled",
+      account_name: account.name,
+      requester_role: "admin",
+      plan_tier: account.plan_tier || null,
+      billing_interval: account.billing_interval || null,
+      stripe_customer_id: account.stripe_customer_id || null,
+      stripe_subscription_id: subscriptionId,
+      reason,
+      additional_feedback: "Scheduled from the internal admin dashboard.",
+      cancelable_until: cancelableUntil.toISOString(),
+      subscription_period_end: toIsoOrNull(subscriptionPeriodEnd),
+      scheduled_delete_at: scheduledDeleteAt.toISOString(),
+      last_error: stripeSchedulingError,
+      alert_email_sent: false,
+    })
+    .select("*")
+    .single();
+  if (error) throw new Error(error.message);
+
+  await audit(ctx, "customer_org_deletion_scheduled", "account", accountId, {
+    deletionRequestId: deletionRequest.id,
+    scheduledDeleteAt: deletionRequest.scheduled_delete_at,
+    stripeSchedulingError,
+  });
+  return { success: true, deletionRequest, stripeSchedulingError };
+};
+
+const customerHardDeleteOrg = async (ctx: AdminContext, body: any) => {
+  const accountId = clean(body?.accountId);
+  const confirmation = clean(body?.confirmation);
+  if (!isUuid(accountId)) throw new Error("A valid account id is required");
+
+  const { data: account } = await ctx.supabaseAdmin.from("accounts").select("*").eq("id", accountId).maybeSingle();
+  if (!account) throw new Error("Customer account not found");
+  if (confirmation.toLowerCase() !== clean(account.name).toLowerCase()) {
+    throw new Error("Type the organization name exactly to hard delete this organization");
+  }
+
+  const { data: members } = await ctx.supabaseAdmin
+    .from("account_members")
+    .select("user_id, role")
+    .eq("account_id", accountId);
+  const memberUserIds = Array.from(new Set((members || []).map((member: any) => member.user_id).filter(Boolean)));
+  const { data: activeAdmins } = memberUserIds.length
+    ? await ctx.supabaseAdmin
+        .from("admin_users")
+        .select("user_id")
+        .in("user_id", memberUserIds)
+        .eq("status", "active")
+    : { data: [] as any[] };
+  const activeAdminUserIds = new Set((activeAdmins || []).map((admin: any) => admin.user_id));
+
+  const stripe = getStripe();
+  if (stripe && account.stripe_customer_id) {
+    await cancelAndDeleteStripeCustomer(stripe, account.stripe_customer_id, account.stripe_subscription_id || null);
+  }
+
+  const { error: deleteAccountError } = await ctx.supabaseAdmin.from("accounts").delete().eq("id", accountId);
+  if (deleteAccountError) throw new Error(`Failed deleting account data: ${deleteAccountError.message}`);
+
+  for (const memberUserId of memberUserIds) {
+    if (activeAdminUserIds.has(memberUserId)) {
+      logStep("Skipped auth user delete for active admin during org hard delete", { memberUserId });
+      continue;
+    }
+    const { error } = await ctx.supabaseAdmin.auth.admin.deleteUser(memberUserId);
+    if (error) logStep("Failed deleting auth user during admin hard delete", { memberUserId, error: error.message });
+  }
+
+  await ctx.supabaseAdmin
+    .from("account_deletion_requests" as any)
+    .update({ status: "completed", completed_at: new Date().toISOString(), last_error: null })
+    .eq("account_id", accountId)
+    .eq("status", "pending");
+
+  await audit(ctx, "customer_org_hard_deleted", "account", accountId, {
+    accountName: account.name,
+    memberCount: memberUserIds.length,
+    memberUserIds,
+    skippedActiveAdminUserIds: Array.from(activeAdminUserIds),
+    stripeCustomerId: account.stripe_customer_id || null,
+  });
+  return { success: true, deletedUsers: memberUserIds.length };
+};
+
+const supportList = async (ctx: AdminContext, body: any) => {
+  const search = clean(body?.search).toLowerCase();
+  const { data, error } = await ctx.supabaseAdmin
+    .from("support_requests")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(200);
+  if (error) throw new Error(error.message);
+  const accountIds = Array.from(new Set((data || []).map((item: any) => item.account_id).filter(Boolean)));
+  const { data: accounts } = accountIds.length
+    ? await ctx.supabaseAdmin.from("accounts").select("id, name, city, state").in("id", accountIds)
+    : { data: [] as any[] };
+  const accountMap = new Map((accounts || []).map((account: any) => [account.id, account]));
+  const enriched = (data || []).map((item: any) => ({
+    ...item,
+    account: item.account_id ? accountMap.get(item.account_id) || null : null,
+  }));
+
+  const items = search
+    ? enriched.filter((item: any) =>
+        [item.name, item.email, item.organization, item.subject, item.message, item.account?.name]
+          .some((value) => clean(value).toLowerCase().includes(search))
+      )
+    : enriched;
+  return { items };
+};
+
+const supportComplete = async (ctx: AdminContext, body: any) => {
+  const id = clean(body?.id);
+  if (!isUuid(id)) throw new Error("A valid support request id is required");
+  const { data: existing } = await ctx.supabaseAdmin.from("support_requests").select("*").eq("id", id).maybeSingle();
+  if (!existing) throw new Error("Support request not found");
+  const { error } = await ctx.supabaseAdmin.from("support_requests").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+  await audit(ctx, "support_request_completed", "support_request", id, { email: existing.email, subject: existing.subject });
+  return { success: true };
+};
+
+const adminUsers = async (ctx: AdminContext) => {
+  const [{ data: admins }, { data: invites }] = await Promise.all([
+    ctx.supabaseAdmin.from("admin_users").select("*").order("created_at", { ascending: false }),
+    ctx.supabaseAdmin.from("admin_invites").select("*").order("created_at", { ascending: false }).limit(100),
+  ]);
+  return { admins: admins || [], invites: invites || [] };
+};
+
+const adminInvite = async (ctx: AdminContext, body: any) => {
+  const email = normalizeEmail(body?.email);
+  if (!email.includes("@")) throw new Error("A valid admin email is required");
+  const { data: existingAdmin } = await ctx.supabaseAdmin
+    .from("admin_users")
+    .select("*")
+    .eq("email", email)
+    .eq("status", "active")
+    .maybeSingle();
+  if (existingAdmin) throw new Error("That email already has active admin access");
+
+  const { data: invite, error } = await ctx.supabaseAdmin
+    .from("admin_invites")
+    .insert({ email, invited_by: ctx.admin.id })
+    .select("*")
+    .single();
+  if (error) throw new Error(error.message);
+  await sendAdminInviteEmail(email, invite.token);
+  await audit(ctx, "admin_invite_created", "admin_invite", invite.id, { email });
+  return { invite };
+};
+
+const adminInviteResend = async (ctx: AdminContext, body: any) => {
+  const id = clean(body?.id);
+  if (!isUuid(id)) throw new Error("A valid invite id is required");
+  const { data: invite } = await ctx.supabaseAdmin.from("admin_invites").select("*").eq("id", id).maybeSingle();
+  if (!invite || invite.status !== "pending") throw new Error("Pending admin invite not found");
+  await sendAdminInviteEmail(invite.email, invite.token);
+  await audit(ctx, "admin_invite_resent", "admin_invite", id, { email: invite.email });
+  return { success: true };
+};
+
+const adminInviteAccept = async (req: Request, supabaseAdmin: ReturnType<typeof createClient>, body: any) => {
+  const authHeader = req.headers.get("Authorization");
+  if (!authHeader) throw new Error("Please sign in before accepting this admin invite");
+  const { userId, email } = await getAuthenticatedUser(authHeader);
+  const token = clean(body?.token);
+  if (!token) throw new Error("Invite token is required");
+
+  const { data: invite } = await supabaseAdmin
+    .from("admin_invites")
+    .select("*")
+    .eq("token", token)
+    .eq("status", "pending")
+    .maybeSingle();
+  if (!invite) throw new Error("Admin invite is invalid or has already been used");
+  if (new Date(invite.expires_at).getTime() <= Date.now()) {
+    await supabaseAdmin.from("admin_invites").update({ status: "expired" }).eq("id", invite.id);
+    throw new Error("Admin invite has expired");
+  }
+  if (normalizeEmail(invite.email) !== email) {
+    throw new Error("This invite belongs to a different email address");
+  }
+
+  const { data: admin, error } = await supabaseAdmin
+    .from("admin_users")
+    .upsert({ user_id: userId, email, status: "active", invited_by: invite.invited_by }, { onConflict: "email" })
+    .select("*")
+    .single();
+  if (error) throw new Error(error.message);
+  await supabaseAdmin.from("admin_invites").update({ status: "accepted", accepted_by: admin.id }).eq("id", invite.id);
+  await audit({ admin, userId, supabaseAdmin }, "admin_invite_accepted", "admin_invite", invite.id, { email });
+  return { admin };
+};
+
+const adminDeactivate = async (ctx: AdminContext, body: any) => {
+  const id = clean(body?.id);
+  if (!isUuid(id)) throw new Error("A valid admin id is required");
+  if (id === ctx.admin.id) throw new Error("You cannot deactivate your own admin access");
+  const { count } = await ctx.supabaseAdmin
+    .from("admin_users")
+    .select("id", { count: "exact", head: true })
+    .eq("status", "active");
+  if ((count ?? 0) <= 1) throw new Error("At least one active admin is required");
+  const { error } = await ctx.supabaseAdmin.from("admin_users").update({ status: "deactivated" }).eq("id", id);
+  if (error) throw new Error(error.message);
+  await audit(ctx, "admin_access_revoked", "admin_user", id);
+  return { success: true };
+};
+
+const passwordReset = async (ctx: AdminContext, body: any) => {
+  const email = normalizeEmail(body?.email);
+  if (!email.includes("@")) throw new Error("A valid email is required");
+  const redirectTo = `${getSiteUrl().replace(/\/$/, "")}/reset-password`;
+  const supabaseAuth = createClient(
+    Deno.env.get("SUPABASE_URL") ?? "",
+    Deno.env.get("SUPABASE_ANON_KEY") ?? "",
+    { auth: { persistSession: false, autoRefreshToken: false } },
+  );
+  const { error } = await supabaseAuth.auth.resetPasswordForEmail(email, { redirectTo });
+  if (error) throw new Error(error.message);
+  await audit(ctx, "password_reset_sent", "user_email", email);
+  return { success: true };
+};
+
+const billingList = async (ctx: AdminContext) => {
+  const { data: accounts } = await ctx.supabaseAdmin
+    .from("accounts")
+    .select("*")
+    .order("updated_at", { ascending: false })
+    .limit(200);
+  return { items: accounts || [] };
+};
+
+const refundInvoiceCharge = async (ctx: AdminContext, body: any) => {
+  const paymentIntentId = clean(body?.paymentIntentId);
+  const accountId = clean(body?.accountId);
+  if (!paymentIntentId.startsWith("pi_")) throw new Error("A valid payment intent id is required");
+  const stripe = getStripe();
+  if (!stripe) throw new Error("Stripe is not configured");
+  const refund = await stripe.refunds.create({ payment_intent: paymentIntentId });
+  await audit(ctx, "refund_issued", "payment_intent", paymentIntentId, {
+    accountId,
+    refundId: refund.id,
+    amount: refund.amount,
+    currency: refund.currency,
+  });
+  return { refund };
+};
+
+serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
+
+  const supabaseAdmin = getSupabaseAdmin();
+
+  try {
+    const body = await req.json();
+    const action = clean(body?.action);
+    logStep("Action received", { action });
+
+    if (action === "bootstrap") return json(await bootstrap(req, supabaseAdmin));
+    if (action === "admin_invite_accept") return json(await adminInviteAccept(req, supabaseAdmin, body));
+
+    const ctx = await requireAdmin(req, supabaseAdmin);
+
+    switch (action) {
+      case "me":
+        return json({ admin: ctx.admin });
+      case "overview":
+        return json(await overview(ctx));
+      case "overview_activity":
+        return json(await overviewActivity(ctx, body));
+      case "customers":
+        return json(await customers(ctx, body));
+      case "customer_detail":
+        return json(await customerDetail(ctx, body));
+      case "customer_remove_member":
+        return json(await customerRemoveMember(ctx, body));
+      case "customer_transfer_owner":
+        return json(await customerTransferOwner(ctx, body));
+      case "customer_schedule_org_deletion":
+        return json(await customerScheduleOrgDeletion(ctx, body));
+      case "customer_hard_delete_org":
+        return json(await customerHardDeleteOrg(ctx, body));
+      case "support_list":
+        return json(await supportList(ctx, body));
+      case "support_complete":
+        return json(await supportComplete(ctx, body));
+      case "admin_users":
+        return json(await adminUsers(ctx));
+      case "admin_invite":
+        return json(await adminInvite(ctx, body));
+      case "admin_invite_resend":
+        return json(await adminInviteResend(ctx, body));
+      case "admin_deactivate":
+        return json(await adminDeactivate(ctx, body));
+      case "password_reset":
+        return json(await passwordReset(ctx, body));
+      case "billing_list":
+        return json(await billingList(ctx));
+      case "refund_invoice_charge":
+        return json(await refundInvoiceCharge(ctx, body));
+      default:
+        throw new Error("Unsupported admin action");
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Internal server error";
+    logStep("ERROR", { message });
+    return json({ error: message }, 500);
+  }
+});
