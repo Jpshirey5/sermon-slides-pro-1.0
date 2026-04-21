@@ -34,6 +34,8 @@ serve(async (req) => {
     try {
       if (payPerPriceId) {
         session = await stripe.checkout.sessions.create({
+          // Enables promo code input field on Stripe Checkout
+          allow_promotion_codes: true,
           mode: "payment",
           line_items: [{ price: payPerPriceId, quantity: 1 }],
           success_url: successUrl,
@@ -47,6 +49,8 @@ serve(async (req) => {
       console.error("[CREATE-GUEST-CHECKOUT] Price checkout failed, using inline price fallback:", priceError);
       // Fallback to inline one-time $15 payment so flow still works.
       session = await stripe.checkout.sessions.create({
+        // Enables promo code input field on Stripe Checkout
+        allow_promotion_codes: true,
         mode: "payment",
         line_items: [{
           price_data: {
