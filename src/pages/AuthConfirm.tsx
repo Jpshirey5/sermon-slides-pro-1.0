@@ -56,13 +56,16 @@ const AuthConfirm = () => {
         const storedPriceId = typeof window !== "undefined" ? localStorage.getItem("pending_pro_checkout_price_id") : null;
         const metadataPriceId =
           typeof metadata.signup_checkout_price_id === "string" ? metadata.signup_checkout_price_id : null;
-        const intent =
-          storedPendingCheckout ? "checkout" : (typeof metadata.signup_intent === "string" ? metadata.signup_intent : null);
+        const metadataIntent = typeof metadata.signup_intent === "string" ? metadata.signup_intent : null;
+        const intent = storedPendingCheckout ? "checkout" : metadataIntent;
+        const shouldStartCheckout =
+          authType !== "invite" &&
+          (intent === "checkout" || (authType === "signup" && metadataIntent !== "dashboard"));
 
         const destination =
           authType === "invite"
             ? "/signup?invite=complete"
-            : intent === "checkout"
+            : shouldStartCheckout
               ? getPendingCheckoutPath(storedPriceId ?? metadataPriceId)
               : getPostConfirmPath(intent, storedPriceId ?? metadataPriceId);
 

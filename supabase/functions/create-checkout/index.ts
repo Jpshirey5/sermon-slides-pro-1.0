@@ -174,6 +174,8 @@ serve(async (req) => {
     }
 
     const session = await stripe.checkout.sessions.create({
+      // Enables promo code input field on Stripe Checkout
+      allow_promotion_codes: true,
       customer: customerId,
       line_items: [{ price: checkoutPriceId, quantity: 1 }],
       mode: "subscription",
