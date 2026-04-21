@@ -84,6 +84,7 @@ const Account = () => {
   // Team state
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [teamLoading, setTeamLoading] = useState(false);
+  const [teamLoaded, setTeamLoaded] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviting, setInviting] = useState(false);
   const [resendingInviteId, setResendingInviteId] = useState<string | null>(null);
@@ -109,6 +110,7 @@ const Account = () => {
   const [cancelingDeletionRequest, setCancelingDeletionRequest] = useState(false);
 
   useEffect(() => {
+    if (!profile) return;
     if (profile?.full_name) setFullName(profile.full_name);
     setChurchRole(profile?.church_role || "");
     setDefaultTranslation(profile?.default_translation || DEFAULT_TRANSLATION);
@@ -149,6 +151,7 @@ const Account = () => {
   const loadTeam = async () => {
     if (!user) return;
     setTeamLoading(true);
+    setTeamLoaded(false);
     
     const { data: members } = await supabase.rpc("get_account_members_for_user", { _user_id: user.id });
     
@@ -175,7 +178,11 @@ const Account = () => {
         church_role: profileMap.get(m.user_id)?.church_role || null,
         default_translation: profileMap.get(m.user_id)?.default_translation || null,
       })));
+    } else {
+      setIsOwner(false);
+      setTeamMembers([]);
     }
+    setTeamLoaded(true);
     setTeamLoading(false);
   };
 
@@ -650,13 +657,22 @@ const Account = () => {
   const primaryCampus = campuses.find((campus) => campus.isPrimary) || null;
   const deletionCancelable = isDeletionCancelable(activeDeletionRequest);
   const betaCountdown = formatBetaTrialCountdown(subscription.beta_trial_days_remaining);
+  const ownerTeamMember = teamMembers.find((member) => member.role === "owner") || null;
   const enterpriseOwnerDefaultTranslation =
-    teamMembers.find((member) => member.role === "owner")?.default_translation || DEFAULT_TRANSLATION;
-  const defaultTranslationInherited = isEnterprisePlan && !isOwner;
+    ownerTeamMember?.default_translation || null;
+  const defaultTranslationInherited = isEnterprisePlan && teamLoaded && !isOwner;
+  const inheritedDefaultTranslationLoading = isEnterprisePlan && !isOwner && (!teamLoaded || !ownerTeamMember);
+  const profileDefaultTranslationLoading = !profile;
+  const defaultTranslationLoading = profileDefaultTranslationLoading || inheritedDefaultTranslationLoading;
+  const resolvedDefaultTranslation = defaultTranslationInherited
+    ? enterpriseOwnerDefaultTranslation || DEFAULT_TRANSLATION
+    : defaultTranslation;
+  const defaultTranslationSelectValue = defaultTranslationLoading ? undefined : resolvedDefaultTranslation;
+  const savedDefaultTranslation = profile?.default_translation || DEFAULT_TRANSLATION;
 
   useEffect(() => {
     if (defaultTranslationInherited) {
-      setDefaultTranslation(enterpriseOwnerDefaultTranslation);
+      setDefaultTranslation(enterpriseOwnerDefaultTranslation || DEFAULT_TRANSLATION);
     }
   }, [defaultTranslationInherited, enterpriseOwnerDefaultTranslation]);
 
@@ -980,9 +996,13 @@ const Account = () => {
                   <div className="space-y-2" data-tour-id="account-default-translation">
                     <Label htmlFor="defaultTranslation">Default Translation</Label>
                     <div className="flex gap-2">
-                      <Select value={defaultTranslation} onValueChange={setDefaultTranslation} disabled={defaultTranslationInherited}>
+                      <Select
+                        value={defaultTranslationSelectValue}
+                        onValueChange={setDefaultTranslation}
+                        disabled={defaultTranslationInherited || defaultTranslationLoading}
+                      >
                         <SelectTrigger id="defaultTranslation" className="h-10">
-                          <SelectValue />
+                          <SelectValue placeholder="Loading translation..." />
                         </SelectTrigger>
                         <SelectContent>
                           {TRANSLATION_OPTIONS.map((t) => (
@@ -997,8 +1017,9 @@ const Account = () => {
                         onClick={handleSaveDefaultTranslation}
                         disabled={
                           defaultTranslationInherited ||
+                          defaultTranslationLoading ||
                           savingDefaultTranslation ||
-                          defaultTranslation === (profile?.default_translation || DEFAULT_TRANSLATION)
+                          defaultTranslation === savedDefaultTranslation
                         }
                         size="sm"
                       >
@@ -1008,6 +1029,8 @@ const Account = () => {
                     <p className="text-xs text-muted-foreground">
                       {defaultTranslationInherited
                         ? "Enterprise team members inherit this from the organization owner."
+                        : inheritedDefaultTranslationLoading
+                        ? "Loading your organization’s default translation..."
                         : isEnterprisePlan
                         ? "Enterprise team members will inherit this translation for new presentations."
                         : "New presentations will start with this translation by default."}
