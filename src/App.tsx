@@ -28,6 +28,16 @@ import ErrorBoundary from "@/components/ErrorBoundary";
 import RouteTracker from "@/components/RouteTracker";
 import ScrollToRouteTop from "@/components/ScrollToRouteTop";
 import RecoveryRedirectHandler from "@/components/RecoveryRedirectHandler";
+import AdminProtectedRoute from "@/components/admin/AdminProtectedRoute";
+import AdminLayout from "@/components/admin/AdminLayout";
+import AdminLogin from "./pages/admin/AdminLogin";
+import AdminAcceptInvite from "./pages/admin/AdminAcceptInvite";
+import AdminOverview from "./pages/admin/AdminOverview";
+import AdminCustomers from "./pages/admin/AdminCustomers";
+import AdminCustomerDetail from "./pages/admin/AdminCustomerDetail";
+import AdminSupport from "./pages/admin/AdminSupport";
+import AdminBilling from "./pages/admin/AdminBilling";
+import AdminUsers from "./pages/admin/AdminUsers";
 
 const queryClient = new QueryClient();
 
@@ -55,6 +65,16 @@ const App = () => (
               <Route path="/auth/confirm" element={<AuthConfirm />} />
               <Route path="/forgot-password" element={<ForgotPassword />} />
               <Route path="/reset-password" element={<ResetPassword />} />
+              <Route path="/admin/login" element={<AdminLogin />} />
+              <Route path="/admin/accept-invite" element={<AdminAcceptInvite />} />
+              <Route path="/admin" element={<AdminProtectedRoute><AdminLayout /></AdminProtectedRoute>}>
+                <Route index element={<AdminOverview />} />
+                <Route path="customers" element={<AdminCustomers />} />
+                <Route path="customers/:id" element={<AdminCustomerDetail />} />
+                <Route path="support" element={<AdminSupport />} />
+                <Route path="billing" element={<AdminBilling />} />
+                <Route path="users" element={<AdminUsers />} />
+              </Route>
               <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
               <Route path="/dashboard/create" element={<ProtectedRoute><CreateSermon /></ProtectedRoute>} />
               <Route path="/dashboard/create/review/:id" element={<ProtectedRoute><SermonReview /></ProtectedRoute>} />

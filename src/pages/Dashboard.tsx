@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   BookOpen,
+  LifeBuoy,
   LogOut,
   Presentation,
   Plus,
@@ -44,6 +45,9 @@ import {
   isDeletionCancelable,
   type AccountDeletionRequest,
 } from "@/lib/account-deletion";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 
 const DASHBOARD_PAGE_SIZE = 12;
 const DASHBOARD_SORT_OPTIONS = [
@@ -91,6 +95,10 @@ const Dashboard = () => {
   const [activeDeletionRequest, setActiveDeletionRequest] = useState<AccountDeletionRequest | null>(null);
   const [isAccountOwner, setIsAccountOwner] = useState(false);
   const [cancelingDeletionRequest, setCancelingDeletionRequest] = useState(false);
+  const [showSupportDialog, setShowSupportDialog] = useState(false);
+  const [supportMessage, setSupportMessage] = useState("");
+  const [submittingSupportRequest, setSubmittingSupportRequest] = useState(false);
+  const [supportOrgName, setSupportOrgName] = useState("");
   const isEnterpriseAccount = subscription.plan_tier === "enterprise";
   const latestPresentationLoadIdRef = useRef(0);
 
@@ -135,6 +143,33 @@ const Dashboard = () => {
   useEffect(() => {
     void loadDeletionRequestState();
   }, [loadDeletionRequestState]);
+
+  useEffect(() => {
+    if (!accountId) {
+      setSupportOrgName("");
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadSupportOrgName = async () => {
+      const { data } = await supabase
+        .from("accounts")
+        .select("name")
+        .eq("id", accountId)
+        .maybeSingle();
+
+      if (!cancelled) {
+        setSupportOrgName(data?.name || "");
+      }
+    };
+
+    void loadSupportOrgName();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [accountId]);
 
   const handleCancelDeletionRequest = async () => {
     setCancelingDeletionRequest(true);
@@ -308,6 +343,48 @@ const Dashboard = () => {
     trackEvent("logout_clicked");
     await signOut();
     navigate("/");
+  };
+
+  const handleSubmitSupportRequest = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const message = supportMessage.trim();
+
+    if (!message) {
+      toast.error("Please describe what you need help with.");
+      return;
+    }
+
+    setSubmittingSupportRequest(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        toast.error("Please log in again before submitting support.");
+        return;
+      }
+
+      const { data, error } = await supabase.functions.invoke("contact-support", {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+        body: {
+          supportTicket: true,
+          message,
+        },
+      });
+
+      if (error || data?.error) {
+        toast.error(data?.error || error?.message || "Could not submit your support request.");
+        return;
+      }
+
+      setSupportMessage("");
+      setShowSupportDialog(false);
+      toast.success("Support request submitted. We'll follow up soon.");
+      trackEvent("dashboard_support_request_submitted");
+    } catch (error) {
+      logError(error, { scope: "dashboard_submit_support_request" });
+      toast.error("Could not submit your support request.");
+    } finally {
+      setSubmittingSupportRequest(false);
+    }
   };
 
   const handleDeletePresentation = async (id: string) => {
@@ -517,6 +594,10 @@ const Dashboard = () => {
                 </span>
               </Link>
               <div className="flex items-center gap-2">
+                <Button variant="ghost" size="sm" onClick={() => setShowSupportDialog(true)}>
+                  <LifeBuoy className="w-4 h-4" />
+                  <span className="hidden sm:inline">Contact Support</span>
+                </Button>
                 <Link to="/account" data-tour-id="dashboard-account-button">
                   <Button variant="ghost" size="sm">
                     <User className="w-4 h-4" />
@@ -890,6 +971,46 @@ const Dashboard = () => {
           introStartLabel="Start Guided Tour"
         />
       )}
+      <Dialog open={showSupportDialog} onOpenChange={setShowSupportDialog}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Submit a Support Request</DialogTitle>
+            <DialogDescription>
+              Tell us what is going on. Your request will be linked to your organization so support can see the right account context.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleSubmitSupportRequest} className="space-y-5">
+            <div className="grid gap-3 rounded-xl border border-border/70 bg-muted/35 p-4 text-sm">
+              <div>
+                <p className="text-xs text-muted-foreground">Name</p>
+                <p className="font-medium text-foreground">{profile?.full_name || user?.email || "Signed-in user"}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Email</p>
+                <p className="font-medium text-foreground">{profile?.email || user?.email || "Unavailable"}</p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Organization</p>
+                <p className="font-medium text-foreground">{supportOrgName || "Your organization"}</p>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="support-message">How can we help?</Label>
+              <Textarea
+                id="support-message"
+                rows={6}
+                value={supportMessage}
+                onChange={(event) => setSupportMessage(event.target.value)}
+                placeholder="Share what happened, what you were trying to do, and any details that would help us troubleshoot."
+                required
+              />
+            </div>
+            <Button type="submit" variant="hero" className="w-full" disabled={submittingSupportRequest || !supportMessage.trim()}>
+              {submittingSupportRequest ? "Submitting..." : "Submit Support Request"}
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
       <ExportOptionsModal
         isOpen={showBulkExportModal}
         onClose={() => setShowBulkExportModal(false)}
