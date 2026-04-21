@@ -36,6 +36,10 @@ interface SubscriptionInfo {
   subscription_end: string | null;
   cancel_at_period_end: boolean;
   subscription_status: string | null;
+  is_beta_user: boolean;
+  beta_trial_active: boolean;
+  beta_trial_ends_at: string | null;
+  beta_trial_days_remaining: number | null;
 }
 
 interface AuthContextType {
@@ -77,6 +81,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     subscription_end: null,
     cancel_at_period_end: false,
     subscription_status: null,
+    is_beta_user: false,
+    beta_trial_active: false,
+    beta_trial_ends_at: null,
+    beta_trial_days_remaining: null,
   });
   const userInitiatedSignOutRef = useRef(false);
   const lastUserIdRef = useRef<string | null>(null);
@@ -129,6 +137,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             subscription_end: data.subscription_end || null,
             cancel_at_period_end: data.cancel_at_period_end || false,
             subscription_status: data.subscription_status || null,
+            is_beta_user: data.is_beta_user || false,
+            beta_trial_active: data.beta_trial_active || false,
+            beta_trial_ends_at: data.beta_trial_ends_at || null,
+            beta_trial_days_remaining:
+              typeof data.beta_trial_days_remaining === "number" ? data.beta_trial_days_remaining : null,
           });
         }
       } catch (err) {
@@ -175,6 +188,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       subscription_end: null,
       cancel_at_period_end: false,
       subscription_status: null,
+      is_beta_user: false,
+      beta_trial_active: false,
+      beta_trial_ends_at: null,
+      beta_trial_days_remaining: null,
     });
   };
 
@@ -205,6 +222,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             subscription_end: null,
             cancel_at_period_end: false,
             subscription_status: null,
+            is_beta_user: false,
+            beta_trial_active: false,
+            beta_trial_ends_at: null,
+            beta_trial_days_remaining: null,
           });
         }
 

@@ -676,6 +676,7 @@ const customers = async (ctx: AdminContext, body: any) => {
   if (status === "canceled") query = query.eq("subscription_status", "canceled");
   if (status === "past_due" || status === "failed_payment") query = query.eq("subscription_status", "past_due");
   if (status === "free") query = query.or("plan_tier.eq.free,subscription_status.eq.inactive");
+  if (status === "beta") query = query.eq("is_beta_user", true);
   if (status === "recent") {
     const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
     query = query.gte("created_at", cutoff);
@@ -1098,6 +1099,52 @@ const customerHardDeleteOrg = async (ctx: AdminContext, body: any) => {
   return { success: true, deletedUsers: memberUserIds.length };
 };
 
+const customerBetaUpdate = async (ctx: AdminContext, body: any) => {
+  const accountId = clean(body?.accountId);
+  const enabled = Boolean(body?.enabled);
+  if (!isUuid(accountId)) throw new Error("A valid account id is required");
+
+  const { data: account } = await ctx.supabaseAdmin.from("accounts").select("*").eq("id", accountId).maybeSingle();
+  if (!account) throw new Error("Customer account not found");
+
+  const now = new Date();
+  const betaPlanTier = ["pro", "team", "enterprise"].includes(clean(account.plan_tier))
+    ? clean(account.plan_tier)
+    : "pro";
+  const trialEndsAt = addDays(now, 30).toISOString();
+  const update = enabled
+    ? {
+        is_beta_user: true,
+        beta_started_at: now.toISOString(),
+        beta_trial_ends_at: trialEndsAt,
+        beta_plan_tier: betaPlanTier,
+        beta_day_10_email_sent_at: null,
+        beta_day_25_email_sent_at: null,
+        beta_day_30_email_sent_at: null,
+        plan_tier: betaPlanTier,
+        subscription_status: "trialing",
+        subscription_period_end: trialEndsAt,
+      }
+    : {
+        is_beta_user: false,
+      };
+
+  const { data: updatedAccount, error } = await ctx.supabaseAdmin
+    .from("accounts")
+    .update(update)
+    .eq("id", accountId)
+    .select("*")
+    .single();
+  if (error) throw new Error(error.message);
+
+  await audit(ctx, enabled ? "customer_beta_enabled" : "customer_beta_disabled", "account", accountId, {
+    betaTrialEndsAt: updatedAccount.beta_trial_ends_at || null,
+    betaPlanTier: updatedAccount.beta_plan_tier || null,
+  });
+
+  return { success: true, account: updatedAccount };
+};
+
 const purgeExpiredArchivedSupportRequests = async (ctx: AdminContext) => {
   const { error } = await ctx.supabaseAdmin
     .from("support_requests")
@@ -1354,6 +1401,8 @@ serve(async (req) => {
         return json(await customerScheduleOrgDeletion(ctx, body));
       case "customer_hard_delete_org":
         return json(await customerHardDeleteOrg(ctx, body));
+      case "customer_beta_update":
+        return json(await customerBetaUpdate(ctx, body));
       case "support_list":
         return json(await supportList(ctx, body));
       case "support_complete":

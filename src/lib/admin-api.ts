@@ -21,7 +21,8 @@ export type AdminApiAction =
   | "customer_remove_member"
   | "customer_transfer_owner"
   | "customer_schedule_org_deletion"
-  | "customer_hard_delete_org";
+  | "customer_hard_delete_org"
+  | "customer_beta_update";
 
 export const adminApi = async <T = any>(action: AdminApiAction, body: Record<string, unknown> = {}): Promise<T> => {
   const { data: sessionData } = await supabase.auth.getSession();

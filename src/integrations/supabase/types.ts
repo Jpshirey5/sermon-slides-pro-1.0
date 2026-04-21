@@ -306,10 +306,17 @@ export type Database = {
       }
       accounts: {
         Row: {
+          beta_day_10_email_sent_at: string | null
+          beta_day_25_email_sent_at: string | null
+          beta_day_30_email_sent_at: string | null
+          beta_plan_tier: string
+          beta_started_at: string | null
+          beta_trial_ends_at: string | null
           billing_interval: string | null
           city: string | null
           created_at: string
           id: string
+          is_beta_user: boolean
           max_additional_users: number | null
           name: string
           plan_tier: string | null
@@ -321,10 +328,17 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          beta_day_10_email_sent_at?: string | null
+          beta_day_25_email_sent_at?: string | null
+          beta_day_30_email_sent_at?: string | null
+          beta_plan_tier?: string
+          beta_started_at?: string | null
+          beta_trial_ends_at?: string | null
           billing_interval?: string | null
           city?: string | null
           created_at?: string
           id?: string
+          is_beta_user?: boolean
           max_additional_users?: number | null
           name?: string
           plan_tier?: string | null
@@ -336,10 +350,17 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          beta_day_10_email_sent_at?: string | null
+          beta_day_25_email_sent_at?: string | null
+          beta_day_30_email_sent_at?: string | null
+          beta_plan_tier?: string
+          beta_started_at?: string | null
+          beta_trial_ends_at?: string | null
           billing_interval?: string | null
           city?: string | null
           created_at?: string
           id?: string
+          is_beta_user?: boolean
           max_additional_users?: number | null
           name?: string
           plan_tier?: string | null
@@ -632,27 +653,63 @@ export type Database = {
     Views: {
       accounts_public: {
         Row: {
+          beta_plan_tier: string | null
+          beta_started_at: string | null
+          beta_trial_ends_at: string | null
+          billing_interval: string | null
+          city: string | null
           created_at: string | null
           id: string | null
+          is_beta_user: boolean | null
+          max_additional_users: number | null
           name: string | null
+          plan_tier: string | null
+          state: string | null
+          stripe_customer_id: string | null
+          stripe_subscription_id: string | null
+          subscription_period_end: string | null
           subscription_status:
             | Database["public"]["Enums"]["subscription_status"]
             | null
           updated_at: string | null
         }
         Insert: {
+          beta_plan_tier?: string | null
+          beta_started_at?: string | null
+          beta_trial_ends_at?: string | null
+          billing_interval?: string | null
+          city?: string | null
           created_at?: string | null
           id?: string | null
+          is_beta_user?: boolean | null
+          max_additional_users?: number | null
           name?: string | null
+          plan_tier?: string | null
+          state?: string | null
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          subscription_period_end?: string | null
           subscription_status?:
             | Database["public"]["Enums"]["subscription_status"]
             | null
           updated_at?: string | null
         }
         Update: {
+          beta_plan_tier?: string | null
+          beta_started_at?: string | null
+          beta_trial_ends_at?: string | null
+          billing_interval?: string | null
+          city?: string | null
           created_at?: string | null
           id?: string | null
+          is_beta_user?: boolean | null
+          max_additional_users?: number | null
           name?: string | null
+          plan_tier?: string | null
+          state?: string | null
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          subscription_period_end?: string | null
           subscription_status?:
             | Database["public"]["Enums"]["subscription_status"]
             | null
