@@ -143,6 +143,64 @@ ${details.additionalFeedback}`;
   }
 }
 
+const createAdminNotification = async (
+  supabaseClient: ReturnType<typeof createClient>,
+  notification: {
+    type: "account_deletion_requested" | "account_saving_needed" | "support_request" | "subscription_changed";
+    title: string;
+    message: string;
+    accountId?: string | null;
+    supportRequestId?: string | null;
+    accountDeletionRequestId?: string | null;
+    metadata?: Record<string, unknown>;
+  },
+) => {
+  const { error } = await supabaseClient.from("admin_notifications" as any).insert({
+    type: notification.type,
+    title: notification.title,
+    message: notification.message,
+    account_id: notification.accountId ?? null,
+    support_request_id: notification.supportRequestId ?? null,
+    account_deletion_request_id: notification.accountDeletionRequestId ?? null,
+    metadata: notification.metadata ?? {},
+  });
+  if (error) logStep("Admin notification insert failed", { error: error.message, type: notification.type });
+};
+
+const createCancellationSupportTicket = async (
+  supabaseClient: ReturnType<typeof createClient>,
+  options: {
+    accountId: string;
+    accountName: string;
+    userId: string;
+    requesterName: string;
+    requesterEmail: string;
+  },
+) => {
+  const { data, error } = await supabaseClient
+    .from("support_requests")
+    .insert({
+      account_id: options.accountId,
+      user_id: options.userId,
+      name: options.requesterName || "Unknown customer",
+      email: options.requesterEmail || "support@sermonslidepro.com",
+      organization: options.accountName,
+      subject: "Cancellation submission",
+      message: `${options.accountName} has submitted for Offboarding. Reach out to confirm and support to save customer if applicable.`,
+      submitted_from: "account_deletion_request",
+      notification_sent: false,
+    })
+    .select("id")
+    .single();
+
+  if (error || !data) {
+    logStep("Cancellation support ticket insert failed", { accountId: options.accountId, error: error?.message });
+    return null;
+  }
+
+  return data.id as string;
+};
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -350,6 +408,30 @@ serve(async (req) => {
       throw new Error(`Failed creating deletion request: ${insertError?.message || "Unknown error"}`);
     }
 
+    const cancellationSupportRequestId = await createCancellationSupportTicket(supabaseClient, {
+      accountId,
+      accountName,
+      userId,
+      requesterName: trustedFullName,
+      requesterEmail: trustedEmail || email || "",
+    });
+
+    await createAdminNotification(supabaseClient, {
+      type: "account_deletion_requested",
+      title: "Cancellation submission",
+      message: `${accountName} has submitted for Offboarding. Reach out to confirm and support to save customer if applicable.`,
+      accountId,
+      supportRequestId: cancellationSupportRequestId,
+      accountDeletionRequestId: deletionRequest.id,
+      metadata: {
+        requesterEmail: trustedEmail || email,
+        requesterName: trustedFullName,
+        cancelableUntil: cancelableUntil.toISOString(),
+        scheduledDeleteAt: scheduledDeleteAt.toISOString(),
+        subscriptionPeriodEnd: toIsoOrNull(subscriptionPeriodEnd),
+      },
+    });
+
     try {
       await sendDeletionAlert({
         fullName: trustedFullName,
@@ -372,6 +454,12 @@ serve(async (req) => {
         .from("account_deletion_requests" as any)
         .update({ alert_email_sent: true, alert_email_error: null })
         .eq("id", deletionRequest.id);
+      if (cancellationSupportRequestId) {
+        await supabaseClient
+          .from("support_requests")
+          .update({ notification_sent: true, notification_error: null })
+          .eq("id", cancellationSupportRequestId);
+      }
       deletionRequest.alert_email_sent = true;
       logStep("Save-account deletion request alert sent", { accountId, userId });
     } catch (emailError) {
@@ -380,6 +468,12 @@ serve(async (req) => {
         .from("account_deletion_requests" as any)
         .update({ alert_email_sent: false, alert_email_error: emailErrorMessage })
         .eq("id", deletionRequest.id);
+      if (cancellationSupportRequestId) {
+        await supabaseClient
+          .from("support_requests")
+          .update({ notification_sent: false, notification_error: emailErrorMessage })
+          .eq("id", cancellationSupportRequestId);
+      }
       logStep("Save-account deletion request alert failed", { error: emailErrorMessage });
     }
 

@@ -128,6 +128,117 @@ export type Database = {
         }
         Relationships: []
       }
+      admin_notification_reads: {
+        Row: {
+          admin_user_id: string
+          cleared_at: string | null
+          notification_id: string
+          read_at: string
+        }
+        Insert: {
+          admin_user_id: string
+          cleared_at?: string | null
+          notification_id: string
+          read_at?: string
+        }
+        Update: {
+          admin_user_id?: string
+          cleared_at?: string | null
+          notification_id?: string
+          read_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "admin_notification_reads_admin_user_id_fkey"
+            columns: ["admin_user_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "admin_notification_reads_notification_id_fkey"
+            columns: ["notification_id"]
+            isOneToOne: false
+            referencedRelation: "admin_notifications"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      admin_notifications: {
+        Row: {
+          account_deletion_request_id: string | null
+          account_id: string | null
+          created_at: string
+          created_by_admin_id: string | null
+          id: string
+          message: string
+          metadata: Json
+          support_request_id: string | null
+          title: string
+          type: string
+        }
+        Insert: {
+          account_deletion_request_id?: string | null
+          account_id?: string | null
+          created_at?: string
+          created_by_admin_id?: string | null
+          id?: string
+          message: string
+          metadata?: Json
+          support_request_id?: string | null
+          title: string
+          type: string
+        }
+        Update: {
+          account_deletion_request_id?: string | null
+          account_id?: string | null
+          created_at?: string
+          created_by_admin_id?: string | null
+          id?: string
+          message?: string
+          metadata?: Json
+          support_request_id?: string | null
+          title?: string
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "admin_notifications_account_deletion_request_id_fkey"
+            columns: ["account_deletion_request_id"]
+            isOneToOne: false
+            referencedRelation: "account_deletion_requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "admin_notifications_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "admin_notifications_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "admin_notifications_created_by_admin_id_fkey"
+            columns: ["created_by_admin_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "admin_notifications_support_request_id_fkey"
+            columns: ["support_request_id"]
+            isOneToOne: false
+            referencedRelation: "support_requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       admin_users: {
         Row: {
           account_id: string | null
@@ -190,6 +301,8 @@ export type Database = {
           requester_email: string | null
           requester_full_name: string | null
           requester_role: string
+          save_ticket_created_at: string | null
+          save_ticket_id: string | null
           requester_user_id: string | null
           scheduled_delete_at: string
           status: string
@@ -218,6 +331,8 @@ export type Database = {
           requester_email?: string | null
           requester_full_name?: string | null
           requester_role?: string
+          save_ticket_created_at?: string | null
+          save_ticket_id?: string | null
           requester_user_id?: string | null
           scheduled_delete_at: string
           status?: string
@@ -246,6 +361,8 @@ export type Database = {
           requester_email?: string | null
           requester_full_name?: string | null
           requester_role?: string
+          save_ticket_created_at?: string | null
+          save_ticket_id?: string | null
           requester_user_id?: string | null
           scheduled_delete_at?: string
           status?: string

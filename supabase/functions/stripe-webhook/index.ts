@@ -38,6 +38,37 @@ const resolvePlanMetadata = (priceId?: string | null) => {
   return PLAN_BY_PRICE_ID.get(priceId) || { planTier: "pro", billingInterval: null, maxAdditionalUsers: 0 };
 };
 
+const createAdminNotification = async (
+  supabaseClient: ReturnType<typeof createClient>,
+  notification: {
+    title: string;
+    message: string;
+    accountId?: string | null;
+    metadata?: Record<string, unknown>;
+  },
+) => {
+  const { error } = await supabaseClient.from("admin_notifications" as any).insert({
+    type: "subscription_changed",
+    title: notification.title,
+    message: notification.message,
+    account_id: notification.accountId ?? null,
+    metadata: notification.metadata ?? {},
+  });
+  if (error) logStep("Admin notification insert failed", { error: error.message });
+};
+
+const getAccountForStripeCustomer = async (
+  supabaseClient: ReturnType<typeof createClient>,
+  customerId: string,
+) => {
+  const { data } = await supabaseClient
+    .from("accounts")
+    .select("id, name")
+    .eq("stripe_customer_id", customerId)
+    .maybeSingle();
+  return data || null;
+};
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -95,6 +126,12 @@ serve(async (req) => {
             })
             .eq("id", accountId);
           logStep("Updated account via metadata", { accountId });
+          await createAdminNotification(supabaseClient, {
+            title: "Subscription activated",
+            message: `A subscription was activated for account ${accountId}.`,
+            accountId,
+            metadata: { eventId: event.id, customerId, subscriptionId, planTier: planMeta.planTier },
+          });
         } else {
           // Fallback: look up account by stripe_customer_id
           const { data: account } = await supabaseClient
@@ -115,6 +152,12 @@ serve(async (req) => {
               })
               .eq("id", account.id);
             logStep("Updated account via customer lookup", { accountId: account.id });
+            await createAdminNotification(supabaseClient, {
+              title: "Subscription activated",
+              message: `A subscription was activated for account ${account.id}.`,
+              accountId: account.id,
+              metadata: { eventId: event.id, customerId, subscriptionId, planTier: planMeta.planTier },
+            });
           } else {
             logStep("WARNING: Could not find account for customer", { customerId });
           }
@@ -126,6 +169,7 @@ serve(async (req) => {
         const sub = event.data.object as Stripe.Subscription;
         const status = sub.status;
         const customerId = sub.customer as string;
+        const previous = event.data.previous_attributes as any;
         const isActive = status === "active" || status === "trialing";
         const endTimestamp = sub.current_period_end;
         const priceId = sub.items.data[0]?.price?.id ?? null;
@@ -147,6 +191,33 @@ serve(async (req) => {
             subscription_period_end: subscriptionEnd,
           })
           .eq("stripe_customer_id", customerId);
+
+        const notifyStatusChanged = Boolean(previous?.status && previous.status !== status);
+        const notifyCancellationChanged = typeof previous?.cancel_at_period_end !== "undefined";
+        if (notifyStatusChanged || notifyCancellationChanged || sub.cancel_at_period_end || status === "past_due" || status === "unpaid") {
+          const account = await getAccountForStripeCustomer(supabaseClient, customerId);
+          const title = sub.cancel_at_period_end
+            ? "Subscription cancellation scheduled"
+            : status === "past_due" || status === "unpaid"
+            ? "Subscription needs attention"
+            : isActive
+            ? "Subscription active"
+            : "Subscription changed";
+          const message = `${account?.name || "A customer"} subscription is now ${sub.cancel_at_period_end ? "canceling at period end" : status}.`;
+          await createAdminNotification(supabaseClient, {
+            title,
+            message,
+            accountId: account?.id || null,
+            metadata: {
+              eventId: event.id,
+              customerId,
+              subscriptionId: sub.id,
+              status,
+              cancelAtPeriodEnd: sub.cancel_at_period_end,
+              subscriptionEnd,
+            },
+          });
+        }
         break;
       }
 
@@ -164,6 +235,13 @@ serve(async (req) => {
             subscription_status: "canceled",
           })
           .eq("stripe_customer_id", customerId);
+        const account = await getAccountForStripeCustomer(supabaseClient, customerId);
+        await createAdminNotification(supabaseClient, {
+          title: "Subscription canceled",
+          message: `${account?.name || "A customer"} subscription was canceled in Stripe.`,
+          accountId: account?.id || null,
+          metadata: { eventId: event.id, customerId, subscriptionId: sub.id, status: sub.status },
+        });
         break;
       }
     }
