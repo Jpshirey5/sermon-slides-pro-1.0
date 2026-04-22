@@ -78,13 +78,20 @@ serve(async (req) => {
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
   const providedSecret = req.headers.get("x-worker-secret") ?? "";
   const providedBearer = (req.headers.get("Authorization") ?? "").replace("Bearer ", "");
-  if (!(expectedSecret && providedSecret === expectedSecret) && providedBearer !== serviceRoleKey) {
+  const authorizedByWorkerSecret = Boolean(expectedSecret && providedSecret === expectedSecret);
+  const authorizedByServiceRole = Boolean(serviceRoleKey && providedBearer === serviceRoleKey);
+
+  if (!authorizedByWorkerSecret && !authorizedByServiceRole) {
     return json({ error: "Unauthorized" }, 401);
+  }
+
+  if (!serviceRoleKey) {
+    return json({ error: "SUPABASE_SERVICE_ROLE_KEY is not configured" }, 500);
   }
 
   const supabaseAdmin = createClient(
     Deno.env.get("SUPABASE_URL") ?? "",
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+    serviceRoleKey,
     { auth: { persistSession: false, autoRefreshToken: false } },
   );
 

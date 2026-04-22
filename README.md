@@ -135,12 +135,18 @@ Required server-side/runtime variables:
 - `RESEND_FROM_EMAIL` for team-member removal emails
 - `RESEND_FROM_NAME` optional sender name override for team-member removal emails
 - `SUPPORT_CONTACT_EMAIL` optional override for contact-form submissions, defaults to `support@sermonslidepro.com`
+- `BETA_EMAIL_WORKER_SECRET` for the daily beta lifecycle email worker
+- `FINALIZE_ACCOUNT_DELETIONS_SECRET` for the daily account deletion finalizer
 
 Supabase Dashboard requirements:
 
 - `Authentication -> URL Configuration`
-  - Site URL must be the production app URL
-  - Redirect URLs must allow the production app host and auth routes
+  - Site URL must be `https://www.sermonslidepro.com` in production
+  - Redirect URLs must allow:
+    - `https://www.sermonslidepro.com/auth/confirm`
+    - `https://www.sermonslidepro.com/reset-password`
+    - `https://www.sermonslidepro.com/admin/accept-invite`
+    - Cloudflare preview URLs only when intentionally testing preview deployments
 - `Authentication -> Email Templates`
   - Confirm signup should use the app confirmation route
   - Recovery should use the app reset-password route
@@ -170,6 +176,28 @@ With the current app:
 - owners can remove non-owner team members from the Account page, which deletes that user login and emails a removal notice
 - contact form submissions are sent through the `contact-support` Edge Function to `support@sermonslidepro.com` unless `SUPPORT_CONTACT_EMAIL` is set
 - contact form submissions validate the sender email domain server-side using DNS; clearly invalid domains are blocked, but temporary DNS lookup failures do not block sends
+
+### Scheduled Operations
+
+These scheduled jobs are required for beta/offboarding operations. Configure them in Supabase scheduled functions, an external cron, or another secure scheduler.
+
+Daily beta lifecycle emails:
+
+- Function URL: `https://hqtcgynnnghxihvykrin.supabase.co/functions/v1/process-beta-trial-emails`
+- Method: `POST`
+- Cadence: once daily
+- Required header: `x-worker-secret: <BETA_EMAIL_WORKER_SECRET>`
+- Purpose: sends beta Day 10, Day 25, and Day 30 emails through Resend, then records the sent timestamp on the account.
+
+Daily account deletion finalizer:
+
+- Function URL: `https://hqtcgynnnghxihvykrin.supabase.co/functions/v1/finalize-account-deletions`
+- Method: `POST`
+- Cadence: once daily
+- Required header: `x-finalize-secret: <FINALIZE_ACCOUNT_DELETIONS_SECRET>`
+- Purpose: permanently finalizes due organization deletion requests after the grace/billing-term window.
+
+Both functions intentionally reject requests without their configured scheduler secret. Do not put the Supabase service-role key in client-side code or frontend environment variables.
 
 ## Deployment
 

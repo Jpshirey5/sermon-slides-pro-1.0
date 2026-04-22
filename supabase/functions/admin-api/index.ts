@@ -873,11 +873,10 @@ const customerDetail = async (ctx: AdminContext, body: any) => {
   const stripe = getStripe();
   if (stripe && account.stripe_customer_id) {
     try {
-      const [customer, subscriptions, invoices, refunds, nextInvoiceSummary] = await Promise.all([
+      const [customer, subscriptions, invoices, nextInvoiceSummary] = await Promise.all([
         stripe.customers.retrieve(account.stripe_customer_id),
         stripe.subscriptions.list({ customer: account.stripe_customer_id, status: "all", limit: 5 }),
         stripe.invoices.list({ customer: account.stripe_customer_id, limit: 10 }),
-        stripe.refunds.list({ limit: 10 }),
         getNextInvoiceSummary(stripe, account),
       ]);
       nextInvoice = nextInvoiceSummary;
@@ -897,9 +896,6 @@ const customerDetail = async (ctx: AdminContext, body: any) => {
           hosted_invoice_url: invoice.hosted_invoice_url,
           payment_intent: typeof invoice.payment_intent === "string" ? invoice.payment_intent : invoice.payment_intent?.id || null,
         })),
-        refunds: refunds.data.filter((refund: any) =>
-          subscriptions.data.some((sub: any) => sub.customer === refund.destination_details?.card?.reference) ? true : true
-        ),
       };
     } catch (error) {
       stripeContext = { error: error instanceof Error ? error.message : String(error) };
