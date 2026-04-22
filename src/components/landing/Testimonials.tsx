@@ -5,23 +5,23 @@ const testimonials = [
   {
     quote:
       "Sermon Slide Pro has transformed our Sunday services. What used to take hours now takes minutes. The ProPresenter export is flawless.",
-    author: "Pastor David Chen",
-    role: "Senior Pastor, Grace Community Church",
-    avatar: "DC",
+    author: "John Shirey",
+    role: "Worship Pastor, Bell Shoals Church",
+    avatar: "JS",
   },
   {
     quote:
       "The scripture integration is incredible. I just type the reference and it automatically formats everything beautifully. A game-changer for sermon prep.",
-    author: "Rev. Sarah Mitchell",
-    role: "Lead Pastor, First Baptist Church",
-    avatar: "SM",
+    author: "Rev. Manuel Diaz",
+    role: "Discipleship Pastor, Shiloh Baptist Association",
+    avatar: "MD",
   },
   {
     quote:
       "Our volunteer media team loves how easy it is to use. The drag-and-drop editor means anyone can make professional slides.",
-    author: "Michael Torres",
-    role: "Media Director, Hillside Church",
-    avatar: "MT",
+    author: "Nicholas Cook",
+    role: "Media Director, Bell Shoals Church",
+    avatar: "NC",
   },
 ];
 

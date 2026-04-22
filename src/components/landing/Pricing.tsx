@@ -26,6 +26,7 @@ const FEATURES_BY_TIER = {
   enterprise: [
     "Up to 10 users",
     "Built for larger ministries and multi-role teams",
+    "Built to support multi-campus teams",
     "Unlimited presentation creation",
     "Unlimited PowerPoint and ProPresenter exports",
     "Saved presentations across the organization",
