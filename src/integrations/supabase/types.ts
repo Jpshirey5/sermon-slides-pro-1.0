@@ -552,6 +552,8 @@ export type Database = {
           completed_by_admin_id: string | null
           created_at: string
           email: string
+          email_contacted_at: string | null
+          email_contacted_by_admin_id: string | null
           id: string
           message: string
           name: string
@@ -572,6 +574,8 @@ export type Database = {
           completed_by_admin_id?: string | null
           created_at?: string
           email: string
+          email_contacted_at?: string | null
+          email_contacted_by_admin_id?: string | null
           id?: string
           message: string
           name: string
@@ -592,6 +596,8 @@ export type Database = {
           completed_by_admin_id?: string | null
           created_at?: string
           email?: string
+          email_contacted_at?: string | null
+          email_contacted_by_admin_id?: string | null
           id?: string
           message?: string
           name?: string
@@ -616,6 +622,13 @@ export type Database = {
           {
             foreignKeyName: "support_requests_completed_by_admin_id_fkey"
             columns: ["completed_by_admin_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "support_requests_email_contacted_by_admin_id_fkey"
+            columns: ["email_contacted_by_admin_id"]
             isOneToOne: false
             referencedRelation: "admin_users"
             referencedColumns: ["id"]

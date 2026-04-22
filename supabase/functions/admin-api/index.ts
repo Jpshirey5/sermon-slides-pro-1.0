@@ -1236,6 +1236,37 @@ const supportComplete = async (ctx: AdminContext, body: any) => {
   return { success: true, completedCount: existing.length, ids: existingIds, archivedUntil: archivedUntil.toISOString() };
 };
 
+const supportEmailContactedUpdate = async (ctx: AdminContext, body: any) => {
+  const id = clean(body?.id);
+  const contacted = Boolean(body?.contacted);
+  if (!isUuid(id)) throw new Error("A valid support request id is required");
+
+  const update = contacted
+    ? {
+        email_contacted_at: new Date().toISOString(),
+        email_contacted_by_admin_id: ctx.admin.id,
+      }
+    : {
+        email_contacted_at: null,
+        email_contacted_by_admin_id: null,
+      };
+
+  const { data, error } = await ctx.supabaseAdmin
+    .from("support_requests")
+    .update(update)
+    .eq("id", id)
+    .select("*")
+    .single();
+  if (error) throw new Error(error.message);
+
+  await audit(ctx, contacted ? "support_email_contacted_marked" : "support_email_contacted_unmarked", "support_request", id, {
+    email: data.email,
+    subject: data.subject,
+  });
+
+  return { success: true, item: data };
+};
+
 const adminUsers = async (ctx: AdminContext) => {
   const [{ data: admins }, { data: invites }] = await Promise.all([
     ctx.supabaseAdmin.from("admin_users").select("*").order("created_at", { ascending: false }),
@@ -1407,6 +1438,8 @@ serve(async (req) => {
         return json(await supportList(ctx, body));
       case "support_complete":
         return json(await supportComplete(ctx, body));
+      case "support_email_contacted_update":
+        return json(await supportEmailContactedUpdate(ctx, body));
       case "admin_users":
         return json(await adminUsers(ctx));
       case "admin_invite":
