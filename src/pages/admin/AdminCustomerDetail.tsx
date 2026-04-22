@@ -22,6 +22,16 @@ import { toast } from "sonner";
 const memberName = (member: any) => member?.profile?.full_name || "Unnamed";
 const memberEmail = (member: any) => member?.profile?.email || member?.invited_email || "No email";
 
+const formatNextInvoiceSummary = (nextInvoice?: any) => {
+  if (!nextInvoice || nextInvoice.status === "none") return "No upcoming invoice";
+  if (nextInvoice.status === "unavailable") return "Unavailable";
+  const amount = typeof nextInvoice.amountDue === "number"
+    ? formatMoney(nextInvoice.amountDue, nextInvoice.currency || "usd")
+    : "Amount unavailable";
+  const date = formatAdminDate(nextInvoice.nextInvoiceAt);
+  return `${amount} · ${date}`;
+};
+
 const AdminCustomerDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -174,6 +184,7 @@ const AdminCustomerDetail = () => {
   const ownerProfile = data.owner?.profiles;
   const invoices = data.stripeContext?.invoices || [];
   const members = data.members || [];
+  const nextInvoice = data.nextInvoice || data.stripeContext?.nextInvoice || null;
   const organizationName = account.name || "";
   const canHardDelete = hardDeleteConfirmation.trim().toLowerCase() === organizationName.trim().toLowerCase();
   const betaCountdown = formatBetaTrialCountdown(getBetaTrialDaysRemaining(account.beta_trial_ends_at));
@@ -220,6 +231,7 @@ const AdminCustomerDetail = () => {
             <div><p className="text-xs text-muted-foreground">Plan</p><p className="capitalize">{account.plan_tier || "free"}</p></div>
             <div><p className="text-xs text-muted-foreground">Beta Program</p><p>{account.is_beta_user ? betaCountdown : "Not beta"}</p></div>
             <div><p className="text-xs text-muted-foreground">Subscription</p><p>{account.subscription_status}</p></div>
+            <div><p className="text-xs text-muted-foreground">Next Invoice</p><p>{formatNextInvoiceSummary(nextInvoice)}</p></div>
             <div><p className="text-xs text-muted-foreground">Presentations</p><p>{data.presentationCount}</p></div>
             <div><p className="text-xs text-muted-foreground">Created</p><p>{formatAdminDate(account.created_at)}</p></div>
             <div><p className="text-xs text-muted-foreground">Team Members</p><p>{members.length}</p></div>

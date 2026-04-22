@@ -4,7 +4,7 @@ import { Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { adminApi, formatAdminDate } from "@/lib/admin-api";
+import { adminApi, formatAdminDate, formatMoney } from "@/lib/admin-api";
 
 const filters = [
   { value: "all", label: "All" },
@@ -17,6 +17,25 @@ const filters = [
   { value: "recent", label: "Recent Signups" },
   { value: "support", label: "Open Support" },
 ];
+
+const NextInvoiceSummary = ({ nextInvoice }: { nextInvoice?: any }) => {
+  if (!nextInvoice || nextInvoice.status === "none") {
+    return <span className="text-muted-foreground">No upcoming invoice</span>;
+  }
+
+  if (nextInvoice.status === "unavailable") {
+    return <span className="text-amber-700">Unavailable</span>;
+  }
+
+  return (
+    <div className="space-y-0.5">
+      <p className="font-medium text-foreground">
+        {typeof nextInvoice.amountDue === "number" ? formatMoney(nextInvoice.amountDue, nextInvoice.currency || "usd") : "Amount unavailable"}
+      </p>
+      <p className="text-xs text-muted-foreground">{formatAdminDate(nextInvoice.nextInvoiceAt)}</p>
+    </div>
+  );
+};
 
 const AdminCustomers = () => {
   const [items, setItems] = useState<any[]>([]);
@@ -71,6 +90,7 @@ const AdminCustomers = () => {
                 <th className="px-4 py-3 font-medium">Location</th>
                 <th className="px-4 py-3 font-medium">Plan</th>
                 <th className="px-4 py-3 font-medium">Status</th>
+                <th className="px-4 py-3 font-medium">Next Invoice</th>
                 <th className="px-4 py-3 font-medium">Support</th>
                 <th className="px-4 py-3 font-medium">Created</th>
                 <th className="px-4 py-3 font-medium" />
@@ -78,9 +98,9 @@ const AdminCustomers = () => {
             </thead>
             <tbody className="divide-y divide-border/70 bg-white/45">
               {loading ? (
-                <tr><td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">Loading customers...</td></tr>
+                <tr><td colSpan={9} className="px-4 py-8 text-center text-muted-foreground">Loading customers...</td></tr>
               ) : items.length === 0 ? (
-                <tr><td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">No customers found.</td></tr>
+                <tr><td colSpan={9} className="px-4 py-8 text-center text-muted-foreground">No customers found.</td></tr>
               ) : items.map((item) => {
                 const location = [item.account.city, item.account.state].filter(Boolean).join(", ");
                 return (
@@ -102,6 +122,7 @@ const AdminCustomers = () => {
                   <td className="px-4 py-3 text-muted-foreground">{location || "Unavailable"}</td>
                   <td className="px-4 py-3 capitalize">{item.account.plan_tier || "free"}</td>
                   <td className="px-4 py-3">{item.account.subscription_status}</td>
+                  <td className="px-4 py-3"><NextInvoiceSummary nextInvoice={item.nextInvoice} /></td>
                   <td className="px-4 py-3">{item.supportRequestCount}</td>
                   <td className="px-4 py-3">{formatAdminDate(item.account.created_at)}</td>
                   <td className="px-4 py-3 text-right">
