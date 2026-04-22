@@ -9,6 +9,7 @@ export type AdminApiAction =
   | "customer_detail"
   | "support_list"
   | "support_complete"
+  | "support_email_contacted_update"
   | "admin_users"
   | "admin_invite"
   | "admin_invite_resend"

@@ -17,6 +17,7 @@ const AdminSupport = () => {
   const [loading, setLoading] = useState(true);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [completingIds, setCompletingIds] = useState<Set<string>>(new Set());
+  const [contactUpdatingIds, setContactUpdatingIds] = useState<Set<string>>(new Set());
 
   const load = async () => {
     setLoading(true);
@@ -71,6 +72,23 @@ const AdminSupport = () => {
 
   const toggleAll = (checked: boolean) => {
     setSelectedIds(checked ? new Set(activeIds) : new Set());
+  };
+
+  const updateEmailContacted = async (id: string, contacted: boolean) => {
+    setContactUpdatingIds((current) => new Set(current).add(id));
+    try {
+      const result = await adminApi<{ item: any }>("support_email_contacted_update", { id, contacted });
+      setItems((current) => current.map((item) => (item.id === id ? { ...item, ...result.item } : item)));
+      toast.success(contacted ? "Marked as emailed." : "Email contact mark removed.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not update email contact status.");
+    } finally {
+      setContactUpdatingIds((current) => {
+        const next = new Set(current);
+        next.delete(id);
+        return next;
+      });
+    }
   };
 
   const messagePreview = (message: string) => {
@@ -161,7 +179,7 @@ const AdminSupport = () => {
                   <TableHead>Organization</TableHead>
                   <TableHead>Message</TableHead>
                   <TableHead>{tab === "archived" ? "Completed" : "Created"}</TableHead>
-                  <TableHead>Email</TableHead>
+                  <TableHead>Email Contacted</TableHead>
                   {tab === "active" ? <TableHead className="text-right">Actions</TableHead> : <TableHead>Archived Until</TableHead>}
                 </TableRow>
               </TableHeader>
@@ -169,6 +187,8 @@ const AdminSupport = () => {
                 {items.map((item) => {
                   const isSelected = selectedIds.has(item.id);
                   const isCompleting = completingIds.has(item.id);
+                  const isEmailContacted = Boolean(item.email_contacted_at);
+                  const isContactUpdating = contactUpdatingIds.has(item.id);
                   return (
                     <TableRow key={item.id} data-state={isSelected ? "selected" : undefined}>
                       {tab === "active" && (
@@ -214,13 +234,21 @@ const AdminSupport = () => {
                         {formatAdminDate(tab === "archived" ? item.completed_at : item.created_at)}
                       </TableCell>
                       <TableCell>
-                        {item.notification_sent ? (
-                          <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700">
-                            Sent
-                          </span>
+                        {tab === "active" ? (
+                          <div className="flex items-center gap-2">
+                            <Checkbox
+                              checked={isEmailContacted}
+                              disabled={isContactUpdating}
+                              onCheckedChange={(checked) => updateEmailContacted(item.id, checked === true)}
+                              aria-label={`Mark ${item.name} as contacted by email`}
+                            />
+                            <span className="text-xs text-muted-foreground">
+                              {isEmailContacted ? "Emailed" : "Not emailed"}
+                            </span>
+                          </div>
                         ) : (
-                          <span className="rounded-full border border-amber-300 bg-amber-50 px-2 py-1 text-xs font-medium text-amber-900" title={item.notification_error || undefined}>
-                            Email failed
+                          <span className="text-xs text-muted-foreground">
+                            {isEmailContacted ? "Emailed" : "Not marked"}
                           </span>
                         )}
                       </TableCell>
