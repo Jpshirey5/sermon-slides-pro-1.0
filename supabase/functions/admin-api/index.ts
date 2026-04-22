@@ -149,6 +149,97 @@ const maxDate = (a: Date, b: Date | null) => {
 
 const toIsoOrNull = (date: Date | null) => date ? date.toISOString() : null;
 
+const mapWithConcurrency = async <T, R>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T) => Promise<R>,
+) => {
+  const results: R[] = new Array(items.length);
+  let nextIndex = 0;
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (nextIndex < items.length) {
+      const currentIndex = nextIndex;
+      nextIndex += 1;
+      results[currentIndex] = await worker(items[currentIndex]);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+};
+
+const emptyNextInvoiceSummary = (status = "none") => ({
+  status,
+  amountDue: null,
+  currency: null,
+  nextInvoiceAt: null,
+  subscriptionId: null,
+  error: null,
+});
+
+const getNextInvoiceSummary = async (stripe: Stripe | null, account: any) => {
+  const customerId = clean(account?.stripe_customer_id);
+  if (!customerId) return emptyNextInvoiceSummary("none");
+  if (!stripe) return { ...emptyNextInvoiceSummary("unavailable"), error: "Stripe is not configured" };
+
+  try {
+    const subscriptionId = clean(account?.stripe_subscription_id);
+    let subscription: any = null;
+
+    if (subscriptionId) {
+      try {
+        const retrieved = await stripe.subscriptions.retrieve(subscriptionId);
+        if (["active", "trialing", "past_due"].includes(retrieved.status)) subscription = retrieved;
+      } catch (error) {
+        logStep("Failed retrieving subscription for next invoice", { subscriptionId, error: String(error) });
+      }
+    }
+
+    if (!subscription) {
+      const subscriptions = await stripe.subscriptions.list({ customer: customerId, status: "all", limit: 10 });
+      subscription = subscriptions.data.find((sub: any) => ["active", "trialing", "past_due"].includes(sub.status)) || null;
+    }
+
+    if (!subscription) return emptyNextInvoiceSummary("none");
+
+    let upcoming: any = null;
+    try {
+      const invoicesApi = stripe.invoices as any;
+      if (typeof invoicesApi.createPreview === "function") {
+        upcoming = await invoicesApi.createPreview({ customer: customerId, subscription: subscription.id });
+      } else if (typeof invoicesApi.retrieveUpcoming === "function") {
+        upcoming = await invoicesApi.retrieveUpcoming({ customer: customerId, subscription: subscription.id });
+      }
+    } catch (error) {
+      logStep("Upcoming invoice lookup failed", { customerId, subscriptionId: subscription.id, error: String(error) });
+    }
+
+    if (!upcoming) {
+      return {
+        status: "upcoming",
+        amountDue: null,
+        currency: subscription.currency || null,
+        nextInvoiceAt: subscription.current_period_end || null,
+        subscriptionId: subscription.id,
+        error: null,
+      };
+    }
+
+    return {
+      status: "upcoming",
+      amountDue: typeof upcoming.amount_due === "number" ? upcoming.amount_due : null,
+      currency: upcoming.currency || subscription.currency || null,
+      nextInvoiceAt: upcoming.next_payment_attempt || upcoming.period_end || subscription.current_period_end || null,
+      subscriptionId: subscription.id,
+      error: null,
+    };
+  } catch (error) {
+    return {
+      ...emptyNextInvoiceSummary("unavailable"),
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+};
+
 const sendTeamRemovalEmail = async (options: {
   toEmail: string;
   recipientName: string;
@@ -686,6 +777,12 @@ const customers = async (ctx: AdminContext, body: any) => {
   if (error) throw new Error(error.message);
   const accountIds = (accountRows || []).map((account: any) => account.id);
   const ownerMap = await getOwnerProfilesForAccounts(ctx, accountIds);
+  const stripe = getStripe();
+  const nextInvoiceSummaries = await mapWithConcurrency(accountRows || [], 4, async (account: any) => ({
+    accountId: account.id,
+    nextInvoice: await getNextInvoiceSummary(stripe, account),
+  }));
+  const nextInvoiceMap = new Map(nextInvoiceSummaries.map((summary) => [summary.accountId, summary.nextInvoice]));
   const { data: supportRows } = accountIds.length
     ? await ctx.supabaseAdmin.from("support_requests").select("id, email, account_id").eq("status", "active")
     : { data: [] as any[] };
@@ -709,6 +806,7 @@ const customers = async (ctx: AdminContext, body: any) => {
       supportRequestCount:
         supportByAccount.get(account.id) ||
         (profile?.email ? supportByEmail.get(normalizeEmail(profile.email)) || 0 : 0),
+      nextInvoice: nextInvoiceMap.get(account.id) || emptyNextInvoiceSummary("none"),
     };
   });
 
@@ -771,19 +869,23 @@ const customerDetail = async (ctx: AdminContext, body: any) => {
   );
 
   let stripeContext: any = null;
+  let nextInvoice = emptyNextInvoiceSummary("none");
   const stripe = getStripe();
   if (stripe && account.stripe_customer_id) {
     try {
-      const [customer, subscriptions, invoices, refunds] = await Promise.all([
+      const [customer, subscriptions, invoices, refunds, nextInvoiceSummary] = await Promise.all([
         stripe.customers.retrieve(account.stripe_customer_id),
         stripe.subscriptions.list({ customer: account.stripe_customer_id, status: "all", limit: 5 }),
         stripe.invoices.list({ customer: account.stripe_customer_id, limit: 10 }),
         stripe.refunds.list({ limit: 10 }),
+        getNextInvoiceSummary(stripe, account),
       ]);
+      nextInvoice = nextInvoiceSummary;
 
       stripeContext = {
         customer,
         subscriptions: subscriptions.data,
+        nextInvoice,
         invoices: invoices.data.map((invoice: any) => ({
           id: invoice.id,
           number: invoice.number,
@@ -801,7 +903,10 @@ const customerDetail = async (ctx: AdminContext, body: any) => {
       };
     } catch (error) {
       stripeContext = { error: error instanceof Error ? error.message : String(error) };
+      nextInvoice = { ...emptyNextInvoiceSummary("unavailable"), error: stripeContext.error };
     }
+  } else {
+    nextInvoice = await getNextInvoiceSummary(stripe, account);
   }
 
   const normalizedMembers = membersWithProfiles.map((member: any) => ({
@@ -827,6 +932,7 @@ const customerDetail = async (ctx: AdminContext, body: any) => {
     owner,
     presentationCount: presentationCount ?? 0,
     supportRequests: supportRequests || [],
+    nextInvoice,
     stripeContext,
   };
 };
