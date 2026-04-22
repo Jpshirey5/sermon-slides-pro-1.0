@@ -48,6 +48,205 @@ const cancelAndDeleteStripeCustomer = async (
   }
 };
 
+const escapeHtml = (value: string) =>
+  value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+
+const createAdminNotification = async (
+  supabaseAdmin: ReturnType<typeof createClient>,
+  notification: {
+    type: "account_saving_needed" | "support_request";
+    title: string;
+    message: string;
+    accountId?: string | null;
+    supportRequestId?: string | null;
+    accountDeletionRequestId?: string | null;
+    metadata?: Record<string, unknown>;
+  },
+) => {
+  const { error } = await supabaseAdmin.from("admin_notifications" as any).insert({
+    type: notification.type,
+    title: notification.title,
+    message: notification.message,
+    account_id: notification.accountId ?? null,
+    support_request_id: notification.supportRequestId ?? null,
+    account_deletion_request_id: notification.accountDeletionRequestId ?? null,
+    metadata: notification.metadata ?? {},
+  });
+  if (error) logStep("Admin notification insert failed", { error: error.message, type: notification.type });
+};
+
+const sendAccountSavingSupportEmail = async (ticket: {
+  name: string;
+  email: string;
+  organization: string;
+  accountId: string;
+  message: string;
+}) => {
+  const resendApiKey = Deno.env.get("RESEND_API_KEY") ?? "";
+  const resendFromEmail = Deno.env.get("RESEND_FROM_EMAIL") ?? "";
+  const resendFromName = Deno.env.get("RESEND_FROM_NAME") || "Sermon Slide Pro Support";
+  const supportEmail = Deno.env.get("SUPPORT_CONTACT_EMAIL") || "support@sermonslidepro.com";
+  if (!resendApiKey || !resendFromEmail) {
+    throw new Error("Support email service is not configured");
+  }
+
+  const safeName = escapeHtml(ticket.name || "Unknown customer");
+  const safeEmail = escapeHtml(ticket.email || "No email");
+  const safeOrg = escapeHtml(ticket.organization || "Unknown organization");
+  const safeAccountId = escapeHtml(ticket.accountId);
+  const safeMessage = escapeHtml(ticket.message).replaceAll("\n", "<br />");
+
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${resendApiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from: `${resendFromName} <${resendFromEmail}>`,
+      to: [supportEmail],
+      subject: "Account Saving - Grace Period Ended",
+      html: `
+        <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #1f2937;">
+          <h2>Account Saving Follow-Up Needed</h2>
+          <p>The 7-day deletion grace period has ended for this customer. Reach out before paid access ends.</p>
+          <p><strong>Name:</strong> ${safeName}</p>
+          <p><strong>Email:</strong> ${safeEmail}</p>
+          <p><strong>Organization:</strong> ${safeOrg}</p>
+          <p><strong>Account ID:</strong> ${safeAccountId}</p>
+          <hr style="margin: 24px 0; border: 0; border-top: 1px solid #e5e7eb;" />
+          <p>${safeMessage}</p>
+        </div>
+      `,
+      text: `Account Saving Follow-Up Needed
+
+The 7-day deletion grace period has ended for this customer. Reach out before paid access ends.
+
+Name: ${ticket.name || "Unknown customer"}
+Email: ${ticket.email || "No email"}
+Organization: ${ticket.organization || "Unknown organization"}
+Account ID: ${ticket.accountId}
+
+${ticket.message}`,
+      reply_to: ticket.email || undefined,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Resend support email failed: ${response.status} ${await response.text()}`);
+  }
+};
+
+const createPostGraceSaveTickets = async (supabaseAdmin: ReturnType<typeof createClient>) => {
+  const nowIso = new Date().toISOString();
+  const { data: requests, error } = await supabaseAdmin
+    .from("account_deletion_requests" as any)
+    .select("*")
+    .eq("status", "pending")
+    .lte("cancelable_until", nowIso)
+    .is("save_ticket_id", null)
+    .limit(25);
+
+  if (error) throw new Error(`Failed loading post-grace deletion requests: ${error.message}`);
+
+  const results: Array<{ id: string; accountId: string; supportRequestId?: string; status: string; error?: string }> = [];
+
+  for (const deletionRequest of requests || []) {
+    const accountId = deletionRequest.account_id as string;
+    const organization = deletionRequest.account_name || "Unknown organization";
+    const requesterName = deletionRequest.requester_full_name || "Unknown customer";
+    const requesterEmail = deletionRequest.requester_email || "";
+    const message = [
+      "Account saving follow-up needed.",
+      "",
+      `The 7-day grace period ended on ${deletionRequest.cancelable_until}.`,
+      `The customer has access until ${deletionRequest.scheduled_delete_at}.`,
+      "",
+      `Reason: ${deletionRequest.reason || "Not provided"}`,
+      `Feedback: ${deletionRequest.additional_feedback || "Not provided"}`,
+    ].join("\n");
+
+    try {
+      const { data: supportRequest, error: insertError } = await supabaseAdmin
+        .from("support_requests")
+        .insert({
+          account_id: accountId,
+          user_id: deletionRequest.requester_user_id || null,
+          name: requesterName,
+          email: requesterEmail || "support@sermonslidepro.com",
+          organization,
+          subject: "Account Saving - Grace Period Ended",
+          message,
+          submitted_from: "finalize-account-deletions",
+          notification_sent: false,
+        })
+        .select("id")
+        .single();
+
+      if (insertError || !supportRequest) {
+        throw new Error(insertError?.message || "Support ticket insert failed");
+      }
+
+      let notificationError: string | null = null;
+      try {
+        await sendAccountSavingSupportEmail({
+          name: requesterName,
+          email: requesterEmail,
+          organization,
+          accountId,
+          message,
+        });
+      } catch (emailError) {
+        notificationError = emailError instanceof Error ? emailError.message : String(emailError);
+      }
+
+      await supabaseAdmin
+        .from("support_requests")
+        .update({
+          notification_sent: !notificationError,
+          notification_error: notificationError,
+        })
+        .eq("id", supportRequest.id);
+
+      await supabaseAdmin
+        .from("account_deletion_requests" as any)
+        .update({
+          save_ticket_id: supportRequest.id,
+          save_ticket_created_at: new Date().toISOString(),
+        })
+        .eq("id", deletionRequest.id);
+
+      await createAdminNotification(supabaseAdmin, {
+        type: "account_saving_needed",
+        title: "Account saving follow-up needed",
+        message: `${organization} passed the 7-day deletion grace period.`,
+        accountId,
+        supportRequestId: supportRequest.id,
+        accountDeletionRequestId: deletionRequest.id,
+        metadata: {
+          requesterEmail,
+          cancelableUntil: deletionRequest.cancelable_until,
+          scheduledDeleteAt: deletionRequest.scheduled_delete_at,
+          emailError: notificationError,
+        },
+      });
+
+      results.push({ id: deletionRequest.id, accountId, supportRequestId: supportRequest.id, status: "ticket_created" });
+    } catch (ticketError) {
+      const message = ticketError instanceof Error ? ticketError.message : String(ticketError);
+      logStep("Post-grace save ticket creation failed", { requestId: deletionRequest.id, accountId, error: message });
+      results.push({ id: deletionRequest.id, accountId, status: "failed", error: message });
+    }
+  }
+
+  return results;
+};
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -90,6 +289,7 @@ serve(async (req) => {
 
     const stripeKey = Deno.env.get("STRIPE_SECRET_KEY") ?? "";
     const stripe = stripeKey ? new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" }) : null;
+    const saveTicketResults = await createPostGraceSaveTickets(supabaseAdmin);
     const results: Array<{ id: string; accountId: string; status: string; error?: string }> = [];
 
     for (const deletionRequest of dueRequests || []) {
@@ -153,7 +353,13 @@ serve(async (req) => {
       }
     }
 
-    return new Response(JSON.stringify({ success: true, processed: results.length, results }), {
+    return new Response(JSON.stringify({
+      success: true,
+      saveTicketsProcessed: saveTicketResults.length,
+      saveTicketResults,
+      processed: results.length,
+      results,
+    }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 200,
     });

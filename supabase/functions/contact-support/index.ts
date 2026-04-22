@@ -96,6 +96,28 @@ const domainLooksMailCapable = async (email: string) => {
   }
 };
 
+const createAdminNotification = async (
+  supabaseAdmin: ReturnType<typeof createClient>,
+  notification: {
+    type: "support_request" | "account_deletion_requested" | "account_saving_needed" | "subscription_changed";
+    title: string;
+    message: string;
+    accountId?: string | null;
+    supportRequestId?: string | null;
+    metadata?: Record<string, unknown>;
+  },
+) => {
+  const { error } = await supabaseAdmin.from("admin_notifications" as any).insert({
+    type: notification.type,
+    title: notification.title,
+    message: notification.message,
+    account_id: notification.accountId ?? null,
+    support_request_id: notification.supportRequestId ?? null,
+    metadata: notification.metadata ?? {},
+  });
+  if (error) console.warn("Admin notification insert failed:", error.message);
+};
+
 const getAuthenticatedUser = async (req: Request, supabaseUrl: string, anonKey: string): Promise<AuthContext> => {
   const authHeader = req.headers.get("Authorization");
   if (!authHeader) return null;
@@ -238,6 +260,19 @@ serve(async (req) => {
     }
 
     supportRequestId = supportRequest.id;
+
+    await createAdminNotification(supabaseAdmin, {
+      type: "support_request",
+      title: isSupportTicket ? "New support ticket" : "New contact request",
+      message: `${submissionName} from ${submissionOrganization || "an unknown organization"} submitted a support request.`,
+      accountId: trustedAccountId,
+      supportRequestId,
+      metadata: {
+        email: submissionEmail,
+        organization: submissionOrganization || null,
+        source: isSupportTicket ? "dashboard" : "public_contact",
+      },
+    });
 
     if (!resendApiKey || !resendFromEmail) {
       const emailError = "Contact email service is not configured";

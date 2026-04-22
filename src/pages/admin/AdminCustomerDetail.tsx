@@ -23,6 +23,7 @@ const memberName = (member: any) => member?.profile?.full_name || "Unnamed";
 const memberEmail = (member: any) => member?.profile?.email || member?.invited_email || "No email";
 
 const formatNextInvoiceSummary = (nextInvoice?: any) => {
+  if (nextInvoice?.status === "not_applicable") return "Not applicable";
   if (!nextInvoice || nextInvoice.status === "none") return "No upcoming invoice";
   if (nextInvoice.status === "unavailable") return "Unavailable";
   const amount = typeof nextInvoice.amountDue === "number"
@@ -188,6 +189,8 @@ const AdminCustomerDetail = () => {
   const organizationName = account.name || "";
   const canHardDelete = hardDeleteConfirmation.trim().toLowerCase() === organizationName.trim().toLowerCase();
   const betaCountdown = formatBetaTrialCountdown(getBetaTrialDaysRemaining(account.beta_trial_ends_at));
+  const activeDeletionRequest = data.activeDeletionRequest;
+  const offboardingDateLabel = data.offboardingPhase === "grace" ? "Grace period ends" : "Access ends";
 
   return (
     <div className="space-y-6">
@@ -221,6 +224,25 @@ const AdminCustomerDetail = () => {
         </div>
       </div>
 
+      {activeDeletionRequest && (
+        <section className="rounded-2xl border border-destructive/25 bg-destructive/5 p-4">
+          <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="font-medium text-destructive">Canceled / Offboarding</p>
+              <p className="text-sm text-muted-foreground">
+                {data.offboardingPhase === "grace"
+                  ? "This customer is still inside the 7-day save window."
+                  : "The grace period has ended. They keep access until the paid term ends."}
+              </p>
+            </div>
+            <div className="text-sm md:text-right">
+              <p className="text-muted-foreground">{offboardingDateLabel}</p>
+              <p className="font-medium text-foreground">{formatAdminDate(data.offboardingDate)}</p>
+            </div>
+          </div>
+        </section>
+      )}
+
       <div className="grid gap-6 lg:grid-cols-3">
         <section className="rounded-2xl glass-panel p-5 lg:col-span-2">
           <h2 className="font-serif text-xl font-semibold mb-4">Account Details</h2>
@@ -230,7 +252,10 @@ const AdminCustomerDetail = () => {
             <div><p className="text-xs text-muted-foreground">Church Location</p><p className="flex items-center gap-1"><MapPin className="h-3.5 w-3.5" /> {data.location?.label || "Unavailable"}</p></div>
             <div><p className="text-xs text-muted-foreground">Plan</p><p className="capitalize">{account.plan_tier || "free"}</p></div>
             <div><p className="text-xs text-muted-foreground">Beta Program</p><p>{account.is_beta_user ? betaCountdown : "Not beta"}</p></div>
-            <div><p className="text-xs text-muted-foreground">Subscription</p><p>{account.subscription_status}</p></div>
+            <div><p className="text-xs text-muted-foreground">Subscription</p><p>{data.adminSubscriptionStatusLabel || account.subscription_status}</p></div>
+            {activeDeletionRequest && (
+              <div><p className="text-xs text-muted-foreground">{offboardingDateLabel}</p><p>{formatAdminDate(data.offboardingDate)}</p></div>
+            )}
             <div><p className="text-xs text-muted-foreground">Next Invoice</p><p>{formatNextInvoiceSummary(nextInvoice)}</p></div>
             <div><p className="text-xs text-muted-foreground">Presentations</p><p>{data.presentationCount}</p></div>
             <div><p className="text-xs text-muted-foreground">Created</p><p>{formatAdminDate(account.created_at)}</p></div>

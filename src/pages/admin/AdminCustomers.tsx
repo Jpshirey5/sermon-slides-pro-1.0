@@ -19,6 +19,10 @@ const filters = [
 ];
 
 const NextInvoiceSummary = ({ nextInvoice }: { nextInvoice?: any }) => {
+  if (nextInvoice?.status === "not_applicable") {
+    return <span className="text-muted-foreground">Not applicable</span>;
+  }
+
   if (!nextInvoice || nextInvoice.status === "none") {
     return <span className="text-muted-foreground">No upcoming invoice</span>;
   }
@@ -33,6 +37,21 @@ const NextInvoiceSummary = ({ nextInvoice }: { nextInvoice?: any }) => {
         {typeof nextInvoice.amountDue === "number" ? formatMoney(nextInvoice.amountDue, nextInvoice.currency || "usd") : "Amount unavailable"}
       </p>
       <p className="text-xs text-muted-foreground">{formatAdminDate(nextInvoice.nextInvoiceAt)}</p>
+    </div>
+  );
+};
+
+const SubscriptionSummary = ({ item }: { item: any }) => {
+  if (!item.activeDeletionRequest) {
+    return <span>{item.adminSubscriptionStatusLabel || item.account.subscription_status}</span>;
+  }
+
+  return (
+    <div className="space-y-0.5">
+      <p className="font-medium text-destructive">{item.adminSubscriptionStatusLabel || "Canceled / Offboarding"}</p>
+      <p className="text-xs text-muted-foreground">
+        {item.offboardingPhase === "grace" ? "Grace ends" : "Access ends"} {formatAdminDate(item.offboardingDate)}
+      </p>
     </div>
   );
 };
@@ -121,7 +140,7 @@ const AdminCustomers = () => {
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">{location || "Unavailable"}</td>
                   <td className="px-4 py-3 capitalize">{item.account.plan_tier || "free"}</td>
-                  <td className="px-4 py-3">{item.account.subscription_status}</td>
+                  <td className="px-4 py-3"><SubscriptionSummary item={item} /></td>
                   <td className="px-4 py-3"><NextInvoiceSummary nextInvoice={item.nextInvoice} /></td>
                   <td className="px-4 py-3">{item.supportRequestCount}</td>
                   <td className="px-4 py-3">{formatAdminDate(item.account.created_at)}</td>

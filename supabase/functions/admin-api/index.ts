@@ -91,6 +91,65 @@ const audit = async (
   });
 };
 
+const createAdminNotification = async (
+  ctx: AdminContext | { admin?: any; supabaseAdmin: ReturnType<typeof createClient> },
+  notification: {
+    type: "support_request" | "account_deletion_requested" | "account_saving_needed" | "subscription_changed";
+    title: string;
+    message: string;
+    accountId?: string | null;
+    supportRequestId?: string | null;
+    accountDeletionRequestId?: string | null;
+    metadata?: Record<string, unknown>;
+  },
+) => {
+  const { error } = await ctx.supabaseAdmin.from("admin_notifications" as any).insert({
+    type: notification.type,
+    title: notification.title,
+    message: notification.message,
+    account_id: notification.accountId ?? null,
+    support_request_id: notification.supportRequestId ?? null,
+    account_deletion_request_id: notification.accountDeletionRequestId ?? null,
+    created_by_admin_id: ctx.admin?.id ?? null,
+    metadata: notification.metadata ?? {},
+  });
+  if (error) logStep("Admin notification insert failed", { error: error.message, type: notification.type });
+};
+
+const createCancellationSupportTicket = async (
+  supabaseAdmin: ReturnType<typeof createClient>,
+  options: {
+    accountId: string;
+    accountName: string;
+    userId?: string | null;
+    requesterName?: string | null;
+    requesterEmail?: string | null;
+  },
+) => {
+  const { data, error } = await supabaseAdmin
+    .from("support_requests")
+    .insert({
+      account_id: options.accountId,
+      user_id: options.userId ?? null,
+      name: options.requesterName || "Unknown customer",
+      email: options.requesterEmail || "support@sermonslidepro.com",
+      organization: options.accountName,
+      subject: "Cancellation submission",
+      message: `${options.accountName} has submitted for Offboarding. Reach out to confirm and support to save customer if applicable.`,
+      submitted_from: "account_deletion_request",
+      notification_sent: false,
+    })
+    .select("id")
+    .single();
+
+  if (error || !data) {
+    logStep("Cancellation support ticket insert failed", { accountId: options.accountId, error: error?.message });
+    return null;
+  }
+
+  return data.id as string;
+};
+
 const getSiteUrl = () =>
   Deno.env.get("SITE_URL") ||
   Deno.env.get("VITE_SITE_URL") ||
@@ -175,6 +234,49 @@ const emptyNextInvoiceSummary = (status = "none") => ({
   subscriptionId: null,
   error: null,
 });
+
+const notApplicableNextInvoiceSummary = () => ({
+  ...emptyNextInvoiceSummary("not_applicable"),
+  reason: "offboarding",
+});
+
+const deriveAdminSubscriptionState = (account: any, activeDeletionRequest: any | null) => {
+  if (!activeDeletionRequest) {
+    return {
+      adminSubscriptionStatus: account?.subscription_status || "inactive",
+      adminSubscriptionStatusLabel: account?.subscription_status || "inactive",
+      offboardingPhase: null,
+      offboardingDate: null,
+    };
+  }
+
+  const isGraceOpen = new Date(activeDeletionRequest.cancelable_until).getTime() > Date.now();
+  return {
+    adminSubscriptionStatus: "offboarding",
+    adminSubscriptionStatusLabel: "Canceled / Offboarding",
+    offboardingPhase: isGraceOpen ? "grace" : "access",
+    offboardingDate: isGraceOpen
+      ? activeDeletionRequest.cancelable_until
+      : activeDeletionRequest.scheduled_delete_at,
+  };
+};
+
+const getActiveDeletionRequestsForAccounts = async (ctx: AdminContext, accountIds: string[]) => {
+  if (accountIds.length === 0) return new Map<string, any>();
+  const { data, error } = await ctx.supabaseAdmin
+    .from("account_deletion_requests" as any)
+    .select("*")
+    .in("account_id", accountIds)
+    .eq("status", "pending")
+    .order("requested_at", { ascending: false });
+  if (error) throw new Error(error.message);
+
+  const map = new Map<string, any>();
+  for (const request of data || []) {
+    if (!map.has(request.account_id)) map.set(request.account_id, request);
+  }
+  return map;
+};
 
 const getNextInvoiceSummary = async (stripe: Stripe | null, account: any) => {
   const customerId = clean(account?.stripe_customer_id);
@@ -764,7 +866,6 @@ const customers = async (ctx: AdminContext, body: any) => {
 
   let query = ctx.supabaseAdmin.from("accounts").select("*", { count: "exact" }).order("created_at", { ascending: false });
   if (status === "active") query = query.in("subscription_status", ["active", "trialing"]);
-  if (status === "canceled") query = query.eq("subscription_status", "canceled");
   if (status === "past_due" || status === "failed_payment") query = query.eq("subscription_status", "past_due");
   if (status === "free") query = query.or("plan_tier.eq.free,subscription_status.eq.inactive");
   if (status === "beta") query = query.eq("is_beta_user", true);
@@ -777,10 +878,13 @@ const customers = async (ctx: AdminContext, body: any) => {
   if (error) throw new Error(error.message);
   const accountIds = (accountRows || []).map((account: any) => account.id);
   const ownerMap = await getOwnerProfilesForAccounts(ctx, accountIds);
+  const activeDeletionRequestMap = await getActiveDeletionRequestsForAccounts(ctx, accountIds);
   const stripe = getStripe();
   const nextInvoiceSummaries = await mapWithConcurrency(accountRows || [], 4, async (account: any) => ({
     accountId: account.id,
-    nextInvoice: await getNextInvoiceSummary(stripe, account),
+    nextInvoice: activeDeletionRequestMap.has(account.id)
+      ? notApplicableNextInvoiceSummary()
+      : await getNextInvoiceSummary(stripe, account),
   }));
   const nextInvoiceMap = new Map(nextInvoiceSummaries.map((summary) => [summary.accountId, summary.nextInvoice]));
   const { data: supportRows } = accountIds.length
@@ -800,9 +904,13 @@ const customers = async (ctx: AdminContext, body: any) => {
   let items = (accountRows || []).map((account: any) => {
     const owner = ownerMap.get(account.id);
     const profile = owner?.profiles || null;
+    const activeDeletionRequest = activeDeletionRequestMap.get(account.id) || null;
+    const adminSubscription = deriveAdminSubscriptionState(account, activeDeletionRequest);
     return {
       account,
       owner: profile,
+      activeDeletionRequest,
+      ...adminSubscription,
       supportRequestCount:
         supportByAccount.get(account.id) ||
         (profile?.email ? supportByEmail.get(normalizeEmail(profile.email)) || 0 : 0),
@@ -821,6 +929,14 @@ const customers = async (ctx: AdminContext, body: any) => {
     items = items.filter((item: any) => item.supportRequestCount > 0);
   }
 
+  if (status === "active") {
+    items = items.filter((item: any) => !item.activeDeletionRequest);
+  }
+
+  if (status === "canceled") {
+    items = items.filter((item: any) => item.activeDeletionRequest || item.account?.subscription_status === "canceled");
+  }
+
   return { items, total: count ?? items.length, limit, offset };
 };
 
@@ -828,10 +944,23 @@ const customerDetail = async (ctx: AdminContext, body: any) => {
   const accountId = clean(body?.accountId);
   if (!isUuid(accountId)) throw new Error("A valid account id is required");
 
-  const [{ data: account }, { data: members, error: membersError }, { count: presentationCount }] = await Promise.all([
+  const [
+    { data: account },
+    { data: members, error: membersError },
+    { count: presentationCount },
+    { data: activeDeletionRequest },
+  ] = await Promise.all([
     ctx.supabaseAdmin.from("accounts").select("*").eq("id", accountId).maybeSingle(),
     ctx.supabaseAdmin.from("account_members").select("*").eq("account_id", accountId).order("created_at", { ascending: true }),
     ctx.supabaseAdmin.from("sermons").select("id", { count: "exact", head: true }).eq("account_id", accountId),
+    ctx.supabaseAdmin
+      .from("account_deletion_requests" as any)
+      .select("*")
+      .eq("account_id", accountId)
+      .eq("status", "pending")
+      .order("requested_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
   ]);
 
   if (!account) throw new Error("Customer account not found");
@@ -869,7 +998,7 @@ const customerDetail = async (ctx: AdminContext, body: any) => {
   );
 
   let stripeContext: any = null;
-  let nextInvoice = emptyNextInvoiceSummary("none");
+  let nextInvoice = activeDeletionRequest ? notApplicableNextInvoiceSummary() : emptyNextInvoiceSummary("none");
   const stripe = getStripe();
   if (stripe && account.stripe_customer_id) {
     try {
@@ -877,7 +1006,7 @@ const customerDetail = async (ctx: AdminContext, body: any) => {
         stripe.customers.retrieve(account.stripe_customer_id),
         stripe.subscriptions.list({ customer: account.stripe_customer_id, status: "all", limit: 5 }),
         stripe.invoices.list({ customer: account.stripe_customer_id, limit: 10 }),
-        getNextInvoiceSummary(stripe, account),
+        activeDeletionRequest ? Promise.resolve(notApplicableNextInvoiceSummary()) : getNextInvoiceSummary(stripe, account),
       ]);
       nextInvoice = nextInvoiceSummary;
 
@@ -899,7 +1028,9 @@ const customerDetail = async (ctx: AdminContext, body: any) => {
       };
     } catch (error) {
       stripeContext = { error: error instanceof Error ? error.message : String(error) };
-      nextInvoice = { ...emptyNextInvoiceSummary("unavailable"), error: stripeContext.error };
+      nextInvoice = activeDeletionRequest
+        ? notApplicableNextInvoiceSummary()
+        : { ...emptyNextInvoiceSummary("unavailable"), error: stripeContext.error };
     }
   } else {
     nextInvoice = await getNextInvoiceSummary(stripe, account);
@@ -917,8 +1048,12 @@ const customerDetail = async (ctx: AdminContext, body: any) => {
     profile: member.profiles || null,
   }));
 
+  const adminSubscription = deriveAdminSubscriptionState(account, activeDeletionRequest || null);
+
   return {
     account,
+    activeDeletionRequest: activeDeletionRequest || null,
+    ...adminSubscription,
     location: {
       city: account.city || null,
       state: account.state || null,
@@ -1135,10 +1270,32 @@ const customerScheduleOrgDeletion = async (ctx: AdminContext, body: any) => {
     .single();
   if (error) throw new Error(error.message);
 
+  const cancellationSupportRequestId = await createCancellationSupportTicket(ctx.supabaseAdmin, {
+    accountId,
+    accountName: account.name || "Unknown organization",
+    userId: owner?.user_id || null,
+    requesterName: ownerProfile?.full_name || "Admin scheduled",
+    requesterEmail: ownerProfile?.email || ctx.email,
+  });
+
   await audit(ctx, "customer_org_deletion_scheduled", "account", accountId, {
     deletionRequestId: deletionRequest.id,
     scheduledDeleteAt: deletionRequest.scheduled_delete_at,
     stripeSchedulingError,
+  });
+  await createAdminNotification(ctx, {
+    type: "account_deletion_requested",
+    title: "Cancellation submission",
+    message: `${account.name || "An organization"} has submitted for Offboarding. Reach out to confirm and support to save customer if applicable.`,
+    accountId,
+    supportRequestId: cancellationSupportRequestId,
+    accountDeletionRequestId: deletionRequest.id,
+    metadata: {
+      source: "admin",
+      cancelableUntil: deletionRequest.cancelable_until,
+      scheduledDeleteAt: deletionRequest.scheduled_delete_at,
+      stripeSchedulingError,
+    },
   });
   return { success: true, deletionRequest, stripeSchedulingError };
 };
@@ -1369,6 +1526,126 @@ const supportEmailContactedUpdate = async (ctx: AdminContext, body: any) => {
   return { success: true, item: data };
 };
 
+const notificationTargetUrl = (notification: any) => {
+  if (notification.account_id) return `/admin/customers/${notification.account_id}`;
+  if (notification.support_request_id) return "/admin/support";
+  return "/admin";
+};
+
+const notificationsList = async (ctx: AdminContext, body: any) => {
+  const limit = Math.min(Math.max(Number(body?.limit) || 30, 1), 50);
+  const rawLimit = Math.min(limit * 4, 200);
+  const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+
+  const [{ data: notifications, error }, { data: recentNotificationIds }] = await Promise.all([
+    ctx.supabaseAdmin
+      .from("admin_notifications" as any)
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(rawLimit),
+    ctx.supabaseAdmin
+      .from("admin_notifications" as any)
+      .select("id")
+      .gte("created_at", ninetyDaysAgo)
+      .order("created_at", { ascending: false })
+      .limit(500),
+  ]);
+  if (error) throw new Error(error.message);
+
+  const visibleIds = (notifications || []).map((item: any) => item.id);
+  const recentIds = (recentNotificationIds || []).map((item: any) => item.id);
+  const allIds = Array.from(new Set([...visibleIds, ...recentIds]));
+  const { data: reads } = allIds.length
+    ? await ctx.supabaseAdmin
+        .from("admin_notification_reads" as any)
+        .select("notification_id, read_at, cleared_at")
+        .eq("admin_user_id", ctx.admin.id)
+        .in("notification_id", allIds)
+    : { data: [] as any[] };
+  const readMap = new Map((reads || []).map((read: any) => [read.notification_id, read]));
+  const items = (notifications || [])
+    .filter((item: any) => !readMap.get(item.id)?.cleared_at)
+    .slice(0, limit)
+    .map((item: any) => ({
+      ...item,
+      readAt: readMap.get(item.id)?.read_at || null,
+      isRead: Boolean(readMap.get(item.id)?.read_at),
+      targetUrl: notificationTargetUrl(item),
+    }));
+  const unreadCount = recentIds.filter((id: string) => {
+    const read = readMap.get(id);
+    return !read?.read_at && !read?.cleared_at;
+  }).length;
+
+  return { items, unreadCount };
+};
+
+const notificationsMarkRead = async (ctx: AdminContext, body: any) => {
+  const id = clean(body?.id);
+  if (!isUuid(id)) throw new Error("A valid notification id is required");
+
+  const { error } = await ctx.supabaseAdmin
+    .from("admin_notification_reads" as any)
+    .upsert({
+      notification_id: id,
+      admin_user_id: ctx.admin.id,
+      read_at: new Date().toISOString(),
+    }, { onConflict: "notification_id,admin_user_id" });
+  if (error) throw new Error(error.message);
+
+  return { success: true };
+};
+
+const notificationsMarkAllRead = async (ctx: AdminContext) => {
+  const { data: notifications, error } = await ctx.supabaseAdmin
+    .from("admin_notifications" as any)
+    .select("id")
+    .order("created_at", { ascending: false })
+    .limit(500);
+  if (error) throw new Error(error.message);
+
+  const rows = (notifications || []).map((notification: any) => ({
+    notification_id: notification.id,
+    admin_user_id: ctx.admin.id,
+    read_at: new Date().toISOString(),
+  }));
+
+  if (rows.length > 0) {
+    const { error: upsertError } = await ctx.supabaseAdmin
+      .from("admin_notification_reads" as any)
+      .upsert(rows, { onConflict: "notification_id,admin_user_id" });
+    if (upsertError) throw new Error(upsertError.message);
+  }
+
+  return { success: true, count: rows.length };
+};
+
+const notificationsClearAll = async (ctx: AdminContext) => {
+  const { data: notifications, error } = await ctx.supabaseAdmin
+    .from("admin_notifications" as any)
+    .select("id")
+    .order("created_at", { ascending: false })
+    .limit(500);
+  if (error) throw new Error(error.message);
+
+  const now = new Date().toISOString();
+  const rows = (notifications || []).map((notification: any) => ({
+    notification_id: notification.id,
+    admin_user_id: ctx.admin.id,
+    read_at: now,
+    cleared_at: now,
+  }));
+
+  if (rows.length > 0) {
+    const { error: upsertError } = await ctx.supabaseAdmin
+      .from("admin_notification_reads" as any)
+      .upsert(rows, { onConflict: "notification_id,admin_user_id" });
+    if (upsertError) throw new Error(upsertError.message);
+  }
+
+  return { success: true, count: rows.length };
+};
+
 const adminUsers = async (ctx: AdminContext) => {
   const [{ data: admins }, { data: invites }] = await Promise.all([
     ctx.supabaseAdmin.from("admin_users").select("*").order("created_at", { ascending: false }),
@@ -1542,6 +1819,14 @@ serve(async (req) => {
         return json(await supportComplete(ctx, body));
       case "support_email_contacted_update":
         return json(await supportEmailContactedUpdate(ctx, body));
+      case "notifications_list":
+        return json(await notificationsList(ctx, body));
+      case "notifications_mark_read":
+        return json(await notificationsMarkRead(ctx, body));
+      case "notifications_mark_all_read":
+        return json(await notificationsMarkAllRead(ctx));
+      case "notifications_clear_all":
+        return json(await notificationsClearAll(ctx));
       case "admin_users":
         return json(await adminUsers(ctx));
       case "admin_invite":
