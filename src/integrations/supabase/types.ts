@@ -280,6 +280,73 @@ export type Database = {
           },
         ]
       }
+      email_change_requests: {
+        Row: {
+          account_id: string
+          confirmed_at: string | null
+          created_at: string
+          current_email: string
+          expires_at: string
+          id: string
+          requested_by_admin_id: string | null
+          requested_email: string
+          status: string
+          token_hash: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          account_id: string
+          confirmed_at?: string | null
+          created_at?: string
+          current_email: string
+          expires_at: string
+          id?: string
+          requested_by_admin_id?: string | null
+          requested_email: string
+          status?: string
+          token_hash: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          account_id?: string
+          confirmed_at?: string | null
+          created_at?: string
+          current_email?: string
+          expires_at?: string
+          id?: string
+          requested_by_admin_id?: string | null
+          requested_email?: string
+          status?: string
+          token_hash?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_change_requests_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_change_requests_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_change_requests_requested_by_admin_id_fkey"
+            columns: ["requested_by_admin_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       account_deletion_requests: {
         Row: {
           account_id: string

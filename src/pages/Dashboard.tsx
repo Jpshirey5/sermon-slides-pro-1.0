@@ -166,7 +166,7 @@ const Dashboard = () => {
       const { data: messages, error: messageError } = await supabase
         .from("global_messages")
         .select("*")
-        .or(`audience_type.eq.all,target_account_id.eq.${accountId}`)
+        .or(`audience_type.eq.all,audience_type.eq.beta,target_account_id.eq.${accountId}`)
         .order("created_at", { ascending: false })
         .limit(10);
 

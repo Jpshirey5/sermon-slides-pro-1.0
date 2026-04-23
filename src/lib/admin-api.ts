@@ -8,6 +8,7 @@ export type AdminApiAction =
   | "customers"
   | "customer_detail"
   | "customer_update"
+  | "customer_request_email_change"
   | "support_list"
   | "support_complete"
   | "support_email_contacted_update"
