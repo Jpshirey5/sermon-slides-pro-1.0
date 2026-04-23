@@ -16,6 +16,7 @@ const json = (body: unknown, status = 200) =>
 
 const clean = (value: unknown) => String(value ?? "").trim();
 const normalizeEmail = (value: unknown) => clean(value).toLowerCase();
+const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 const isUuid = (value: string) =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 
@@ -1068,6 +1069,134 @@ const customerDetail = async (ctx: AdminContext, body: any) => {
   };
 };
 
+const customerUpdate = async (ctx: AdminContext, body: any) => {
+  const accountId = clean(body?.accountId);
+  const changes = body?.changes;
+  if (!isUuid(accountId)) throw new Error("A valid account id is required");
+  if (!changes || typeof changes !== "object" || Array.isArray(changes)) {
+    throw new Error("Changed fields are required");
+  }
+
+  const [{ data: account }, { data: ownerMembership }] = await Promise.all([
+    ctx.supabaseAdmin.from("accounts").select("*").eq("id", accountId).maybeSingle(),
+    ctx.supabaseAdmin
+      .from("account_members")
+      .select("user_id, role")
+      .eq("account_id", accountId)
+      .eq("role", "owner")
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+
+  if (!account) throw new Error("Customer account not found");
+  if (!ownerMembership?.user_id) throw new Error("Owner record not found");
+
+  const ownerProfileMap = await getProfilesByUserIds(ctx, [ownerMembership.user_id]);
+  const ownerProfile = ownerProfileMap.get(ownerMembership.user_id) || null;
+  if (!ownerProfile) throw new Error("Owner profile not found");
+
+  const accountPatch: Record<string, unknown> = {};
+  const profilePatch: Record<string, unknown> = {};
+  const changedFields: string[] = [];
+
+  if ("accountName" in changes) {
+    const nextValue = clean(changes.accountName);
+    if (!nextValue) throw new Error("Organization name is required");
+    if (nextValue !== clean(account.name)) {
+      accountPatch.name = nextValue;
+      changedFields.push("accountName");
+    }
+  }
+
+  if ("city" in changes) {
+    const nextValue = clean(changes.city) || null;
+    if ((nextValue || "") !== clean(account.city)) {
+      accountPatch.city = nextValue;
+      changedFields.push("city");
+    }
+  }
+
+  if ("state" in changes) {
+    const nextValue = clean(changes.state) || null;
+    if ((nextValue || "") !== clean(account.state)) {
+      accountPatch.state = nextValue;
+      changedFields.push("state");
+    }
+  }
+
+  if ("ownerFullName" in changes) {
+    const nextValue = clean(changes.ownerFullName) || null;
+    if ((nextValue || "") !== clean(ownerProfile.full_name)) {
+      profilePatch.full_name = nextValue;
+      changedFields.push("ownerFullName");
+    }
+  }
+
+  if ("ownerChurchRole" in changes) {
+    const nextValue = clean(changes.ownerChurchRole) || null;
+    if ((nextValue || "") !== clean(ownerProfile.church_role)) {
+      profilePatch.church_role = nextValue;
+      changedFields.push("ownerChurchRole");
+    }
+  }
+
+  let nextEmail: string | null = null;
+  if ("ownerEmail" in changes) {
+    nextEmail = normalizeEmail(changes.ownerEmail);
+    if (!nextEmail) throw new Error("Owner email is required");
+    if (!isValidEmail(nextEmail)) throw new Error("Enter a valid email address");
+    if (nextEmail !== normalizeEmail(ownerProfile.email)) {
+      changedFields.push("ownerEmail");
+    } else {
+      nextEmail = null;
+    }
+  }
+
+  if (changedFields.length === 0) {
+    return await customerDetail(ctx, { accountId });
+  }
+
+  if (nextEmail) {
+    const { error } = await ctx.supabaseAdmin.auth.admin.updateUserById(ownerMembership.user_id, {
+      email: nextEmail,
+    });
+    if (error) throw new Error(`Could not update owner email: ${error.message}`);
+    profilePatch.email = nextEmail;
+  }
+
+  if (Object.keys(accountPatch).length > 0) {
+    const { error } = await ctx.supabaseAdmin
+      .from("accounts")
+      .update(accountPatch)
+      .eq("id", accountId);
+    if (error) throw new Error(error.message);
+  }
+
+  if (Object.keys(profilePatch).length > 0) {
+    const { error } = await ctx.supabaseAdmin
+      .from("profiles")
+      .update(profilePatch)
+      .eq("id", ownerMembership.user_id);
+    if (error) throw new Error(error.message);
+  }
+
+  if (nextEmail) {
+    const { error } = await ctx.supabaseAdmin
+      .from("admin_users")
+      .update({ email: nextEmail })
+      .eq("user_id", ownerMembership.user_id);
+    if (error) throw new Error(error.message);
+  }
+
+  await audit(ctx, "customer_updated", "account", accountId, {
+    ownerUserId: ownerMembership.user_id,
+    fields: changedFields,
+  });
+
+  return await customerDetail(ctx, { accountId });
+};
+
 const customerRemoveMember = async (ctx: AdminContext, body: any) => {
   const accountId = clean(body?.accountId);
   const targetUserId = clean(body?.targetUserId);
@@ -1943,6 +2072,8 @@ serve(async (req) => {
         return json(await customers(ctx, body));
       case "customer_detail":
         return json(await customerDetail(ctx, body));
+      case "customer_update":
+        return json(await customerUpdate(ctx, body));
       case "customer_remove_member":
         return json(await customerRemoveMember(ctx, body));
       case "customer_transfer_owner":

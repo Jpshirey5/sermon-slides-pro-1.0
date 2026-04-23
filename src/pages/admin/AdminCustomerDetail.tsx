@@ -33,6 +33,26 @@ const formatNextInvoiceSummary = (nextInvoice?: any) => {
   return `${amount} · ${date}`;
 };
 
+type CustomerEditState = {
+  ownerFullName: string;
+  ownerChurchRole: string;
+  ownerEmail: string;
+  accountName: string;
+  city: string;
+  state: string;
+};
+
+const getCustomerEditState = (customer: any): CustomerEditState => ({
+  ownerFullName: customer?.owner?.profiles?.full_name || "",
+  ownerChurchRole: customer?.owner?.profiles?.church_role || "",
+  ownerEmail: customer?.owner?.profiles?.email || "",
+  accountName: customer?.account?.name || "",
+  city: customer?.account?.city || "",
+  state: customer?.account?.state || "",
+});
+
+const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+
 const AdminCustomerDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -45,6 +65,14 @@ const AdminCustomerDetail = () => {
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [hardDeleteOpen, setHardDeleteOpen] = useState(false);
   const [hardDeleteConfirmation, setHardDeleteConfirmation] = useState("");
+  const [editValues, setEditValues] = useState<CustomerEditState>({
+    ownerFullName: "",
+    ownerChurchRole: "",
+    ownerEmail: "",
+    accountName: "",
+    city: "",
+    state: "",
+  });
 
   const load = async () => {
     if (!id) return;
@@ -59,6 +87,11 @@ const AdminCustomerDetail = () => {
   useEffect(() => {
     void load();
   }, [id]);
+
+  useEffect(() => {
+    if (!data) return;
+    setEditValues(getCustomerEditState(data));
+  }, [data]);
 
   const copy = async (value: string) => {
     await navigator.clipboard.writeText(value);
@@ -173,6 +206,68 @@ const AdminCustomerDetail = () => {
     }
   };
 
+  const savedEditValues = useMemo(() => getCustomerEditState(data), [data]);
+  const changedFields = useMemo(() => {
+    const changes: Record<string, string> = {};
+
+    if (editValues.ownerFullName.trim() !== savedEditValues.ownerFullName.trim()) {
+      changes.ownerFullName = editValues.ownerFullName.trim();
+    }
+    if (editValues.ownerChurchRole.trim() !== savedEditValues.ownerChurchRole.trim()) {
+      changes.ownerChurchRole = editValues.ownerChurchRole.trim();
+    }
+    if (editValues.ownerEmail.trim().toLowerCase() !== savedEditValues.ownerEmail.trim().toLowerCase()) {
+      changes.ownerEmail = editValues.ownerEmail.trim().toLowerCase();
+    }
+    if (editValues.accountName.trim() !== savedEditValues.accountName.trim()) {
+      changes.accountName = editValues.accountName.trim();
+    }
+    if (editValues.city.trim() !== savedEditValues.city.trim()) {
+      changes.city = editValues.city.trim();
+    }
+    if (editValues.state.trim() !== savedEditValues.state.trim()) {
+      changes.state = editValues.state.trim();
+    }
+
+    return changes;
+  }, [editValues, savedEditValues]);
+
+  const hasEditChanges = Object.keys(changedFields).length > 0;
+
+  const handleEditChange = (field: keyof CustomerEditState, value: string) => {
+    setEditValues((current) => ({ ...current, [field]: value }));
+  };
+
+  const resetEditValues = () => {
+    setEditValues(savedEditValues);
+  };
+
+  const saveCustomerChanges = async () => {
+    if (!id || !hasEditChanges) return;
+    if ("accountName" in changedFields && !changedFields.accountName.trim()) {
+      toast.error("Organization name is required.");
+      return;
+    }
+    if ("ownerEmail" in changedFields && !isValidEmail(changedFields.ownerEmail)) {
+      toast.error("Enter a valid owner email address.");
+      return;
+    }
+
+    setActionLoading("save-customer");
+    try {
+      const updated = await adminApi("customer_update", {
+        accountId: id,
+        changes: changedFields,
+      });
+      setData(updated);
+      toast.success("Customer changes saved.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not save customer changes.");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   const availableReplacementOwners = useMemo(
     () => (data?.members || []).filter((member: any) => member.user_id !== ownerToTransfer?.user_id),
     [data?.members, ownerToTransfer?.user_id],
@@ -247,8 +342,80 @@ const AdminCustomerDetail = () => {
         <section className="rounded-2xl glass-panel p-5 lg:col-span-2">
           <h2 className="font-serif text-xl font-semibold mb-4">Account Details</h2>
           <div className="grid gap-4 md:grid-cols-2">
-            <div><p className="text-xs text-muted-foreground">Owner</p><p>{ownerProfile?.full_name || "Unavailable"}</p></div>
-            <div><p className="text-xs text-muted-foreground">Email</p><p>{ownerProfile?.email || "Unavailable"}</p></div>
+            <div className="space-y-2">
+              <Label htmlFor="customer-account-name">Church Name</Label>
+              <Input
+                id="customer-account-name"
+                value={editValues.accountName}
+                onChange={(event) => handleEditChange("accountName", event.target.value)}
+                disabled={actionLoading === "save-customer"}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="customer-owner-name">Owner Full Name</Label>
+              <Input
+                id="customer-owner-name"
+                value={editValues.ownerFullName}
+                onChange={(event) => handleEditChange("ownerFullName", event.target.value)}
+                disabled={actionLoading === "save-customer"}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="customer-owner-email">Owner Email</Label>
+              <Input
+                id="customer-owner-email"
+                type="email"
+                value={editValues.ownerEmail}
+                onChange={(event) => handleEditChange("ownerEmail", event.target.value)}
+                disabled={actionLoading === "save-customer"}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="customer-owner-role">Role at Church</Label>
+              <Input
+                id="customer-owner-role"
+                value={editValues.ownerChurchRole}
+                onChange={(event) => handleEditChange("ownerChurchRole", event.target.value)}
+                disabled={actionLoading === "save-customer"}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="customer-city">City</Label>
+              <Input
+                id="customer-city"
+                value={editValues.city}
+                onChange={(event) => handleEditChange("city", event.target.value)}
+                disabled={actionLoading === "save-customer"}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="customer-state">State</Label>
+              <Input
+                id="customer-state"
+                value={editValues.state}
+                onChange={(event) => handleEditChange("state", event.target.value)}
+                disabled={actionLoading === "save-customer"}
+              />
+            </div>
+          </div>
+
+          <div className="mt-5 flex flex-wrap justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={resetEditValues}
+              disabled={!hasEditChanges || actionLoading === "save-customer"}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={saveCustomerChanges}
+              disabled={!hasEditChanges || actionLoading === "save-customer"}
+            >
+              {actionLoading === "save-customer" ? "Saving..." : "Save Changes"}
+            </Button>
+          </div>
+
+          <div className="mt-6 grid gap-4 border-t border-border/70 pt-5 md:grid-cols-2">
             <div><p className="text-xs text-muted-foreground">Church Location</p><p className="flex items-center gap-1"><MapPin className="h-3.5 w-3.5" /> {data.location?.label || "Unavailable"}</p></div>
             <div><p className="text-xs text-muted-foreground">Plan</p><p className="capitalize">{account.plan_tier || "free"}</p></div>
             <div><p className="text-xs text-muted-foreground">Beta Program</p><p>{account.is_beta_user ? betaCountdown : "Not beta"}</p></div>
