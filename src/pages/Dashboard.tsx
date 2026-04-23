@@ -70,6 +70,14 @@ const parseCampusFilterValue = (
   return { type: "all" };
 };
 
+const getLocalDateKey = () => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
 const Dashboard = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -100,8 +108,11 @@ const Dashboard = () => {
   const [supportMessage, setSupportMessage] = useState("");
   const [submittingSupportRequest, setSubmittingSupportRequest] = useState(false);
   const [supportOrgName, setSupportOrgName] = useState("");
+  const [globalMessagesQueue, setGlobalMessagesQueue] = useState<any[]>([]);
+  const [dismissingGlobalMessage, setDismissingGlobalMessage] = useState(false);
   const isEnterpriseAccount = subscription.plan_tier === "enterprise";
   const latestPresentationLoadIdRef = useRef(0);
+  const activeGlobalMessage = globalMessagesQueue[0] || null;
 
   // Handle returning from Stripe checkout
   useEffect(() => {
@@ -144,6 +155,59 @@ const Dashboard = () => {
   useEffect(() => {
     void loadDeletionRequestState();
   }, [loadDeletionRequestState]);
+
+  const loadGlobalMessages = useCallback(async () => {
+    if (!user || !accountId) {
+      setGlobalMessagesQueue([]);
+      return;
+    }
+
+    try {
+      const { data: messages, error: messageError } = await supabase
+        .from("global_messages")
+        .select("*")
+        .or(`audience_type.eq.all,target_account_id.eq.${accountId}`)
+        .order("created_at", { ascending: false })
+        .limit(10);
+
+      if (messageError) throw messageError;
+      const messageIds = (messages || []).map((message) => message.id);
+      const { data: views, error: viewsError } = messageIds.length
+        ? await supabase
+            .from("global_message_views")
+            .select("message_id, viewed_on")
+            .eq("user_id", user.id)
+            .in("message_id", messageIds)
+        : { data: [] as any[], error: null };
+
+      if (viewsError) throw viewsError;
+
+      const today = getLocalDateKey();
+      const viewMap = new Map<string, Set<string>>();
+      for (const view of views || []) {
+        const existing = viewMap.get(view.message_id) || new Set<string>();
+        existing.add(view.viewed_on);
+        viewMap.set(view.message_id, existing);
+      }
+
+      const eligible = (messages || []).filter((message) => {
+        const viewedDates = viewMap.get(message.id);
+        if (!message.ends_at) {
+          return !viewedDates || viewedDates.size === 0;
+        }
+        return !viewedDates?.has(today);
+      });
+
+      setGlobalMessagesQueue(eligible);
+    } catch (error) {
+      logError(error, { scope: "dashboard_load_global_messages" });
+      setGlobalMessagesQueue([]);
+    }
+  }, [accountId, user]);
+
+  useEffect(() => {
+    void loadGlobalMessages();
+  }, [loadGlobalMessages]);
 
   useEffect(() => {
     if (!accountId) {
@@ -386,6 +450,41 @@ const Dashboard = () => {
     } finally {
       setSubmittingSupportRequest(false);
     }
+  };
+
+  const dismissGlobalMessage = async () => {
+    if (!activeGlobalMessage || !user || !accountId) return;
+
+    setDismissingGlobalMessage(true);
+    try {
+      await supabase
+        .from("global_message_views")
+        .upsert({
+          message_id: activeGlobalMessage.id,
+          user_id: user.id,
+          account_id: accountId,
+          viewed_on: getLocalDateKey(),
+          dismissed_at: new Date().toISOString(),
+        }, { onConflict: "message_id,user_id,viewed_on" });
+    } catch (error) {
+      logError(error, { scope: "dashboard_dismiss_global_message", messageId: activeGlobalMessage.id });
+    } finally {
+      setGlobalMessagesQueue((current) => current.slice(1));
+      setDismissingGlobalMessage(false);
+    }
+  };
+
+  const handleGlobalMessageCta = async () => {
+    if (!activeGlobalMessage?.cta_url) return;
+    const ctaUrl = String(activeGlobalMessage.cta_url);
+    await dismissGlobalMessage();
+
+    if (/^https?:\/\//i.test(ctaUrl)) {
+      window.open(ctaUrl, "_blank", "noopener,noreferrer");
+      return;
+    }
+
+    navigate(ctaUrl.startsWith("/") ? ctaUrl : `/${ctaUrl}`);
   };
 
   const handleDeletePresentation = async (id: string) => {
@@ -1025,6 +1124,45 @@ const Dashboard = () => {
               {submittingSupportRequest ? "Submitting..." : "Submit Support Request"}
             </Button>
           </form>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={Boolean(activeGlobalMessage)}
+        onOpenChange={(open) => {
+          if (!open) void dismissGlobalMessage();
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          {activeGlobalMessage && (
+            <>
+              <DialogHeader>
+                <DialogTitle>{activeGlobalMessage.title}</DialogTitle>
+                <DialogDescription className="whitespace-pre-wrap pt-2 text-left leading-relaxed">
+                  {activeGlobalMessage.body}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => void dismissGlobalMessage()}
+                  disabled={dismissingGlobalMessage}
+                >
+                  Close
+                </Button>
+                {activeGlobalMessage.cta_label && activeGlobalMessage.cta_url && (
+                  <Button
+                    type="button"
+                    variant="hero"
+                    onClick={() => void handleGlobalMessageCta()}
+                    disabled={dismissingGlobalMessage}
+                  >
+                    {activeGlobalMessage.cta_label}
+                  </Button>
+                )}
+              </div>
+            </>
+          )}
         </DialogContent>
       </Dialog>
       <ExportOptionsModal

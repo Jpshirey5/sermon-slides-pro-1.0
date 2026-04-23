@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
-import { BarChart3, Bell, BookOpen, CheckCheck, CreditCard, Inbox, LogOut, Shield, Trash2, Users } from "lucide-react";
+import { BarChart3, Bell, BookOpen, CheckCheck, CreditCard, Inbox, LogOut, MessageSquareText, Shield, Trash2, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -18,6 +18,7 @@ const navItems = [
   { to: "/admin/customers", label: "Customers", icon: Users },
   { to: "/admin/support", label: "Support", icon: Inbox },
   { to: "/admin/billing", label: "Billing", icon: CreditCard },
+  { to: "/admin/messages", label: "Messages", icon: MessageSquareText },
   { to: "/admin/users", label: "Admin Users", icon: Shield },
 ];
 
@@ -38,9 +39,13 @@ const AdminLayout = () => {
   };
 
   useEffect(() => {
+    document.title = "Admin Center | Sermon Slide Pro  ";
     void loadNotifications();
     const interval = window.setInterval(() => void loadNotifications(), 60_000);
-    return () => window.clearInterval(interval);
+    return () => {
+      window.clearInterval(interval);
+      document.title = "Sermon Slide Pro";
+    };
   }, []);
 
   const handleLogout = async () => {

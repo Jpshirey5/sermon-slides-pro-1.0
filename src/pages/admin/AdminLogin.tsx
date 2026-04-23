@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { BookOpen, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,13 @@ const AdminLogin = () => {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [bootstrapLoading, setBootstrapLoading] = useState(false);
+
+  useEffect(() => {
+    document.title = "Sermon Slide Pro | Admin Center";
+    return () => {
+      document.title = "Sermon Slide Pro";
+    };
+  }, []);
 
   const handleLogin = async (event: React.FormEvent) => {
     event.preventDefault();

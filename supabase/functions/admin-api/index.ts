@@ -1646,6 +1646,146 @@ const notificationsClearAll = async (ctx: AdminContext) => {
   return { success: true, count: rows.length };
 };
 
+const normalizeMessagePayload = (body: any, existing: any = {}) => {
+  const title = clean(body?.title ?? existing.title);
+  const messageBody = clean(body?.body ?? existing.body);
+  const audienceType = clean(body?.audienceType ?? body?.audience_type ?? existing.audience_type ?? "all");
+  const targetAccountId = clean(body?.targetAccountId ?? body?.target_account_id ?? existing.target_account_id);
+  const status = clean(body?.status ?? existing.status ?? "active") || "active";
+  const startsAt = clean(body?.startsAt ?? body?.starts_at ?? existing.starts_at);
+  const endsAt = clean(body?.endsAt ?? body?.ends_at ?? existing.ends_at);
+  const ctaLabel = clean(body?.ctaLabel ?? body?.cta_label ?? existing.cta_label);
+  const ctaUrl = clean(body?.ctaUrl ?? body?.cta_url ?? existing.cta_url);
+
+  if (!title) throw new Error("Message title is required");
+  if (!messageBody) throw new Error("Message body is required");
+  if (!["all", "account"].includes(audienceType)) throw new Error("Choose a valid message audience");
+  if (!["active", "inactive"].includes(status)) throw new Error("Choose a valid message status");
+  if (audienceType === "account" && !isUuid(targetAccountId)) throw new Error("Choose a customer for this message");
+
+  return {
+    title,
+    body: messageBody,
+    audience_type: audienceType,
+    target_account_id: audienceType === "account" ? targetAccountId : null,
+    status,
+    starts_at: startsAt || null,
+    ends_at: endsAt || null,
+    cta_label: ctaLabel && ctaUrl ? ctaLabel : null,
+    cta_url: ctaLabel && ctaUrl ? ctaUrl : null,
+  };
+};
+
+const enrichMessagesWithAccounts = async (ctx: AdminContext, messages: any[]) => {
+  const accountIds = Array.from(new Set(messages.map((message) => message.target_account_id).filter(Boolean)));
+  const { data: accounts } = accountIds.length
+    ? await ctx.supabaseAdmin.from("accounts").select("id, name, city, state").in("id", accountIds)
+    : { data: [] as any[] };
+  const accountMap = new Map((accounts || []).map((account: any) => [account.id, account]));
+  return messages.map((message) => ({
+    ...message,
+    targetAccount: message.target_account_id ? accountMap.get(message.target_account_id) || null : null,
+  }));
+};
+
+const messagesList = async (ctx: AdminContext) => {
+  const { data, error } = await ctx.supabaseAdmin
+    .from("global_messages" as any)
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(200);
+  if (error) throw new Error(error.message);
+  return { items: await enrichMessagesWithAccounts(ctx, data || []) };
+};
+
+const messagesCustomerOptions = async (ctx: AdminContext, body: any) => {
+  const search = clean(body?.search).toLowerCase();
+  let query = ctx.supabaseAdmin
+    .from("accounts")
+    .select("id, name, city, state")
+    .order("name", { ascending: true })
+    .limit(100);
+  if (search) query = query.ilike("name", `%${search}%`);
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+  return { items: data || [] };
+};
+
+const messagesCreate = async (ctx: AdminContext, body: any) => {
+  const payload = normalizeMessagePayload(body);
+  const { data, error } = await ctx.supabaseAdmin
+    .from("global_messages" as any)
+    .insert({ ...payload, created_by_admin_id: ctx.admin.id })
+    .select("*")
+    .single();
+  if (error) throw new Error(error.message);
+
+  await audit(ctx, "global_message_created", "global_message", data.id, {
+    audienceType: data.audience_type,
+    targetAccountId: data.target_account_id,
+    status: data.status,
+  });
+
+  const [item] = await enrichMessagesWithAccounts(ctx, [data]);
+  return { item };
+};
+
+const messagesUpdate = async (ctx: AdminContext, body: any) => {
+  const id = clean(body?.id);
+  if (!isUuid(id)) throw new Error("A valid message id is required");
+
+  const { data: existing, error: existingError } = await ctx.supabaseAdmin
+    .from("global_messages" as any)
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+  if (existingError) throw new Error(existingError.message);
+  if (!existing) throw new Error("Message not found");
+
+  const payload = normalizeMessagePayload(body, existing);
+  const { data, error } = await ctx.supabaseAdmin
+    .from("global_messages" as any)
+    .update(payload)
+    .eq("id", id)
+    .select("*")
+    .single();
+  if (error) throw new Error(error.message);
+
+  await audit(ctx, "global_message_updated", "global_message", id, {
+    audienceType: data.audience_type,
+    targetAccountId: data.target_account_id,
+    status: data.status,
+  });
+
+  const [item] = await enrichMessagesWithAccounts(ctx, [data]);
+  return { item };
+};
+
+const messagesDelete = async (ctx: AdminContext, body: any) => {
+  const id = clean(body?.id);
+  if (!isUuid(id)) throw new Error("A valid message id is required");
+
+  const { data: existing } = await ctx.supabaseAdmin
+    .from("global_messages" as any)
+    .select("id, title, audience_type, target_account_id")
+    .eq("id", id)
+    .maybeSingle();
+
+  const { error } = await ctx.supabaseAdmin
+    .from("global_messages" as any)
+    .delete()
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+
+  await audit(ctx, "global_message_deleted", "global_message", id, {
+    title: existing?.title || null,
+    audienceType: existing?.audience_type || null,
+    targetAccountId: existing?.target_account_id || null,
+  });
+
+  return { success: true };
+};
+
 const adminUsers = async (ctx: AdminContext) => {
   const [{ data: admins }, { data: invites }] = await Promise.all([
     ctx.supabaseAdmin.from("admin_users").select("*").order("created_at", { ascending: false }),
@@ -1827,6 +1967,16 @@ serve(async (req) => {
         return json(await notificationsMarkAllRead(ctx));
       case "notifications_clear_all":
         return json(await notificationsClearAll(ctx));
+      case "messages_list":
+        return json(await messagesList(ctx));
+      case "messages_customer_options":
+        return json(await messagesCustomerOptions(ctx, body));
+      case "messages_create":
+        return json(await messagesCreate(ctx, body));
+      case "messages_update":
+        return json(await messagesUpdate(ctx, body));
+      case "messages_delete":
+        return json(await messagesDelete(ctx, body));
       case "admin_users":
         return json(await adminUsers(ctx));
       case "admin_invite":

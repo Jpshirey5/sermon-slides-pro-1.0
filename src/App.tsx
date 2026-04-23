@@ -37,6 +37,7 @@ import AdminCustomers from "./pages/admin/AdminCustomers";
 import AdminCustomerDetail from "./pages/admin/AdminCustomerDetail";
 import AdminSupport from "./pages/admin/AdminSupport";
 import AdminBilling from "./pages/admin/AdminBilling";
+import AdminMessages from "./pages/admin/AdminMessages";
 import AdminUsers from "./pages/admin/AdminUsers";
 
 const queryClient = new QueryClient();
@@ -73,6 +74,7 @@ const App = () => (
                 <Route path="customers/:id" element={<AdminCustomerDetail />} />
                 <Route path="support" element={<AdminSupport />} />
                 <Route path="billing" element={<AdminBilling />} />
+                <Route path="messages" element={<AdminMessages />} />
                 <Route path="users" element={<AdminUsers />} />
               </Route>
               <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
