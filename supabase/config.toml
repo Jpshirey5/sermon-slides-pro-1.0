@@ -50,3 +50,6 @@ verify_jwt = false
 
 [functions.admin-api]
 verify_jwt = false
+
+[functions.confirm-email-change]
+verify_jwt = false

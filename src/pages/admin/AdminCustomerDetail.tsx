@@ -36,7 +36,6 @@ const formatNextInvoiceSummary = (nextInvoice?: any) => {
 type CustomerEditState = {
   ownerFullName: string;
   ownerChurchRole: string;
-  ownerEmail: string;
   accountName: string;
   city: string;
   state: string;
@@ -45,7 +44,6 @@ type CustomerEditState = {
 const getCustomerEditState = (customer: any): CustomerEditState => ({
   ownerFullName: customer?.owner?.profiles?.full_name || "",
   ownerChurchRole: customer?.owner?.profiles?.church_role || "",
-  ownerEmail: customer?.owner?.profiles?.email || "",
   accountName: customer?.account?.name || "",
   city: customer?.account?.city || "",
   state: customer?.account?.state || "",
@@ -65,10 +63,10 @@ const AdminCustomerDetail = () => {
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [hardDeleteOpen, setHardDeleteOpen] = useState(false);
   const [hardDeleteConfirmation, setHardDeleteConfirmation] = useState("");
+  const [requestedOwnerEmail, setRequestedOwnerEmail] = useState("");
   const [editValues, setEditValues] = useState<CustomerEditState>({
     ownerFullName: "",
     ownerChurchRole: "",
-    ownerEmail: "",
     accountName: "",
     city: "",
     state: "",
@@ -91,6 +89,7 @@ const AdminCustomerDetail = () => {
   useEffect(() => {
     if (!data) return;
     setEditValues(getCustomerEditState(data));
+    setRequestedOwnerEmail(data.pendingEmailChangeRequest?.requested_email || "");
   }, [data]);
 
   const copy = async (value: string) => {
@@ -216,9 +215,6 @@ const AdminCustomerDetail = () => {
     if (editValues.ownerChurchRole.trim() !== savedEditValues.ownerChurchRole.trim()) {
       changes.ownerChurchRole = editValues.ownerChurchRole.trim();
     }
-    if (editValues.ownerEmail.trim().toLowerCase() !== savedEditValues.ownerEmail.trim().toLowerCase()) {
-      changes.ownerEmail = editValues.ownerEmail.trim().toLowerCase();
-    }
     if (editValues.accountName.trim() !== savedEditValues.accountName.trim()) {
       changes.accountName = editValues.accountName.trim();
     }
@@ -248,10 +244,6 @@ const AdminCustomerDetail = () => {
       toast.error("Organization name is required.");
       return;
     }
-    if ("ownerEmail" in changedFields && !isValidEmail(changedFields.ownerEmail)) {
-      toast.error("Enter a valid owner email address.");
-      return;
-    }
 
     setActionLoading("save-customer");
     try {
@@ -263,6 +255,37 @@ const AdminCustomerDetail = () => {
       toast.success("Customer changes saved.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not save customer changes.");
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const requestOwnerEmailChange = async () => {
+    if (!id) return;
+    const normalizedEmail = requestedOwnerEmail.trim().toLowerCase();
+    if (!normalizedEmail) {
+      toast.error("Enter a new owner email address.");
+      return;
+    }
+    if (!isValidEmail(normalizedEmail)) {
+      toast.error("Enter a valid owner email address.");
+      return;
+    }
+    if (normalizedEmail === (ownerProfile?.email || "").trim().toLowerCase()) {
+      toast.error("That already matches the current owner email.");
+      return;
+    }
+
+    setActionLoading("request-email-change");
+    try {
+      const updated = await adminApi("customer_request_email_change", {
+        accountId: id,
+        requestedEmail: normalizedEmail,
+      });
+      setData(updated);
+      toast.success("Confirmation request sent to the new email.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not send the confirmation request.");
     } finally {
       setActionLoading(null);
     }
@@ -286,6 +309,18 @@ const AdminCustomerDetail = () => {
   const betaCountdown = formatBetaTrialCountdown(getBetaTrialDaysRemaining(account.beta_trial_ends_at));
   const activeDeletionRequest = data.activeDeletionRequest;
   const offboardingDateLabel = data.offboardingPhase === "grace" ? "Grace period ends" : "Access ends";
+  const pendingEmailChangeRequest = data.pendingEmailChangeRequest;
+  const normalizedRequestedOwnerEmail = requestedOwnerEmail.trim().toLowerCase();
+  const canRequestEmailChange =
+    normalizedRequestedOwnerEmail.length > 0 &&
+    isValidEmail(normalizedRequestedOwnerEmail) &&
+    normalizedRequestedOwnerEmail !== (ownerProfile?.email || "").trim().toLowerCase() &&
+    actionLoading !== "request-email-change";
+  const emailRequestButtonLabel =
+    pendingEmailChangeRequest?.requested_email &&
+    pendingEmailChangeRequest.requested_email.toLowerCase() === normalizedRequestedOwnerEmail
+      ? "Resend Confirmation Request"
+      : "Send Confirmation Request";
 
   return (
     <div className="space-y-6">
@@ -361,13 +396,12 @@ const AdminCustomerDetail = () => {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="customer-owner-email">Owner Email</Label>
+              <Label htmlFor="customer-owner-email">Current Owner Email</Label>
               <Input
                 id="customer-owner-email"
                 type="email"
-                value={editValues.ownerEmail}
-                onChange={(event) => handleEditChange("ownerEmail", event.target.value)}
-                disabled={actionLoading === "save-customer"}
+                value={ownerProfile?.email || ""}
+                disabled
               />
             </div>
             <div className="space-y-2">
@@ -396,6 +430,40 @@ const AdminCustomerDetail = () => {
                 onChange={(event) => handleEditChange("state", event.target.value)}
                 disabled={actionLoading === "save-customer"}
               />
+            </div>
+          </div>
+
+          <div className="mt-5 rounded-xl border border-border/70 bg-white/55 p-4">
+            <div className="flex flex-col gap-4">
+              <div>
+                <p className="text-sm font-medium text-foreground">Owner Email Change</p>
+                <p className="text-sm text-muted-foreground">
+                  Send a confirmation request to the new address. The current login email will stay active until the customer confirms the change.
+                </p>
+              </div>
+              <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
+                <div className="space-y-2">
+                  <Label htmlFor="customer-requested-owner-email">New Owner Email</Label>
+                  <Input
+                    id="customer-requested-owner-email"
+                    type="email"
+                    value={requestedOwnerEmail}
+                    onChange={(event) => setRequestedOwnerEmail(event.target.value)}
+                    disabled={actionLoading === "request-email-change"}
+                  />
+                </div>
+                <Button
+                  onClick={requestOwnerEmailChange}
+                  disabled={!canRequestEmailChange}
+                >
+                  {actionLoading === "request-email-change" ? "Sending..." : emailRequestButtonLabel}
+                </Button>
+              </div>
+              {pendingEmailChangeRequest && (
+                <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                  Pending change to <span className="font-medium">{pendingEmailChangeRequest.requested_email}</span> · Requested {formatAdminDate(pendingEmailChangeRequest.created_at)} · Expires {formatAdminDate(pendingEmailChangeRequest.expires_at)}
+                </div>
+              )}
             </div>
           </div>
 

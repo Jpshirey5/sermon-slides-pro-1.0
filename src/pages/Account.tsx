@@ -827,6 +827,15 @@ const Account = () => {
   }, [searchParams, setSearchParams, checkSubscription]);
 
   useEffect(() => {
+    if (searchParams.get("emailChanged") === "1") {
+      toast.success("Your email was updated successfully.");
+      const next = new URLSearchParams(searchParams.toString());
+      next.delete("emailChanged");
+      setSearchParams(next, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
+
+  useEffect(() => {
     if (searchParams.get("deletion") === "requested") {
       void loadActiveDeletionRequest();
       const next = new URLSearchParams(searchParams.toString());

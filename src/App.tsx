@@ -16,6 +16,7 @@ import InviteSignUp from "./pages/InviteSignUp";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import AuthConfirm from "./pages/AuthConfirm";
+import ConfirmEmailChange from "./pages/ConfirmEmailChange";
 import Dashboard from "./pages/Dashboard";
 import Account from "./pages/Account";
 import ExitSurvey from "./pages/ExitSurvey";
@@ -64,6 +65,7 @@ const App = () => (
               <Route path="/signup" element={<SignUp />} />
               <Route path="/invite-signup" element={<InviteSignUp />} />
               <Route path="/auth/confirm" element={<AuthConfirm />} />
+              <Route path="/auth/confirm-email-change" element={<ConfirmEmailChange />} />
               <Route path="/forgot-password" element={<ForgotPassword />} />
               <Route path="/reset-password" element={<ResetPassword />} />
               <Route path="/admin/login" element={<AdminLogin />} />

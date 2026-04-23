@@ -5,10 +5,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { adminApi, formatAdminDate } from "@/lib/admin-api";
 import { toast } from "sonner";
 
-type AudienceType = "all" | "account";
+type AudienceType = "all" | "account" | "beta";
 
 const defaultForm = {
   title: "",
@@ -28,12 +29,14 @@ const dateToIso = (date: string, endOfDay = false) => {
 
 const audienceLabel = (message: any) => {
   if (message.audience_type === "all") return "All customers";
+  if (message.audience_type === "beta") return "Beta customers";
   return message.targetAccount?.name || "Selected customer";
 };
 
 const AdminMessages = () => {
   const [messages, setMessages] = useState<any[]>([]);
   const [customers, setCustomers] = useState<any[]>([]);
+  const [betaCustomers, setBetaCustomers] = useState<any[]>([]);
   const [customerSearch, setCustomerSearch] = useState("");
   const [form, setForm] = useState(defaultForm);
   const [loading, setLoading] = useState(true);
@@ -55,9 +58,15 @@ const AdminMessages = () => {
     setCustomers(result.items || []);
   };
 
+  const loadBetaCustomers = async () => {
+    const result = await adminApi<{ items: any[] }>("customers", { status: "beta", limit: 200 });
+    setBetaCustomers(result.items || []);
+  };
+
   useEffect(() => {
     void loadMessages();
     void loadCustomers();
+    void loadBetaCustomers();
   }, []);
 
   const updateForm = (key: keyof typeof defaultForm, value: string) => {
@@ -121,12 +130,15 @@ const AdminMessages = () => {
     await loadCustomers(customerSearch);
   };
 
+  const betaCustomerPreview = betaCustomers.slice(0, 10);
+  const hasMoreThanTenBetaCustomers = betaCustomers.length > 10;
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="font-serif text-3xl font-bold">Messages</h1>
         <p className="text-muted-foreground mt-1">
-          Create dashboard modal announcements for all customers or a specific organization.
+          Create dashboard modal announcements for all customers, beta customers, or a specific organization.
         </p>
       </div>
 
@@ -153,6 +165,7 @@ const AdminMessages = () => {
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All customers</SelectItem>
+                  <SelectItem value="beta">Beta customers</SelectItem>
                   <SelectItem value="account">Single customer</SelectItem>
                 </SelectContent>
               </Select>
@@ -189,6 +202,61 @@ const AdminMessages = () => {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+          )}
+
+          {form.audienceType === "beta" && (
+            <div className="rounded-xl border border-border/70 bg-white/60 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="font-medium text-foreground">Beta customer audience</p>
+                  <p className="text-sm text-muted-foreground">
+                    This message will go to all organizations currently marked as Beta.
+                  </p>
+                </div>
+                <span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
+                  {betaCustomers.length} customers
+                </span>
+              </div>
+
+              {betaCustomers.length === 0 ? (
+                <div className="mt-4 rounded-lg border border-dashed border-border/70 bg-white/50 px-3 py-4 text-sm text-muted-foreground">
+                  No beta customers are currently marked in the platform.
+                </div>
+              ) : (
+                <div className="mt-4 space-y-2">
+                  {betaCustomerPreview.map((customer) => (
+                    <div key={customer.account.id} className="rounded-lg border border-border/70 bg-white/70 px-3 py-2 text-sm">
+                      <p className="font-medium text-foreground">{customer.account.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {[customer.account.city, customer.account.state].filter(Boolean).join(", ") || "Location unavailable"}
+                      </p>
+                    </div>
+                  ))}
+
+                  {hasMoreThanTenBetaCustomers && (
+                    <Accordion type="single" collapsible className="rounded-lg border border-border/70 bg-white/70 px-3">
+                      <AccordionItem value="all-beta-customers" className="border-0">
+                        <AccordionTrigger className="py-3 text-sm font-medium hover:no-underline">
+                          View all beta customers
+                        </AccordionTrigger>
+                        <AccordionContent className="pb-3">
+                          <div className="space-y-2">
+                            {betaCustomers.slice(10).map((customer) => (
+                              <div key={customer.account.id} className="rounded-lg border border-border/70 bg-background/80 px-3 py-2 text-sm">
+                                <p className="font-medium text-foreground">{customer.account.name}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {[customer.account.city, customer.account.state].filter(Boolean).join(", ") || "Location unavailable"}
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+                        </AccordionContent>
+                      </AccordionItem>
+                    </Accordion>
+                  )}
+                </div>
+              )}
             </div>
           )}
 

@@ -190,6 +190,50 @@ const sendAdminInviteEmail = async (email: string, token: string) => {
   }
 };
 
+const hashToken = async (token: string) => {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
+  return Array.from(new Uint8Array(digest))
+    .map((value) => value.toString(16).padStart(2, "0"))
+    .join("");
+};
+
+const generateEmailChangeToken = () => `${crypto.randomUUID()}${crypto.randomUUID()}`.replace(/-/g, "");
+
+const sendEmailChangeConfirmationEmail = async (email: string, token: string) => {
+  const resendApiKey = Deno.env.get("RESEND_API_KEY") ?? "";
+  const resendFromEmail = Deno.env.get("RESEND_FROM_EMAIL") ?? "";
+  const resendFromName = Deno.env.get("RESEND_FROM_NAME") || "Sermon Slide Pro Support";
+  if (!resendApiKey || !resendFromEmail) throw new Error("Resend is not configured");
+
+  const confirmUrl = `${getSiteUrl().replace(/\/$/, "")}/auth/confirm-email-change?token=${encodeURIComponent(token)}`;
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${resendApiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from: `${resendFromName} <${resendFromEmail}>`,
+      to: [email],
+      subject: "Confirm your new Sermon Slide Pro email",
+      html: `
+        <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #1f2937;">
+          <h2>Confirm your new email</h2>
+          <p>A Sermon Slide Pro support admin requested an email change for your account.</p>
+          <p>Please confirm your new email address by clicking the link below:</p>
+          <p><a href="${confirmUrl}">Confirm new email</a></p>
+          <p>This link expires in 48 hours. If you did not request this change, you can ignore this email and your current login will stay the same.</p>
+        </div>
+      `,
+      text: `A Sermon Slide Pro support admin requested an email change for your account.\n\nConfirm your new email: ${confirmUrl}\n\nThis link expires in 48 hours. If you did not request this change, you can ignore this email and your current login will stay the same.`,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Resend email change confirmation failed: ${response.status} ${await response.text()}`);
+  }
+};
+
 const getStripe = () => {
   const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
   if (!stripeKey) return null;
@@ -859,6 +903,24 @@ const getOwnerProfilesForAccounts = async (ctx: AdminContext, accountIds: string
   return map;
 };
 
+const getPendingEmailChangeRequestForUser = async (
+  supabaseAdmin: ReturnType<typeof createClient>,
+  userId: string,
+) => {
+  const { data, error } = await supabaseAdmin
+    .from("email_change_requests" as any)
+    .select("id, user_id, account_id, current_email, requested_email, status, expires_at, confirmed_at, created_at, updated_at")
+    .eq("user_id", userId)
+    .eq("status", "pending")
+    .gt("expires_at", new Date().toISOString())
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  return data || null;
+};
+
 const customers = async (ctx: AdminContext, body: any) => {
   const search = clean(body?.search).toLowerCase();
   const status = clean(body?.status) || "all";
@@ -972,6 +1034,9 @@ const customerDetail = async (ctx: AdminContext, body: any) => {
     profiles: profileMap.get(member.user_id) || null,
   }));
   const owner = membersWithProfiles.find((member: any) => member.role === "owner") || null;
+  const pendingEmailChangeRequest = owner?.user_id
+    ? await getPendingEmailChangeRequestForUser(ctx.supabaseAdmin, owner.user_id)
+    : null;
   const ownerEmail = owner?.profiles?.email ? normalizeEmail(owner.profiles.email) : "";
   const [{ data: accountSupportRequests }, { data: legacySupportRequests }] = await Promise.all([
     ctx.supabaseAdmin
@@ -1062,6 +1127,7 @@ const customerDetail = async (ctx: AdminContext, body: any) => {
     },
     members: normalizedMembers,
     owner,
+    pendingEmailChangeRequest,
     presentationCount: presentationCount ?? 0,
     supportRequests: supportRequests || [],
     nextInvoice,
@@ -1141,28 +1207,8 @@ const customerUpdate = async (ctx: AdminContext, body: any) => {
     }
   }
 
-  let nextEmail: string | null = null;
-  if ("ownerEmail" in changes) {
-    nextEmail = normalizeEmail(changes.ownerEmail);
-    if (!nextEmail) throw new Error("Owner email is required");
-    if (!isValidEmail(nextEmail)) throw new Error("Enter a valid email address");
-    if (nextEmail !== normalizeEmail(ownerProfile.email)) {
-      changedFields.push("ownerEmail");
-    } else {
-      nextEmail = null;
-    }
-  }
-
   if (changedFields.length === 0) {
     return await customerDetail(ctx, { accountId });
-  }
-
-  if (nextEmail) {
-    const { error } = await ctx.supabaseAdmin.auth.admin.updateUserById(ownerMembership.user_id, {
-      email: nextEmail,
-    });
-    if (error) throw new Error(`Could not update owner email: ${error.message}`);
-    profilePatch.email = nextEmail;
   }
 
   if (Object.keys(accountPatch).length > 0) {
@@ -1181,17 +1227,108 @@ const customerUpdate = async (ctx: AdminContext, body: any) => {
     if (error) throw new Error(error.message);
   }
 
-  if (nextEmail) {
-    const { error } = await ctx.supabaseAdmin
-      .from("admin_users")
-      .update({ email: nextEmail })
-      .eq("user_id", ownerMembership.user_id);
-    if (error) throw new Error(error.message);
-  }
-
   await audit(ctx, "customer_updated", "account", accountId, {
     ownerUserId: ownerMembership.user_id,
     fields: changedFields,
+  });
+
+  return await customerDetail(ctx, { accountId });
+};
+
+const customerRequestEmailChange = async (ctx: AdminContext, body: any) => {
+  const accountId = clean(body?.accountId);
+  const requestedEmail = normalizeEmail(body?.requestedEmail);
+  if (!isUuid(accountId)) throw new Error("A valid account id is required");
+  if (!requestedEmail) throw new Error("A new email is required");
+  if (!isValidEmail(requestedEmail)) throw new Error("Enter a valid email address");
+
+  const [{ data: account }, { data: ownerMembership }] = await Promise.all([
+    ctx.supabaseAdmin.from("accounts").select("id, name").eq("id", accountId).maybeSingle(),
+    ctx.supabaseAdmin
+      .from("account_members")
+      .select("user_id, role")
+      .eq("account_id", accountId)
+      .eq("role", "owner")
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+
+  if (!account) throw new Error("Customer account not found");
+  if (!ownerMembership?.user_id) throw new Error("Owner record not found");
+
+  const ownerProfileMap = await getProfilesByUserIds(ctx, [ownerMembership.user_id]);
+  const ownerProfile = ownerProfileMap.get(ownerMembership.user_id) || null;
+  if (!ownerProfile?.email) throw new Error("Owner email not found");
+
+  const currentEmail = normalizeEmail(ownerProfile.email);
+  if (requestedEmail === currentEmail) {
+    throw new Error("That email already matches the current owner email");
+  }
+
+  const { data: conflictingProfiles, error: conflictingProfilesError } = await ctx.supabaseAdmin
+    .from("profiles")
+    .select("id")
+    .ilike("email", requestedEmail)
+    .neq("id", ownerMembership.user_id)
+    .limit(1);
+  if (conflictingProfilesError) throw new Error(conflictingProfilesError.message);
+  if ((conflictingProfiles || []).length > 0) {
+    throw new Error("That email is already in use by another account");
+  }
+
+  const { data: conflictingPending, error: conflictingPendingError } = await ctx.supabaseAdmin
+    .from("email_change_requests" as any)
+    .select("id")
+    .ilike("requested_email", requestedEmail)
+    .eq("status", "pending")
+    .neq("user_id", ownerMembership.user_id)
+    .limit(1);
+  if (conflictingPendingError) throw new Error(conflictingPendingError.message);
+  if ((conflictingPending || []).length > 0) {
+    throw new Error("That email already has a pending change request");
+  }
+
+  await ctx.supabaseAdmin
+    .from("email_change_requests" as any)
+    .update({ status: "canceled" })
+    .eq("user_id", ownerMembership.user_id)
+    .eq("status", "pending");
+
+  const rawToken = generateEmailChangeToken();
+  const tokenHash = await hashToken(rawToken);
+  const expiresAt = addDays(new Date(), 2).toISOString();
+
+  const { data: request, error: requestError } = await ctx.supabaseAdmin
+    .from("email_change_requests" as any)
+    .insert({
+      user_id: ownerMembership.user_id,
+      account_id: accountId,
+      current_email: currentEmail,
+      requested_email: requestedEmail,
+      token_hash: tokenHash,
+      requested_by_admin_id: ctx.admin.id,
+      status: "pending",
+      expires_at: expiresAt,
+    })
+    .select("id")
+    .single();
+  if (requestError || !request) throw new Error(requestError?.message || "Could not create email change request");
+
+  try {
+    await sendEmailChangeConfirmationEmail(requestedEmail, rawToken);
+  } catch (error) {
+    await ctx.supabaseAdmin
+      .from("email_change_requests" as any)
+      .delete()
+      .eq("id", request.id);
+    throw error;
+  }
+
+  await audit(ctx, "customer_email_change_requested", "account", accountId, {
+    ownerUserId: ownerMembership.user_id,
+    currentEmail,
+    requestedEmail,
   });
 
   return await customerDetail(ctx, { accountId });
@@ -1788,7 +1925,7 @@ const normalizeMessagePayload = (body: any, existing: any = {}) => {
 
   if (!title) throw new Error("Message title is required");
   if (!messageBody) throw new Error("Message body is required");
-  if (!["all", "account"].includes(audienceType)) throw new Error("Choose a valid message audience");
+  if (!["all", "account", "beta"].includes(audienceType)) throw new Error("Choose a valid message audience");
   if (!["active", "inactive"].includes(status)) throw new Error("Choose a valid message status");
   if (audienceType === "account" && !isUuid(targetAccountId)) throw new Error("Choose a customer for this message");
 
@@ -2074,6 +2211,8 @@ serve(async (req) => {
         return json(await customerDetail(ctx, body));
       case "customer_update":
         return json(await customerUpdate(ctx, body));
+      case "customer_request_email_change":
+        return json(await customerRequestEmailChange(ctx, body));
       case "customer_remove_member":
         return json(await customerRemoveMember(ctx, body));
       case "customer_transfer_owner":

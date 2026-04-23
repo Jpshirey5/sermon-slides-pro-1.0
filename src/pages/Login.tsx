@@ -14,8 +14,9 @@ import { logError, trackEvent } from "@/lib/monitoring";
 const Login = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const emailChanged = searchParams.get("emailChanged") === "1";
   const rawNextPath = searchParams.get("next") || "/dashboard";
-  const nextPath = rawNextPath === "/account" ? "/dashboard" : rawNextPath;
+  const nextPath = rawNextPath === "/account" && !emailChanged ? "/dashboard" : rawNextPath;
   const signUpHref = `/signup${nextPath ? `?next=${encodeURIComponent(nextPath)}` : ""}`;
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -23,6 +24,9 @@ const Login = () => {
 
   useEffect(() => {
     trackEvent("login_viewed", { nextPath, hasReason: Boolean(searchParams.get("reason")) });
+    if (emailChanged) {
+      toast.success("Email confirmed. Log in with your new email to continue.");
+    }
     const queryReason = searchParams.get("reason");
     const storedReason = consumeStoredLogoutReason();
     const reason = queryReason === "inactive" || queryReason === "security" ? queryReason : storedReason;
@@ -35,7 +39,7 @@ const Login = () => {
     if (reason === "security") {
       toast.error("You were signed out for security. This can happen after inactivity or if your account became active on another device.");
     }
-  }, [nextPath, searchParams]);
+  }, [emailChanged, nextPath, searchParams]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -55,7 +59,7 @@ const Login = () => {
         toast.error(error.message);
       } else {
         trackEvent("login_succeeded", { nextPath });
-        navigate(nextPath);
+        navigate(emailChanged && nextPath === "/account" ? "/account?emailChanged=1" : nextPath);
       }
     } catch (error) {
       logError(error, { scope: "login_submit", nextPath });
