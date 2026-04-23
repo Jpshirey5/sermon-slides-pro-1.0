@@ -532,6 +532,128 @@ export type Database = {
           },
         ]
       }
+      global_message_views: {
+        Row: {
+          account_id: string
+          created_at: string
+          dismissed_at: string
+          id: string
+          message_id: string
+          user_id: string
+          viewed_on: string
+        }
+        Insert: {
+          account_id: string
+          created_at?: string
+          dismissed_at?: string
+          id?: string
+          message_id: string
+          user_id: string
+          viewed_on?: string
+        }
+        Update: {
+          account_id?: string
+          created_at?: string
+          dismissed_at?: string
+          id?: string
+          message_id?: string
+          user_id?: string
+          viewed_on?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "global_message_views_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "global_message_views_account_id_fkey"
+            columns: ["account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "global_message_views_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "global_messages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      global_messages: {
+        Row: {
+          audience_type: string
+          body: string
+          created_at: string
+          created_by_admin_id: string | null
+          cta_label: string | null
+          cta_url: string | null
+          ends_at: string | null
+          id: string
+          starts_at: string | null
+          status: string
+          target_account_id: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          audience_type?: string
+          body: string
+          created_at?: string
+          created_by_admin_id?: string | null
+          cta_label?: string | null
+          cta_url?: string | null
+          ends_at?: string | null
+          id?: string
+          starts_at?: string | null
+          status?: string
+          target_account_id?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          audience_type?: string
+          body?: string
+          created_at?: string
+          created_by_admin_id?: string | null
+          cta_label?: string | null
+          cta_url?: string | null
+          ends_at?: string | null
+          id?: string
+          starts_at?: string | null
+          status?: string
+          target_account_id?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "global_messages_created_by_admin_id_fkey"
+            columns: ["created_by_admin_id"]
+            isOneToOne: false
+            referencedRelation: "admin_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "global_messages_target_account_id_fkey"
+            columns: ["target_account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "global_messages_target_account_id_fkey"
+            columns: ["target_account_id"]
+            isOneToOne: false
+            referencedRelation: "accounts_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_url: string | null

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { BookOpen, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,13 @@ const AdminAcceptInvite = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    document.title = "Sermon Slide Pro | Admin Center";
+    return () => {
+      document.title = "Sermon Slide Pro";
+    };
+  }, []);
 
   const acceptInvite = async () => {
     await adminApi("admin_invite_accept", { token });

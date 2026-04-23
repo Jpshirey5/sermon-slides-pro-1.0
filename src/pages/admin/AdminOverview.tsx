@@ -1,10 +1,46 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { AlertCircle, CreditCard, Inbox, Users } from "lucide-react";
-import { Area, AreaChart, CartesianGrid, XAxis } from "recharts";
+import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
 import { adminApi, formatAdminDate, formatMoney } from "@/lib/admin-api";
 import { Button } from "@/components/ui/button";
 import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
+
+const renderChartDot = (props: any) => {
+  if (typeof props?.value !== "number" || props.value <= 0) return null;
+
+  return (
+    <circle
+      cx={props.cx}
+      cy={props.cy}
+      r={4}
+      fill="hsl(var(--background))"
+      stroke={props.stroke}
+      strokeWidth={2}
+    />
+  );
+};
+
+const renderActiveChartDot = (props: any) => {
+  if (typeof props?.value !== "number" || props.value <= 0) return null;
+
+  return (
+    <circle
+      cx={props.cx}
+      cy={props.cy}
+      r={5}
+      fill="hsl(var(--background))"
+      stroke={props.stroke}
+      strokeWidth={2}
+    />
+  );
+};
+
+const formatRevenueAxis = (value: number) => {
+  const dollars = value / 100;
+  if (Math.abs(dollars) >= 1000) return `${Math.round(dollars / 1000)}k`;
+  return `${Math.round(dollars)}`;
+};
 
 const AdminOverview = () => {
   const [data, setData] = useState<any>(null);
@@ -96,8 +132,15 @@ const AdminOverview = () => {
                   userDeletions: { label: "User Deletions", color: "#dc2626" },
                 }}
               >
-                <AreaChart data={activity?.items || []} margin={{ left: 12, right: 12 }}>
-                  <CartesianGrid vertical={false} />
+                <LineChart data={activity?.items || []} margin={{ left: 8, right: 16, top: 8 }}>
+                  <CartesianGrid vertical={false} stroke="hsl(var(--border))" strokeDasharray="0" />
+                  <YAxis
+                    tickLine={false}
+                    axisLine={false}
+                    tickMargin={8}
+                    width={36}
+                    allowDecimals={false}
+                  />
                   <XAxis
                     dataKey="date"
                     tickLine={false}
@@ -109,12 +152,12 @@ const AdminOverview = () => {
                     }}
                   />
                   <ChartTooltip content={<ChartTooltipContent indicator="dot" />} />
-                  <Area dataKey="orgSignups" type="natural" fill="var(--color-orgSignups)" fillOpacity={0.2} stroke="var(--color-orgSignups)" stackId="a" />
-                  <Area dataKey="userSignups" type="natural" fill="var(--color-userSignups)" fillOpacity={0.16} stroke="var(--color-userSignups)" stackId="b" />
-                  <Area dataKey="orgDeletions" type="natural" fill="var(--color-orgDeletions)" fillOpacity={0.18} stroke="var(--color-orgDeletions)" stackId="c" />
-                  <Area dataKey="userDeletions" type="natural" fill="var(--color-userDeletions)" fillOpacity={0.18} stroke="var(--color-userDeletions)" stackId="d" />
+                  <Line dataKey="orgSignups" type="linear" stroke="var(--color-orgSignups)" strokeWidth={2.5} dot={renderChartDot} activeDot={renderActiveChartDot} />
+                  <Line dataKey="userSignups" type="linear" stroke="var(--color-userSignups)" strokeWidth={2.5} dot={renderChartDot} activeDot={renderActiveChartDot} />
+                  <Line dataKey="orgDeletions" type="linear" stroke="var(--color-orgDeletions)" strokeWidth={2.5} dot={renderChartDot} activeDot={renderActiveChartDot} />
+                  <Line dataKey="userDeletions" type="linear" stroke="var(--color-userDeletions)" strokeWidth={2.5} dot={renderChartDot} activeDot={renderActiveChartDot} />
                   <ChartLegend content={<ChartLegendContent />} />
-                </AreaChart>
+                </LineChart>
               </ChartContainer>
             )}
             {activity?.notes?.userDeletions && (
@@ -184,8 +227,15 @@ const AdminOverview = () => {
                   refundedCents: { label: "Refunds", color: "#f97316" },
                 }}
               >
-                <AreaChart data={revenue?.items || []} margin={{ left: 12, right: 12 }}>
-                  <CartesianGrid vertical={false} />
+                <LineChart data={revenue?.items || []} margin={{ left: 8, right: 16, top: 8 }}>
+                  <CartesianGrid vertical={false} stroke="hsl(var(--border))" strokeDasharray="0" />
+                  <YAxis
+                    tickLine={false}
+                    axisLine={false}
+                    tickMargin={8}
+                    width={44}
+                    tickFormatter={(value) => formatRevenueAxis(Number(value))}
+                  />
                   <XAxis
                     dataKey="date"
                     tickLine={false}
@@ -211,32 +261,35 @@ const AdminOverview = () => {
                       />
                     }
                   />
-                  <Area
+                  <Line
                     dataKey="netAfterFeesCents"
                     name="Net After Fees"
-                    type="natural"
-                    fill="var(--color-netAfterFeesCents)"
-                    fillOpacity={0.22}
+                    type="linear"
                     stroke="var(--color-netAfterFeesCents)"
+                    strokeWidth={2.75}
+                    dot={renderChartDot}
+                    activeDot={renderActiveChartDot}
                   />
-                  <Area
+                  <Line
                     dataKey="stripeFeesCents"
                     name="Stripe Fees"
-                    type="natural"
-                    fill="var(--color-stripeFeesCents)"
-                    fillOpacity={0.12}
+                    type="linear"
                     stroke="var(--color-stripeFeesCents)"
+                    strokeWidth={2.25}
+                    dot={renderChartDot}
+                    activeDot={renderActiveChartDot}
                   />
-                  <Area
+                  <Line
                     dataKey="refundedCents"
                     name="Refunds"
-                    type="natural"
-                    fill="var(--color-refundedCents)"
-                    fillOpacity={0.14}
+                    type="linear"
                     stroke="var(--color-refundedCents)"
+                    strokeWidth={2.25}
+                    dot={renderChartDot}
+                    activeDot={renderActiveChartDot}
                   />
                   <ChartLegend content={<ChartLegendContent />} />
-                </AreaChart>
+                </LineChart>
               </ChartContainer>
             )}
           </div>
