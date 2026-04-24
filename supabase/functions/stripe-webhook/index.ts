@@ -41,20 +41,29 @@ const resolvePlanMetadata = (priceId?: string | null) => {
 const createAdminNotification = async (
   supabaseClient: ReturnType<typeof createClient>,
   notification: {
+    type?: "subscription_changed" | "payment_issue";
     title: string;
     message: string;
     accountId?: string | null;
+    externalEventId?: string | null;
     metadata?: Record<string, unknown>;
   },
 ) => {
   const { error } = await supabaseClient.from("admin_notifications" as any).insert({
-    type: "subscription_changed",
+    type: notification.type ?? "subscription_changed",
     title: notification.title,
     message: notification.message,
     account_id: notification.accountId ?? null,
+    external_event_id: notification.externalEventId ?? null,
     metadata: notification.metadata ?? {},
   });
-  if (error) logStep("Admin notification insert failed", { error: error.message });
+  if (error) {
+    if (notification.externalEventId && error.code === "23505") {
+      logStep("Admin notification already exists", { externalEventId: notification.externalEventId });
+      return;
+    }
+    logStep("Admin notification insert failed", { error: error.message });
+  }
 };
 
 const getAccountForStripeCustomer = async (
@@ -67,6 +76,66 @@ const getAccountForStripeCustomer = async (
     .eq("stripe_customer_id", customerId)
     .maybeSingle();
   return data || null;
+};
+
+const getStripeCustomerContact = async (
+  stripe: Stripe,
+  customerId?: string | null,
+) => {
+  if (!customerId) return { email: null, name: null };
+
+  try {
+    const customer = await stripe.customers.retrieve(customerId);
+    if ("deleted" in customer && customer.deleted) return { email: null, name: null };
+    return {
+      email: customer.email ?? null,
+      name: customer.name ?? null,
+    };
+  } catch (error) {
+    logStep("Failed retrieving Stripe customer contact", { customerId, error: String(error) });
+    return { email: null, name: null };
+  }
+};
+
+const createPaymentIssueNotification = async (
+  stripe: Stripe,
+  supabaseClient: ReturnType<typeof createClient>,
+  notification: {
+    eventId: string;
+    customerId?: string | null;
+    customerEmail?: string | null;
+    customerName?: string | null;
+    amount?: number | null;
+    date?: string | null;
+    status?: string | null;
+    stripeInvoiceId?: string | null;
+    paymentIntentId?: string | null;
+  },
+) => {
+  const customerId = notification.customerId ?? null;
+  const account = customerId ? await getAccountForStripeCustomer(supabaseClient, customerId) : null;
+  const customerContact = (!notification.customerEmail || !notification.customerName) && customerId
+    ? await getStripeCustomerContact(stripe, customerId)
+    : { email: null, name: null };
+
+  await createAdminNotification(supabaseClient, {
+    type: "payment_issue",
+    title: "Payment Failed",
+    message: "A customer payment failed. Action may be required.",
+    accountId: account?.id || null,
+    externalEventId: notification.eventId,
+    metadata: {
+      stripeEventId: notification.eventId,
+      customerEmail: notification.customerEmail ?? customerContact.email,
+      customerName: notification.customerName ?? customerContact.name,
+      amount: typeof notification.amount === "number" ? notification.amount : null,
+      date: notification.date ?? new Date().toISOString(),
+      stripeCustomerId: customerId,
+      stripeInvoiceId: notification.stripeInvoiceId ?? null,
+      paymentIntentId: notification.paymentIntentId ?? null,
+      status: notification.status ?? null,
+    },
+  });
 };
 
 serve(async (req) => {
@@ -241,6 +310,58 @@ serve(async (req) => {
           message: `${account?.name || "A customer"} subscription was canceled in Stripe.`,
           accountId: account?.id || null,
           metadata: { eventId: event.id, customerId, subscriptionId: sub.id, status: sub.status },
+        });
+        break;
+      }
+
+      case "charge.failed": {
+        if (!event.livemode) break;
+
+        const charge = event.data.object as Stripe.Charge;
+        await createPaymentIssueNotification(stripe, supabaseClient, {
+          eventId: event.id,
+          customerId: typeof charge.customer === "string" ? charge.customer : null,
+          customerEmail: charge.billing_details?.email ?? null,
+          customerName: charge.billing_details?.name ?? null,
+          amount: charge.amount ?? null,
+          date: new Date(charge.created * 1000).toISOString(),
+          status: charge.status ?? null,
+          stripeInvoiceId: typeof charge.invoice === "string" ? charge.invoice : null,
+          paymentIntentId: typeof charge.payment_intent === "string" ? charge.payment_intent : null,
+        });
+        break;
+      }
+
+      case "invoice.payment_failed": {
+        if (!event.livemode) break;
+
+        const invoice = event.data.object as Stripe.Invoice;
+        await createPaymentIssueNotification(stripe, supabaseClient, {
+          eventId: event.id,
+          customerId: typeof invoice.customer === "string" ? invoice.customer : null,
+          customerEmail: (invoice as any).customer_email ?? null,
+          customerName: (invoice as any).customer_name ?? null,
+          amount: invoice.amount_due ?? invoice.amount_paid ?? null,
+          date: new Date(invoice.created * 1000).toISOString(),
+          status: invoice.status ?? null,
+          stripeInvoiceId: invoice.id,
+          paymentIntentId: typeof (invoice as any).payment_intent === "string" ? (invoice as any).payment_intent : null,
+        });
+        break;
+      }
+
+      case "payment_intent.payment_failed": {
+        if (!event.livemode) break;
+
+        const paymentIntent = event.data.object as Stripe.PaymentIntent;
+        await createPaymentIssueNotification(stripe, supabaseClient, {
+          eventId: event.id,
+          customerId: typeof paymentIntent.customer === "string" ? paymentIntent.customer : null,
+          customerEmail: paymentIntent.receipt_email ?? null,
+          amount: paymentIntent.amount ?? null,
+          date: new Date(paymentIntent.created * 1000).toISOString(),
+          status: paymentIntent.status ?? null,
+          paymentIntentId: paymentIntent.id,
         });
         break;
       }

@@ -19,6 +19,11 @@ const normalizeEmail = (value: unknown) => clean(value).toLowerCase();
 const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 const isUuid = (value: string) =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+const STRIPE_REPORTING_EXCLUDED_EMAILS = new Set([
+  "jpshirey5@gmail.com",
+  "jayshirey14@gmail.com",
+]);
+const REPORTING_START_DATE = new Date("2026-04-24T00:00:00.000Z");
 
 const logStep = (step: string, details?: Record<string, unknown>) => {
   console.log(`[ADMIN-API] ${step}${details ? ` - ${JSON.stringify(details)}` : ""}`);
@@ -321,6 +326,65 @@ const getActiveDeletionRequestsForAccounts = async (ctx: AdminContext, accountId
     if (!map.has(request.account_id)) map.set(request.account_id, request);
   }
   return map;
+};
+
+const getStripeReportingExclusions = async (supabaseAdmin: ReturnType<typeof createClient>) => {
+  const [{ data: accounts, error: accountsError }, { data: owners, error: ownersError }] = await Promise.all([
+    supabaseAdmin
+      .from("accounts")
+      .select("id, name, stripe_customer_id, stripe_subscription_id"),
+    supabaseAdmin
+      .from("account_members")
+      .select("account_id, user_id, role")
+      .eq("role", "owner"),
+  ]);
+
+  if (accountsError) throw new Error(accountsError.message);
+  if (ownersError) throw new Error(ownersError.message);
+
+  const ownerUserIds = Array.from(new Set((owners || []).map((owner: any) => owner.user_id).filter(Boolean)));
+  const { data: ownerProfiles, error: ownerProfilesError } = ownerUserIds.length
+    ? await supabaseAdmin
+        .from("profiles")
+        .select("id, email")
+        .in("id", ownerUserIds)
+    : { data: [] as any[], error: null };
+
+  if (ownerProfilesError) throw new Error(ownerProfilesError.message);
+
+  const ownerEmailByUserId = new Map<string, string>();
+  for (const profile of ownerProfiles || []) {
+    const ownerEmail = normalizeEmail(profile.email);
+    if (profile.id && ownerEmail) {
+      ownerEmailByUserId.set(profile.id, ownerEmail);
+    }
+  }
+
+  const ownerEmailByAccountId = new Map<string, string>();
+  for (const owner of owners || []) {
+    const ownerEmail = ownerEmailByUserId.get(owner.user_id) || "";
+    if (owner.account_id && ownerEmail && !ownerEmailByAccountId.has(owner.account_id)) {
+      ownerEmailByAccountId.set(owner.account_id, ownerEmail);
+    }
+  }
+
+  const customerIds = new Set<string>();
+  const subscriptionIds = new Set<string>();
+
+  for (const account of accounts || []) {
+    const ownerEmail = ownerEmailByAccountId.get(account.id) || "";
+    const shouldExclude = STRIPE_REPORTING_EXCLUDED_EMAILS.has(ownerEmail);
+
+    if (!shouldExclude) continue;
+
+    const customerId = clean(account.stripe_customer_id);
+    const subscriptionId = clean(account.stripe_subscription_id);
+
+    if (customerId) customerIds.add(customerId);
+    if (subscriptionId) subscriptionIds.add(subscriptionId);
+  }
+
+  return { customerIds, subscriptionIds };
 };
 
 const getNextInvoiceSummary = async (stripe: Stripe | null, account: any) => {
@@ -673,27 +737,28 @@ const listRefundsInRange = async (
   return refunds;
 };
 
-const listBalanceTransactionsInRange = async (
+const listSucceededChargesInRange = async (
   stripe: Stripe,
   startUnix: number,
   endUnix: number,
 ) => {
-  const transactions: Stripe.BalanceTransaction[] = [];
+  const charges: Stripe.Charge[] = [];
   let startingAfter: string | undefined;
 
   for (let page = 0; page < 20; page += 1) {
-    const response = await stripe.balanceTransactions.list({
+    const response = await stripe.charges.list({
       created: { gte: startUnix, lte: endUnix },
       limit: 100,
+      expand: ["data.balance_transaction"],
       ...(startingAfter ? { starting_after: startingAfter } : {}),
     });
 
-    transactions.push(...response.data);
+    charges.push(...response.data);
     if (!response.has_more || response.data.length === 0) break;
     startingAfter = response.data[response.data.length - 1].id;
   }
 
-  return transactions;
+  return charges;
 };
 
 const listActiveSubscriptions = async (stripe: Stripe) => {
@@ -731,7 +796,17 @@ const normalizeRecurringAmountToMonthly = (price: Stripe.Price, quantity = 1) =>
   return 0;
 };
 
-const overviewRevenue = async (_ctx: AdminContext, body: any) => {
+type RevenuePaymentRow = {
+  id: string;
+  created: number;
+  customerId: string;
+  currency: string | null;
+  grossAmount: number;
+  feeAmount: number;
+  netAmount: number;
+};
+
+const overviewRevenue = async (ctx: AdminContext, body: any) => {
   const days = Number(body?.days) || 30;
   const { start, end, buckets } = buildDailyBuckets(days);
   for (const bucket of Object.values(buckets)) {
@@ -766,14 +841,98 @@ const overviewRevenue = async (_ctx: AdminContext, body: any) => {
   }
 
   try {
-    const startUnix = Math.floor(start.getTime() / 1000);
+    const effectiveStart = start > REPORTING_START_DATE ? start : REPORTING_START_DATE;
+    const startUnix = Math.floor(effectiveStart.getTime() / 1000);
     const endUnix = Math.floor(end.getTime() / 1000);
-    const [invoices, refunds, balanceTransactions, subscriptions] = await Promise.all([
+    const [{ customerIds: excludedCustomerIds, subscriptionIds: excludedSubscriptionIds }, invoices, refunds, charges, subscriptions] = await Promise.all([
+      getStripeReportingExclusions(ctx.supabaseAdmin),
       listPaidInvoicesInRange(stripe, startUnix, endUnix),
       listRefundsInRange(stripe, startUnix, endUnix),
-      listBalanceTransactionsInRange(stripe, startUnix, endUnix),
+      listSucceededChargesInRange(stripe, startUnix, endUnix),
       listActiveSubscriptions(stripe),
     ]);
+
+    const includedSubscriptions = subscriptions.filter((subscription) => (
+      subscription.livemode === true &&
+      !excludedCustomerIds.has(clean(subscription.customer)) &&
+      !excludedSubscriptionIds.has(clean(subscription.id))
+    ));
+
+    const seenPaymentIds = new Set<string>();
+    const includedChargeIds = new Set<string>();
+    const paymentRows: RevenuePaymentRow[] = [];
+
+    const addPaymentRowFromCharge = (charge: Stripe.Charge | null, source: "invoice" | "charge") => {
+      if (!charge) return;
+      if (charge.livemode !== true) return;
+      if (charge.status !== "succeeded") return;
+      if (new Date(charge.created * 1000) < REPORTING_START_DATE) return;
+
+      const customerId = clean(charge.customer);
+      if (!customerId || excludedCustomerIds.has(customerId)) return;
+
+      const paymentId = clean(charge.id);
+      if (!paymentId || seenPaymentIds.has(paymentId)) return;
+
+      const rawBalanceTransaction = charge.balance_transaction as Stripe.BalanceTransaction | string | null;
+      const balanceTransaction = rawBalanceTransaction && typeof rawBalanceTransaction === "object" ? rawBalanceTransaction : null;
+      if (!balanceTransaction) {
+        logStep("Skipping revenue charge without expanded balance transaction", {
+          chargeId: paymentId,
+          source,
+        });
+        return;
+      }
+      if (balanceTransaction.livemode !== true) return;
+
+      seenPaymentIds.add(paymentId);
+      includedChargeIds.add(paymentId);
+
+      paymentRows.push({
+        id: paymentId,
+        created: charge.created,
+        customerId,
+        currency: charge.currency || balanceTransaction.currency || null,
+        grossAmount: balanceTransaction.amount || 0,
+        feeAmount: balanceTransaction.fee || 0,
+        netAmount: balanceTransaction.net || 0,
+      });
+    };
+
+    const includedInvoices = invoices.filter((invoice) => (
+      invoice.livemode === true &&
+      invoice.status === "paid" &&
+      !excludedCustomerIds.has(clean(invoice.customer)) &&
+      new Date(invoice.created * 1000) >= REPORTING_START_DATE
+    ));
+
+    for (const invoice of includedInvoices) {
+      const chargeId = clean((invoice as any).charge);
+      if (!chargeId) continue;
+
+      try {
+        const charge = await stripe.charges.retrieve(chargeId, { expand: ["balance_transaction"] });
+        addPaymentRowFromCharge(charge, "invoice");
+      } catch (error) {
+        logStep("Failed retrieving invoice charge for revenue", {
+          invoiceId: invoice.id,
+          chargeId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    for (const charge of charges) {
+      if (clean(charge.invoice)) continue;
+      addPaymentRowFromCharge(charge, "charge");
+    }
+
+    const includedRefunds = refunds.filter((refund) => {
+      if (refund.livemode !== true) return false;
+      if (new Date(refund.created * 1000) < REPORTING_START_DATE) return false;
+      const refundChargeId = clean((refund as any).charge);
+      return Boolean(refundChargeId && includedChargeIds.has(refundChargeId));
+    });
 
     const currencies = new Set<string>();
     let grossRevenueCents = 0;
@@ -782,16 +941,19 @@ const overviewRevenue = async (_ctx: AdminContext, body: any) => {
     let netAfterFeesCents = 0;
     let currentMrrCents = 0;
 
-    for (const invoice of invoices) {
-      const key = dateKey(new Date(invoice.created * 1000));
-      const amount = invoice.amount_paid || 0;
+    for (const paymentRow of paymentRows) {
+      const key = dateKey(new Date(paymentRow.created * 1000));
       if (!buckets[key]) continue;
-      buckets[key].grossRevenueCents += amount;
-      grossRevenueCents += amount;
-      if (invoice.currency) currencies.add(invoice.currency);
+      buckets[key].grossRevenueCents += paymentRow.grossAmount;
+      buckets[key].stripeFeesCents += paymentRow.feeAmount;
+      buckets[key].netAfterFeesCents += paymentRow.netAmount;
+      grossRevenueCents += paymentRow.grossAmount;
+      stripeFeesCents += paymentRow.feeAmount;
+      netAfterFeesCents += paymentRow.netAmount;
+      if (paymentRow.currency) currencies.add(paymentRow.currency);
     }
 
-    for (const refund of refunds) {
+    for (const refund of includedRefunds) {
       const key = dateKey(new Date(refund.created * 1000));
       const amount = refund.amount || 0;
       if (!buckets[key]) continue;
@@ -800,17 +962,7 @@ const overviewRevenue = async (_ctx: AdminContext, body: any) => {
       if (refund.currency) currencies.add(refund.currency);
     }
 
-    for (const transaction of balanceTransactions) {
-      const key = dateKey(new Date(transaction.created * 1000));
-      if (!buckets[key]) continue;
-      buckets[key].stripeFeesCents += transaction.fee || 0;
-      buckets[key].netAfterFeesCents += transaction.net || 0;
-      stripeFeesCents += transaction.fee || 0;
-      netAfterFeesCents += transaction.net || 0;
-      if (transaction.currency) currencies.add(transaction.currency);
-    }
-
-    for (const subscription of subscriptions) {
+    for (const subscription of includedSubscriptions) {
       for (const item of subscription.items?.data || []) {
         const price = item.price;
         currentMrrCents += normalizeRecurringAmountToMonthly(price, item.quantity || 1);
@@ -833,9 +985,9 @@ const overviewRevenue = async (_ctx: AdminContext, body: any) => {
         netRevenueCents: grossRevenueCents - refundedCents,
         netAfterFeesCents,
         currentMrrCents: Math.round(currentMrrCents),
-        paidInvoiceCount: invoices.length,
-        balanceTransactionCount: balanceTransactions.length,
-        activeSubscriptionCount: subscriptions.length,
+        paidInvoiceCount: includedInvoices.length,
+        balanceTransactionCount: paymentRows.length,
+        activeSubscriptionCount: includedSubscriptions.length,
         currency,
         mixedCurrencies: currencies.size > 1,
       },
@@ -2162,7 +2314,9 @@ const billingList = async (ctx: AdminContext) => {
     .select("*")
     .order("updated_at", { ascending: false })
     .limit(200);
-  return { items: accounts || [] };
+  return {
+    items: accounts || [],
+  };
 };
 
 const refundInvoiceCharge = async (ctx: AdminContext, body: any) => {
