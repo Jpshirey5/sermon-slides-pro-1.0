@@ -34,7 +34,11 @@ import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { logError, trackEvent } from "@/lib/monitoring";
 import ProductTour, { type ProductTourStep } from "@/components/ProductTour";
-import { consumeProductTourCompletion } from "@/lib/product-tour";
+import {
+  consumeProductTourCompletion,
+  shouldDeferDashboardMessages,
+  subscribeToDeferredDashboardMessages,
+} from "@/lib/product-tour";
 import { ExportOptionsModal } from "@/components/ExportOptionsModal";
 import { exportPresentationsAsZip } from "@/lib/bulk-export";
 import { getEnterpriseCampusFilterOptions, type CampusFilterOption } from "@/lib/campuses";
@@ -110,6 +114,7 @@ const Dashboard = () => {
   const [supportOrgName, setSupportOrgName] = useState("");
   const [globalMessagesQueue, setGlobalMessagesQueue] = useState<any[]>([]);
   const [dismissingGlobalMessage, setDismissingGlobalMessage] = useState(false);
+  const [deferGlobalMessages, setDeferGlobalMessages] = useState(false);
   const isEnterpriseAccount = subscription.plan_tier === "enterprise";
   const latestPresentationLoadIdRef = useRef(0);
   const activeGlobalMessage = globalMessagesQueue[0] || null;
@@ -126,6 +131,16 @@ const Dashboard = () => {
       setSearchParams({}, { replace: true });
     }
   }, [checkSubscription, searchParams, setSearchParams]);
+
+  useEffect(() => {
+    if (!user) {
+      setDeferGlobalMessages(false);
+      return;
+    }
+
+    setDeferGlobalMessages(shouldDeferDashboardMessages(user.id));
+    return subscribeToDeferredDashboardMessages(user.id, setDeferGlobalMessages);
+  }, [user]);
 
   const loadDeletionRequestState = useCallback(async () => {
     if (!accountId || !user) {
@@ -157,7 +172,7 @@ const Dashboard = () => {
   }, [loadDeletionRequestState]);
 
   const loadGlobalMessages = useCallback(async () => {
-    if (!user || !accountId) {
+    if (!user || !accountId || deferGlobalMessages) {
       setGlobalMessagesQueue([]);
       return;
     }
@@ -203,7 +218,7 @@ const Dashboard = () => {
       logError(error, { scope: "dashboard_load_global_messages" });
       setGlobalMessagesQueue([]);
     }
-  }, [accountId, user]);
+  }, [accountId, deferGlobalMessages, user]);
 
   useEffect(() => {
     void loadGlobalMessages();
@@ -774,7 +789,7 @@ const Dashboard = () => {
                 <div>
                   <p className="font-medium text-foreground">Beta user</p>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Thank you for making Sermon Slide Pro a better platform. {betaCountdown}.
+                    Thank you for making Sermon Slide Pro a better platform. We appreciate your feedback and support.
                   </p>
                 </div>
               </div>

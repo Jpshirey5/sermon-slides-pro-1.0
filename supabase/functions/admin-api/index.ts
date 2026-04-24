@@ -466,9 +466,10 @@ const cancelAndDeleteStripeCustomer = async (
 };
 
 const dateKey = (date: Date) => date.toISOString().slice(0, 10);
+const normalizeOverviewRangeDays = (days: number) => Math.min(Math.max(days, 1), 90);
 
 const buildDailyBuckets = (days: number) => {
-  const safeDays = Math.min(Math.max(days, 7), 90);
+  const safeDays = normalizeOverviewRangeDays(days);
   const end = new Date();
   end.setUTCHours(23, 59, 59, 999);
   const start = new Date(end);
@@ -617,7 +618,7 @@ const overviewActivity = async (ctx: AdminContext, body: any) => {
   }
 
   return {
-    rangeDays: Math.min(Math.max(days, 7), 90),
+    rangeDays: normalizeOverviewRangeDays(days),
     items: Object.values(buckets),
     notes: {
       userDeletions: "User deletion history is counted from admin audit logs going forward; older user deletions may be unavailable.",
@@ -745,7 +746,7 @@ const overviewRevenue = async (_ctx: AdminContext, body: any) => {
   const emptyItems = Object.values(buckets);
   if (!stripe) {
     return {
-      rangeDays: Math.min(Math.max(days, 7), 90),
+      rangeDays: normalizeOverviewRangeDays(days),
       items: emptyItems,
       summary: {
         grossRevenueCents: 0,
@@ -823,7 +824,7 @@ const overviewRevenue = async (_ctx: AdminContext, body: any) => {
 
     const currency = Array.from(currencies)[0] || "usd";
     return {
-      rangeDays: Math.min(Math.max(days, 7), 90),
+      rangeDays: normalizeOverviewRangeDays(days),
       items: Object.values(buckets),
       summary: {
         grossRevenueCents,
@@ -843,7 +844,7 @@ const overviewRevenue = async (_ctx: AdminContext, body: any) => {
     const message = error instanceof Error ? error.message : String(error);
     logStep("Stripe revenue overview failed", { error: message });
     return {
-      rangeDays: Math.min(Math.max(days, 7), 90),
+      rangeDays: normalizeOverviewRangeDays(days),
       items: emptyItems,
       summary: {
         grossRevenueCents: 0,

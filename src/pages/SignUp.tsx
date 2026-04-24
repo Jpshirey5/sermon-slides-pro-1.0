@@ -21,7 +21,7 @@ import { isPasswordStrong } from "@/lib/password";
 import SubscriptionPlanPicker from "@/components/SubscriptionPlanPicker";
 import { getPlanById, getPlanByPriceId, type SubscriptionPlanId } from "@/lib/subscriptionPlans";
 import { logError, trackEvent } from "@/lib/monitoring";
-import { startProductTour } from "@/lib/product-tour";
+import { markDeferredDashboardMessages, startProductTour } from "@/lib/product-tour";
 import { buildAppUrl } from "@/lib/site-url";
 
 const US_STATES = [
@@ -269,6 +269,7 @@ const SignUp = () => {
 
       await supabase.auth.refreshSession();
       startProductTour(invitedUser.id);
+      markDeferredDashboardMessages(invitedUser.id);
       trackEvent("invite_completion_succeeded", { invited: true });
       showNotice(
         "Account ready",
@@ -361,7 +362,10 @@ const SignUp = () => {
         );
       } else if (inviteValid) {
         const newUserId = signUpData.user?.id;
-        if (newUserId) startProductTour(newUserId);
+        if (newUserId) {
+          startProductTour(newUserId);
+          markDeferredDashboardMessages(newUserId);
+        }
         trackEvent("signup_succeeded", { invited: true });
         if (signUpData?.session) {
           showNotice("Invite accepted", "Your invite has been accepted. Continue to your dashboard.", () => navigate("/dashboard"));

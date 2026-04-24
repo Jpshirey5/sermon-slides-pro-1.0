@@ -32,7 +32,6 @@ import {
   isDeletionCancelable,
   type AccountDeletionRequest,
 } from "@/lib/account-deletion";
-import { formatBetaTrialCountdown } from "@/lib/beta";
 
 interface TeamMember {
   id: string;
@@ -656,7 +655,6 @@ const Account = () => {
   const canCreateMoreCampuses = campuses.length < 5;
   const primaryCampus = campuses.find((campus) => campus.isPrimary) || null;
   const deletionCancelable = isDeletionCancelable(activeDeletionRequest);
-  const betaCountdown = formatBetaTrialCountdown(subscription.beta_trial_days_remaining);
   const ownerTeamMember = teamMembers.find((member) => member.role === "owner") || null;
   const enterpriseOwnerDefaultTranslation =
     ownerTeamMember?.default_translation || null;
@@ -949,7 +947,7 @@ const Account = () => {
                 <div>
                   <p className="font-medium text-foreground">Beta user</p>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Thank you for making Sermon Slide Pro a better platform. {betaCountdown}.
+                    Thank you for making Sermon Slide Pro a better platform. We appreciate your feedback and support.
                   </p>
                 </div>
               </div>
