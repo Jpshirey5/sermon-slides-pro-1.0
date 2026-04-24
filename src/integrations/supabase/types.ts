@@ -170,6 +170,7 @@ export type Database = {
           account_id: string | null
           created_at: string
           created_by_admin_id: string | null
+          external_event_id: string | null
           id: string
           message: string
           metadata: Json
@@ -182,6 +183,7 @@ export type Database = {
           account_id?: string | null
           created_at?: string
           created_by_admin_id?: string | null
+          external_event_id?: string | null
           id?: string
           message: string
           metadata?: Json
@@ -194,6 +196,7 @@ export type Database = {
           account_id?: string | null
           created_at?: string
           created_by_admin_id?: string | null
+          external_event_id?: string | null
           id?: string
           message?: string
           metadata?: Json
