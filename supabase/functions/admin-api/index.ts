@@ -600,7 +600,11 @@ const overview = async (ctx: AdminContext) => {
   ] = await Promise.all([
     ctx.supabaseAdmin.from("profiles").select("id", { count: "exact", head: true }),
     ctx.supabaseAdmin.from("accounts").select("id", { count: "exact", head: true }),
-    ctx.supabaseAdmin.from("accounts").select("id", { count: "exact", head: true }).in("subscription_status", ["active", "trialing"]),
+    ctx.supabaseAdmin
+      .from("accounts")
+      .select("id", { count: "exact", head: true })
+      .in("subscription_status", ["active", "trialing"])
+      .neq("name", "Bell Shoals Church"),
     ctx.supabaseAdmin.from("accounts").select("id", { count: "exact", head: true }).eq("subscription_status", "canceled"),
     ctx.supabaseAdmin.from("accounts").select("id", { count: "exact", head: true }).eq("subscription_status", "past_due"),
     ctx.supabaseAdmin.from("support_requests").select("id", { count: "exact", head: true }).eq("status", "active"),
