@@ -8,6 +8,8 @@ export interface ProductTourState {
   stepIndex: number;
 }
 
+const PRODUCT_TOUR_DEFERRED_MESSAGES_EVENT = "product-tour-deferred-messages-changed";
+
 function getProductTourStorageKey(userId: string) {
   return `product_tour:${userId}`;
 }
@@ -18,6 +20,17 @@ function getProductTourCompletionKey(userId: string) {
 
 function getProductTourCreatePromptKey(userId: string) {
   return `product_tour_create_prompt:${userId}`;
+}
+
+function getDeferredDashboardMessagesKey(userId: string) {
+  return `product_tour_deferred_messages:${userId}`;
+}
+
+function notifyDeferredDashboardMessagesChanged(userId: string, deferred: boolean) {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(PRODUCT_TOUR_DEFERRED_MESSAGES_EVENT, {
+    detail: { userId, deferred },
+  }));
 }
 
 export function readProductTourState(userId: string): ProductTourState | null {
@@ -58,6 +71,7 @@ export function completeProductTour(userId: string) {
     stage: "editor",
     stepIndex: 0,
   });
+  clearDeferredDashboardMessages(userId);
 }
 
 export function markProductTourCompletion(userId: string) {
@@ -98,4 +112,42 @@ export function skipProductTour(userId: string, stage: ProductTourStage) {
     stage,
     stepIndex: 0,
   });
+  clearDeferredDashboardMessages(userId);
+}
+
+export function markDeferredDashboardMessages(userId: string) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(getDeferredDashboardMessagesKey(userId), "true");
+  notifyDeferredDashboardMessagesChanged(userId, true);
+}
+
+export function shouldDeferDashboardMessages(userId: string) {
+  if (typeof window === "undefined") return false;
+  return localStorage.getItem(getDeferredDashboardMessagesKey(userId)) === "true";
+}
+
+export function clearDeferredDashboardMessages(userId: string) {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(getDeferredDashboardMessagesKey(userId));
+  notifyDeferredDashboardMessagesChanged(userId, false);
+}
+
+export function subscribeToDeferredDashboardMessages(
+  userId: string,
+  callback: (deferred: boolean) => void,
+) {
+  if (typeof window === "undefined") {
+    return () => undefined;
+  }
+
+  const handleChange = (event: Event) => {
+    const customEvent = event as CustomEvent<{ userId?: string; deferred?: boolean }>;
+    if (customEvent.detail?.userId !== userId) return;
+    callback(Boolean(customEvent.detail?.deferred));
+  };
+
+  window.addEventListener(PRODUCT_TOUR_DEFERRED_MESSAGES_EVENT, handleChange);
+  return () => {
+    window.removeEventListener(PRODUCT_TOUR_DEFERRED_MESSAGES_EVENT, handleChange);
+  };
 }

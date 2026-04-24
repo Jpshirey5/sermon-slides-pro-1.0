@@ -173,14 +173,14 @@ const AdminOverview = () => {
               <p className="text-sm text-muted-foreground">Take-home revenue after Stripe fees, plus current subscription run-rate.</p>
             </div>
             <div className="flex shrink-0 items-center gap-2 whitespace-nowrap">
-              {[7, 30, 90].map((days) => (
+              {[1, 7, 30, 90].map((days) => (
                 <Button
                   key={days}
                   size="sm"
                   variant={rangeDays === days ? "hero" : "outline"}
                   onClick={() => setRangeDays(days)}
                 >
-                  {days} days
+                  {days} day{days === 1 ? "" : "s"}
                 </Button>
               ))}
             </div>
