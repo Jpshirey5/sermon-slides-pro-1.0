@@ -1,6 +1,7 @@
 export const PENDING_SERMON_KEY = "pending_payment_sermon_id";
 export const PENDING_EXPORT_CONTEXT_KEY = "pending_payment_context_v1";
 export const PENDING_EXPORT_SNAPSHOT_KEY = "pending_payment_snapshot_v1";
+export const EXPORT_UNLOCK_SESSION_PREFIX = "export_unlock_session:";
 const WINDOW_PENDING_EXPORT_PREFIX = "__ssp_pending_export__:";
 
 function trySetStorage(storage: Storage, key: string, value: string) {
@@ -119,4 +120,20 @@ export function clearPendingExportContext() {
   if (window.name.startsWith(WINDOW_PENDING_EXPORT_PREFIX)) {
     window.name = "";
   }
+}
+
+export function getVerifiedExportUnlockSession(sermonId: string): string | null {
+  if (typeof window === "undefined" || !sermonId) return null;
+  return localStorage.getItem(`${EXPORT_UNLOCK_SESSION_PREFIX}${sermonId}`);
+}
+
+export function setVerifiedExportUnlockSession(sermonId: string, sessionId: string) {
+  if (typeof window === "undefined" || !sermonId || !sessionId) return;
+  localStorage.setItem(`${EXPORT_UNLOCK_SESSION_PREFIX}${sermonId}`, sessionId);
+}
+
+export function clearVerifiedExportUnlockSession(sermonId: string) {
+  if (typeof window === "undefined" || !sermonId) return;
+  localStorage.removeItem(`${EXPORT_UNLOCK_SESSION_PREFIX}${sermonId}`);
+  localStorage.removeItem(`export_unlocked:${sermonId}`);
 }

@@ -13,6 +13,15 @@ const PaymentSuccess = () => {
   useEffect(() => {
     const resolveAndRedirect = async () => {
       trackEvent("payment_success_viewed");
+      const checkoutSessionId = searchParams.get("session_id");
+      if (!checkoutSessionId) {
+        trackEvent("payment_restore_failed", { reason: "missing_session_id" });
+        setError(
+          "Payment succeeded, but the checkout confirmation was missing. Please contact support if you were charged."
+        );
+        return;
+      }
+
       const snapshot = getPendingExportSnapshot();
       const pendingSermonId =
         getPendingExportSermonId() ||
@@ -48,7 +57,7 @@ const PaymentSuccess = () => {
 
         if (presentation?.id) {
           trackEvent("payment_restore_succeeded", { restoredFrom: "existing_or_snapshot" });
-          navigate(`/editor/${presentation.id}?payment=success`, { replace: true });
+          navigate(`/editor/${presentation.id}?payment=success&session_id=${encodeURIComponent(checkoutSessionId)}`, { replace: true });
           return;
         }
       }
@@ -75,7 +84,7 @@ const PaymentSuccess = () => {
             await saveEditorSlides(restoredId, snapshot.slides);
           }
           trackEvent("payment_restore_succeeded", { restoredFrom: "snapshot_only" });
-          navigate(`/editor/${restoredId}?payment=success`, { replace: true });
+          navigate(`/editor/${restoredId}?payment=success&session_id=${encodeURIComponent(checkoutSessionId)}`, { replace: true });
           return;
         }
       }

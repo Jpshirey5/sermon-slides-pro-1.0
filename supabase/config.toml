@@ -13,7 +13,7 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.send-invite]
-verify_jwt = false
+verify_jwt = true
 
 [functions.esv-lookup]
 verify_jwt = false
@@ -22,6 +22,9 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.create-guest-checkout]
+verify_jwt = false
+
+[functions.verify-guest-checkout]
 verify_jwt = false
 
 [functions.get-checkout-email]

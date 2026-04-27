@@ -9,6 +9,45 @@ const corsHeaders = {
 
 const normalizeEmail = (value: string | null | undefined) => value?.trim().toLowerCase() || "";
 
+const json = (body: Record<string, unknown>, status = 200) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+
+const normalizeBaseUrl = (value: string | null | undefined) => {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    return `${url.protocol}//${url.host}`;
+  } catch {
+    return null;
+  }
+};
+
+const getSiteUrl = (req: Request, requestedSiteUrl: string | null | undefined) => {
+  const configuredSiteUrl =
+    normalizeBaseUrl(Deno.env.get("SITE_URL")) ||
+    normalizeBaseUrl(Deno.env.get("VITE_SITE_URL")) ||
+    "https://www.sermonslidepro.com";
+
+  const allowedOrigins = new Set([
+    configuredSiteUrl,
+    "http://localhost:8080",
+    "http://127.0.0.1:8080",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+  ]);
+
+  const candidates = [
+    normalizeBaseUrl(requestedSiteUrl),
+    normalizeBaseUrl(req.headers.get("origin")),
+    normalizeBaseUrl(req.headers.get("referer")),
+  ];
+
+  return candidates.find((candidate) => candidate && allowedOrigins.has(candidate)) || configuredSiteUrl;
+};
+
 const findAuthUserByEmail = async (
   supabaseAdmin: ReturnType<typeof createClient>,
   email: string,
@@ -40,31 +79,47 @@ const findAuthUserByEmail = async (
   return null;
 };
 
+const getAuthenticatedUser = async (req: Request, supabaseUrl: string, anonKey: string) => {
+  const authHeader = req.headers.get("Authorization");
+  if (!authHeader) throw new Error("No authorization header");
+
+  const token = authHeader.replace("Bearer ", "");
+  const supabaseAnon = createClient(supabaseUrl, anonKey, {
+    global: { headers: { Authorization: authHeader } },
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const { data, error } = await supabaseAnon.auth.getUser(token);
+  if (error || !data.user?.id) throw new Error("Authentication failed");
+  return data.user;
+};
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
+  if (req.method !== "POST") {
+    return json({ error: "Method not allowed" }, 405);
+  }
+
   try {
     const { email, token, site_url } = await req.json();
     const normalizedEmail = normalizeEmail(email);
+    const inviteToken = typeof token === "string" ? token.trim() : "";
 
-    if (!normalizedEmail || !token) {
-      return new Response(JSON.stringify({ error: "Missing email or token" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    if (!normalizedEmail || !inviteToken) {
+      return json({ error: "Missing email or token" }, 400);
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
-    if (!supabaseUrl || !serviceRoleKey) {
-      return new Response(JSON.stringify({ error: "Supabase admin invite configuration is missing" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    if (!supabaseUrl || !anonKey || !serviceRoleKey) {
+      return json({ error: "Supabase admin invite configuration is missing" }, 500);
     }
+
+    const authenticatedUser = await getAuthenticatedUser(req, supabaseUrl, anonKey);
 
     const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
       auth: {
@@ -73,22 +128,42 @@ serve(async (req) => {
       },
     });
 
-    const normalizeBaseUrl = (value: string | null | undefined) => {
-      if (!value) return null;
-      try {
-        const url = new URL(value);
-        return `${url.protocol}//${url.host}`;
-      } catch {
-        return null;
-      }
-    };
+    const { data: invite, error: inviteError } = await supabaseAdmin
+      .from("account_invites")
+      .select("id, account_id, email, token, expires_at")
+      .eq("token", inviteToken)
+      .maybeSingle();
 
-    const requestOrigin = normalizeBaseUrl(req.headers.get("origin"));
-    const refererOrigin = normalizeBaseUrl(req.headers.get("referer"));
-    const bodySiteUrl = normalizeBaseUrl(site_url);
-    const envSiteUrl = normalizeBaseUrl(Deno.env.get("SITE_URL"));
+    if (inviteError) {
+      console.error("Invite lookup failed:", inviteError);
+      return json({ error: "Could not verify invite" }, 500);
+    }
 
-    const siteUrl = bodySiteUrl || requestOrigin || refererOrigin || envSiteUrl || "http://localhost:8080";
+    if (!invite || normalizeEmail(invite.email) !== normalizedEmail) {
+      return json({ error: "Invite not found" }, 404);
+    }
+
+    if (new Date(invite.expires_at).getTime() <= Date.now()) {
+      return json({ error: "Invite has expired" }, 400);
+    }
+
+    const { data: requesterMembership, error: membershipError } = await supabaseAdmin
+      .from("account_members")
+      .select("role")
+      .eq("account_id", invite.account_id)
+      .eq("user_id", authenticatedUser.id)
+      .maybeSingle();
+
+    if (membershipError) {
+      console.error("Invite requester membership lookup failed:", membershipError);
+      return json({ error: "Could not verify invite permissions" }, 500);
+    }
+
+    if (requesterMembership?.role !== "owner") {
+      return json({ error: "Only the account owner can send team invites" }, 403);
+    }
+
+    const siteUrl = getSiteUrl(req, typeof site_url === "string" ? site_url : null);
     const redirectTo = `${siteUrl}/auth/confirm`;
     let refreshedExistingAuthUser = false;
 
@@ -147,28 +222,25 @@ serve(async (req) => {
     const { error } = await supabaseAdmin.auth.admin.inviteUserByEmail(normalizedEmail, {
       redirectTo,
       data: {
-        invite_token: token,
+        invite_token: inviteToken,
         signup_intent: "dashboard",
       },
     });
 
     if (error) {
       console.error("Supabase invite error:", error);
-      return new Response(JSON.stringify({ error: error.message || "Failed to send invite email" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return json({ error: error.message || "Failed to send invite email" }, 500);
     }
 
-    return new Response(
-      JSON.stringify({ success: true, refreshedExistingAuthUser }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    return json({ success: true, refreshedExistingAuthUser });
   } catch (error) {
     console.error("Send invite error:", error);
-    return new Response(
-      JSON.stringify({ error: "Internal server error" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    const message = error instanceof Error && error.message === "No authorization header"
+      ? "Authentication required"
+      : error instanceof Error && error.message === "Authentication failed"
+      ? "Authentication failed"
+      : "Internal server error";
+    const status = message === "Internal server error" ? 500 : 401;
+    return json({ error: message }, status);
   }
 });

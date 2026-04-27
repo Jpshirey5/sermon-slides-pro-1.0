@@ -9,7 +9,6 @@ interface PaymentPromptModalProps {
   isOpen: boolean;
   onClose: () => void;
   sermonId: string;
-  onPaymentComplete: () => void;
   prepareForCheckout?: () => Promise<void> | void;
 }
 
