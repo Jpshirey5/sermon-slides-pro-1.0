@@ -14,7 +14,14 @@ import { SubscriptionUpsellModal } from "@/components/SubscriptionUpsellModal";
 import { toast } from "sonner";
 import { getEditorPresentationState, SermonPresentation, saveEditorSlides as saveEditorSlidesToDb } from "@/lib/presentations";
 import { useAuth } from "@/contexts/AuthContext";
-import { clearPendingExportContext, setPendingExportSnapshot } from "@/lib/payPerExport";
+import {
+  clearPendingExportContext,
+  clearVerifiedExportUnlockSession,
+  getVerifiedExportUnlockSession,
+  setPendingExportSnapshot,
+  setVerifiedExportUnlockSession,
+} from "@/lib/payPerExport";
+import { verifyGuestCheckoutSession } from "@/lib/guest-checkout";
 import { getPlanById, type SubscriptionPlanId } from "@/lib/subscriptionPlans";
 import {
   deleteStoredBackground,
@@ -135,13 +142,14 @@ const SlideEditor = () => {
   // Payment state
   const [isExportUnlocked, setIsExportUnlocked] = useState(() => {
     if (id && id !== "new") {
-      return localStorage.getItem(`export_unlocked:${id}`) === "true";
+      return Boolean(getVerifiedExportUnlockSession(id));
     }
     return false;
   });
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   const [showUpsellModal, setShowUpsellModal] = useState(false);
+  const [isVerifyingUnlock, setIsVerifyingUnlock] = useState(false);
   
   // Undo/Redo history
   const [history, setHistory] = useState<SlideData[][]>([defaultSlides]);
@@ -150,44 +158,77 @@ const SlideEditor = () => {
   const isInitialLoadRef = useRef(true);
   const upsellSessionKey = id && id !== "new" ? `export_upsell_seen:${id}` : null;
 
+  useEffect(() => {
+    setIsExportUnlocked(Boolean(id && id !== "new" && getVerifiedExportUnlockSession(id)));
+  }, [id]);
+
   // Handle payment return from Stripe embedded checkout (fallback for return_url)
   useEffect(() => {
+    let cancelled = false;
     const paymentStatus = searchParams.get('payment');
+    const checkoutSessionId = searchParams.get('session_id');
     
     if (paymentStatus === 'success' && id && id !== "new") {
-      trackEvent("payment_unlock_applied", { sermonId: id });
-      localStorage.setItem(`export_unlocked:${id}`, "true");
-      setIsExportUnlocked(true);
-      searchParams.delete('payment');
-      searchParams.delete('session_id');
-      setSearchParams(searchParams, { replace: true });
-      const shouldShowUpsell =
-        !subscription.subscribed &&
-        upsellSessionKey &&
-        sessionStorage.getItem(upsellSessionKey) !== "true";
+      const verifyReturnedPayment = async () => {
+        if (!checkoutSessionId) {
+          toast.error("Payment verification failed", {
+            description: "The checkout confirmation was missing. Please contact support if you were charged.",
+          });
+          searchParams.delete('payment');
+          setSearchParams(searchParams, { replace: true });
+          return;
+        }
 
-      if (shouldShowUpsell) {
-        sessionStorage.setItem(upsellSessionKey, "true");
-        setShowUpsellModal(true);
-        setShowExportModal(false);
-      } else {
-        setShowExportModal(true);
-      }
-      toast.success('Payment successful! Your export is unlocked.');
+        setIsVerifyingUnlock(true);
+        const verified = await verifyGuestCheckoutSession(id, checkoutSessionId);
+        if (cancelled) return;
+        setIsVerifyingUnlock(false);
+        searchParams.delete('payment');
+        searchParams.delete('session_id');
+        setSearchParams(searchParams, { replace: true });
+
+        if (!verified) {
+          clearVerifiedExportUnlockSession(id);
+          setIsExportUnlocked(false);
+          trackEvent("payment_unlock_verification_failed", { sermonId: id });
+          toast.error("Payment verification failed", {
+            description: "We could not confirm that checkout payment for this presentation.",
+          });
+          return;
+        }
+
+        trackEvent("payment_unlock_applied", { sermonId: id });
+        setVerifiedExportUnlockSession(id, checkoutSessionId);
+        setIsExportUnlocked(true);
+        const shouldShowUpsell =
+          !subscription.subscribed &&
+          upsellSessionKey &&
+          sessionStorage.getItem(upsellSessionKey) !== "true";
+
+        if (shouldShowUpsell) {
+          sessionStorage.setItem(upsellSessionKey, "true");
+          setShowUpsellModal(true);
+          setShowExportModal(false);
+        } else {
+          setShowExportModal(true);
+        }
+        toast.success('Payment verified! Your export is unlocked.');
+      };
+
+      void verifyReturnedPayment().catch((error) => {
+        if (cancelled) return;
+        setIsVerifyingUnlock(false);
+        logError(error, { scope: "payment_unlock_verification", sermonId: id });
+        toast.error("Payment verification failed", {
+          description: "Please contact support if you were charged.",
+        });
+      });
     }
+
+    return () => {
+      cancelled = true;
+    };
   }, [searchParams, setSearchParams, id, subscription.subscribed, upsellSessionKey]);
-
-  // Handle successful payment from embedded checkout
-  const handlePaymentComplete = () => {
-    if (id && id !== "new") {
-      trackEvent("export_payment_completed", { sermonId: id });
-      localStorage.setItem(`export_unlocked:${id}`, "true");
-      setIsExportUnlocked(true);
-      setShowPaymentModal(false);
-      setShowExportModal(true);
-      toast.success('Payment successful! Choose your export format.');
-    }
-  };
 
   const handleDismissUpsell = () => {
     if (upsellSessionKey) {
@@ -547,7 +588,7 @@ const SlideEditor = () => {
     setDragOverIndex(null);
   }, []);
   // Handle export button click - check subscription and unlock status
-  const handleExportButtonClick = () => {
+  const handleExportButtonClick = async () => {
     if (subscription.subscribed) {
       trackEvent("export_modal_opened", { sermonId: id || "unknown", source: "subscription" });
       // Pro user — show export options immediately
@@ -555,24 +596,44 @@ const SlideEditor = () => {
       return;
     }
     
-    // Check localStorage for per-sermon unlock status
-    const isUnlocked = id && id !== "new" 
-      ? localStorage.getItem(`export_unlocked:${id}`) === "true"
-      : false;
+    const unlockSessionId = id && id !== "new" ? getVerifiedExportUnlockSession(id) : null;
       
-    if (isUnlocked) {
-      trackEvent("export_modal_opened", { sermonId: id || "unknown", source: "one_time_unlock" });
-      setShowExportModal(true);
-    } else {
-      if (!id || id === "new") {
-        trackEvent("export_blocked_unsaved");
-        toast.error("Please save your presentation first");
+    if (unlockSessionId && id && id !== "new") {
+      setIsVerifyingUnlock(true);
+      try {
+        const verified = await verifyGuestCheckoutSession(id, unlockSessionId);
+        setIsVerifyingUnlock(false);
+        if (verified) {
+          trackEvent("export_modal_opened", { sermonId: id || "unknown", source: "one_time_unlock" });
+          setIsExportUnlocked(true);
+          setShowExportModal(true);
+          return;
+        }
+
+        clearVerifiedExportUnlockSession(id);
+        setIsExportUnlocked(false);
+        toast.error("Export unlock could not be verified", {
+          description: "Please complete checkout to export this presentation.",
+        });
+      } catch (error) {
+        setIsVerifyingUnlock(false);
+        logError(error, { scope: "stored_payment_unlock_verification", sermonId: id });
+        toast.error("Payment verification is unavailable", {
+          description: "Please try again in a moment.",
+        });
         return;
       }
-      // Show payment modal
-      trackEvent("export_payment_prompt_opened", { sermonId: id });
-      setShowPaymentModal(true);
     }
+
+    if (!id || id === "new") {
+      trackEvent("export_blocked_unsaved");
+      toast.error("Please save your presentation first");
+      return;
+    }
+
+    // Show payment modal
+    trackEvent("export_payment_prompt_opened", { sermonId: id });
+    setShowPaymentModal(true);
   };
   
   const handleExport = async (format: "pptx" | "probundle") => {
@@ -1018,10 +1079,10 @@ const SlideEditor = () => {
                 <Play className="w-4 h-4" />
                 <span className="hidden sm:inline">Preview</span>
               </Button>
-              <Button variant="hero" disabled={isExporting} onClick={handleExportButtonClick} data-tour-id="editor-export-button">
+              <Button variant="hero" disabled={isExporting || isVerifyingUnlock} onClick={handleExportButtonClick} data-tour-id="editor-export-button">
                 <Download className="w-4 h-4" />
                 <span className="hidden sm:inline">
-                  {isExporting ? "Exporting..." : "Export"}
+                  {isExporting ? "Exporting..." : isVerifyingUnlock ? "Verifying..." : "Export"}
                 </span>
               </Button>
             </div>
@@ -1366,7 +1427,6 @@ const SlideEditor = () => {
         isOpen={showPaymentModal}
         onClose={() => setShowPaymentModal(false)}
         sermonId={id || ""}
-        onPaymentComplete={handlePaymentComplete}
         prepareForCheckout={prepareForCheckout}
       />
       
