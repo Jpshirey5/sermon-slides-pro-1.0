@@ -23,7 +23,7 @@ import {
   Loader2,
   Book,
 } from "lucide-react";
-import { getFriendlyScriptureError, lookupScripture } from "@/lib/scripture-api";
+import { formatScriptureReferenceForDisplay, getFriendlyScriptureError, lookupScripture } from "@/lib/scripture-api";
 import { savePresentation, type SermonPresentation } from "@/lib/presentations";
 import { useAuth } from "@/contexts/AuthContext";
 import { TRANSLATION_OPTIONS, DEFAULT_TRANSLATION } from "@/lib/translations";
@@ -421,7 +421,7 @@ const CreateSermon = () => {
         title: p.title,
         scriptures: p.type === "verse"
           ? p.scriptures.map((s) => ({
-              reference: s.reference,
+              reference: formatScriptureReferenceForDisplay(s.reference),
               text: s.text,
               verses: s.verses,
             }))
@@ -606,7 +606,7 @@ const CreateSermon = () => {
                 disabled={!title.trim() || !hasValidContent || (isEnterpriseAccount && (campusesLoading || !campusId))}
               >
                 <Wand2 className="w-4 h-4" />
-                <span className="hidden sm:inline">Generate Slides</span>
+                <span className="hidden sm:inline">Review Slides</span>
               </Button>
             </div>
           </div>
@@ -940,7 +940,7 @@ const CreateSermon = () => {
                 disabled={!title.trim() || !hasValidContent || (isEnterpriseAccount && (campusesLoading || !campusId))}
               >
                 <Wand2 className="w-5 h-5" />
-                Generate Slides
+                Review Slides
               </Button>
             </div>
           </form>
