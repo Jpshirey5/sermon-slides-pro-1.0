@@ -13,6 +13,13 @@ export function normalizeScriptureReference(reference: string): string {
   return reference.trim().replace(/\s+/g, " ");
 }
 
+export function formatScriptureReferenceForDisplay(reference: string): string {
+  const normalizedReference = normalizeScriptureReference(reference);
+  return normalizedReference.replace(/^(\d?\s*)([a-z])/, (_, prefix: string, firstLetter: string) => (
+    `${prefix}${firstLetter.toUpperCase()}`
+  ));
+}
+
 export function getFriendlyScriptureError(message?: string): string {
   const normalizedMessage = (message || "").toLowerCase();
 
