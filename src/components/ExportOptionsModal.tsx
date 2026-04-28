@@ -1,6 +1,7 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { FileText, Presentation, Download, Loader2 } from "lucide-react";
+import { formatEstimatedMinutes, type PresentationValueMetrics } from "@/lib/value-metrics";
 
 interface ExportOptionsModalProps {
   isOpen: boolean;
@@ -10,6 +11,7 @@ interface ExportOptionsModalProps {
   title?: string;
   description?: string;
   exportingLabel?: string;
+  valueMetrics?: PresentationValueMetrics;
 }
 
 export function ExportOptionsModal({
@@ -20,6 +22,7 @@ export function ExportOptionsModal({
   title = "Export Your Presentation",
   description = "Choose your preferred format to download.",
   exportingLabel = "Exporting...",
+  valueMetrics,
 }: ExportOptionsModalProps) {
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && !isExporting && onClose()}>
@@ -27,14 +30,24 @@ export function ExportOptionsModal({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Download className="w-5 h-5 text-primary" />
-            {title}
+            {valueMetrics ? "Your export is ready" : title}
           </DialogTitle>
           <DialogDescription>
-            {description}
+            {valueMetrics ? "Choose PowerPoint or ProPresenter for your existing presentation workflow." : description}
           </DialogDescription>
         </DialogHeader>
         
         <div className="space-y-3 py-4">
+          {valueMetrics && (
+            <div className="rounded-xl border border-primary/15 bg-primary/5 p-4 text-sm">
+              <p className="font-medium text-foreground">
+                You saved an estimated {formatEstimatedMinutes(valueMetrics.estimatedMinutesSaved)}.
+              </p>
+              <p className="text-muted-foreground">
+                {valueMetrics.slideCount} slides generated · {valueMetrics.scripturePassageCount} scripture passages inserted · Ready for PowerPoint or ProPresenter
+              </p>
+            </div>
+          )}
           <Button
             variant="outline"
             className="w-full justify-start h-auto py-4"

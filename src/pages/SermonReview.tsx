@@ -78,7 +78,7 @@ const createReviewBlock = (slides: SlideData[]): ReviewBlock => {
     type: isScripture ? "scripture" : "point",
     label: isScripture
       ? slides.length > 1
-        ? `${slides.length} verse slides`
+        ? `${slides.length} scripture slides`
         : "Verse"
       : "Point",
     title,
@@ -317,6 +317,14 @@ const SermonReview = () => {
         sermonId: savedId,
         slideCount: finalSlides.length,
         source: "review",
+      });
+      trackEvent("presentation_generated", {
+        sermonId: savedId,
+        slideCount: finalSlides.length,
+        scripturePassageCount: presentation.data?.points.reduce(
+          (count, point) => count + point.scriptures.filter((scripture) => Boolean(scripture.reference?.trim())).length,
+          0,
+        ) || 0,
       });
       navigate(`/editor/${savedId}`);
     } catch (error) {

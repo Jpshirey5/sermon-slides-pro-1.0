@@ -55,9 +55,8 @@ const Hero = () => {
             transition={{ duration: 0.5, delay: 0.2 }}
             className="text-lg sm:text-xl text-muted-foreground max-w-3xl mx-auto mb-10"
           >
-            A polished workspace for ministry teams. Generate, edit, and export
-            presentations to PowerPoint and ProPresenter with a clean,
-            modern flow.
+            Create the deck in minutes, then export it into your existing
+            PowerPoint or ProPresenter workflow.
           </motion.p>
 
           <motion.div
@@ -115,7 +114,7 @@ const Hero = () => {
                   Beautiful Presentation Slides
                 </h3>
                 <p className="text-muted-foreground">
-                  Ready for PowerPoint & ProPresenter
+                  Ready for PowerPoint or ProPresenter
                 </p>
               </div>
             </div>

@@ -1,6 +1,7 @@
 import Header from "@/components/landing/Header";
 import Hero from "@/components/landing/Hero";
 import Features from "@/components/landing/Features";
+import WorkflowComparison from "@/components/landing/WorkflowComparison";
 import Pricing from "@/components/landing/Pricing";
 import Testimonials from "@/components/landing/Testimonials";
 import CTA from "@/components/landing/CTA";
@@ -14,6 +15,7 @@ const Index = () => {
       <main>
         <Hero />
         <Features />
+        <WorkflowComparison />
         <Testimonials />
         <Pricing />
         <CTA />

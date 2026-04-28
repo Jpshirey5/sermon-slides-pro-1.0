@@ -26,6 +26,7 @@ import {
 import {
   getDashboardPresentationsPage,
   deletePresentation,
+  duplicateMostRecentPresentationAsStartingPoint,
   getPresentation,
   type DashboardPresentation,
   type DashboardPresentationFilters,
@@ -50,6 +51,7 @@ import {
   type AccountDeletionRequest,
 } from "@/lib/account-deletion";
 import { formatBetaTrialCountdown } from "@/lib/beta";
+import { formatEstimatedMinutes } from "@/lib/value-metrics";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -104,6 +106,7 @@ const Dashboard = () => {
   const [selectedPresentationIds, setSelectedPresentationIds] = useState<Set<string>>(new Set());
   const [showBulkExportModal, setShowBulkExportModal] = useState(false);
   const [isBulkExporting, setIsBulkExporting] = useState(false);
+  const [isDuplicatingLastPresentation, setIsDuplicatingLastPresentation] = useState(false);
   const [showTourCompletionPrompt, setShowTourCompletionPrompt] = useState(false);
   const [activeDeletionRequest, setActiveDeletionRequest] = useState<AccountDeletionRequest | null>(null);
   const [isAccountOwner, setIsAccountOwner] = useState(false);
@@ -546,6 +549,41 @@ const Dashboard = () => {
     }
   };
 
+  const handleUseLastSermon = async () => {
+    setIsDuplicatingLastPresentation(true);
+    try {
+      const newPresentationId = await duplicateMostRecentPresentationAsStartingPoint();
+
+      if (!newPresentationId) {
+        toast.error("No finished sermon deck found yet.", {
+          description: "Create your first presentation, then you can use it as a starting point next week.",
+        });
+        navigate("/dashboard/create", { state: createPresentationState });
+        return;
+      }
+
+      const copiedPresentation = await getPresentation(newPresentationId);
+      if (!copiedPresentation?.data) {
+        throw new Error("Copied presentation did not include form data");
+      }
+
+      trackEvent("weekly_shortcut_used");
+      toast.success("Last sermon copied for this week.");
+      navigate("/dashboard/create", {
+        state: {
+          editData: copiedPresentation.data,
+          editId: newPresentationId,
+          editCampusId: copiedPresentation.campusId || null,
+        },
+      });
+    } catch (error) {
+      logError(error, { scope: "dashboard_weekly_shortcut" });
+      toast.error("Could not copy your last sermon. Please try again.");
+    } finally {
+      setIsDuplicatingLastPresentation(false);
+    }
+  };
+
   const handleLoadMore = async () => {
     setLoadingMore(true);
     try {
@@ -849,10 +887,10 @@ const Dashboard = () => {
                 </h2>
                 <p className="text-muted-foreground text-sm mb-6 max-w-xl">
                   {hasPresentations
-                    ? "Jump back into the creator to build a new presentation with automatic scripture lookup and export-ready slides."
-                    : "Create, edit, and export presentation slides from one place whenever you are ready."}
+                    ? "Jump back into the creator to build a new deck before exporting to PowerPoint or ProPresenter."
+                    : "Create the deck in minutes, then export it into your existing workflow."}
                 </p>
-                <div className="flex justify-center w-full">
+                <div className="flex flex-col justify-center gap-3 sm:flex-row">
                   <Link to="/dashboard/create" state={createPresentationState}>
                     <Button
                       variant="hero"
@@ -865,6 +903,15 @@ const Dashboard = () => {
                       Create New Presentation
                     </Button>
                   </Link>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleUseLastSermon}
+                    disabled={isDuplicatingLastPresentation}
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    {isDuplicatingLastPresentation ? "Preparing..." : "Use Last Sermon As Starting Point"}
+                  </Button>
                 </div>
               </div>
             </div>
@@ -1065,9 +1112,19 @@ const Dashboard = () => {
                             {p.isDraft ? (
                               <span className="rounded-full bg-primary/10 px-2 py-0.5 font-medium text-primary">Draft</span>
                             ) : (
-                              <span className="flex items-center gap-1"><Layers className="w-3 h-3" /> {p.slides} slides</span>
+                              <>
+                                <span className="flex items-center gap-1"><Layers className="w-3 h-3" /> {p.slides} slides</span>
+                                {p.valueMetrics && (
+                                  <span className="flex items-center gap-1"><BookOpen className="w-3 h-3" /> {p.valueMetrics.scripturePassageCount} scriptures</span>
+                                )}
+                              </>
                             )}
                           </div>
+                          {!p.isDraft && p.valueMetrics && (
+                            <p className="mb-2 text-xs font-medium text-primary">
+                              You saved an estimated {formatEstimatedMinutes(p.valueMetrics.estimatedMinutesSaved)}
+                            </p>
+                          )}
                           <p className="text-xs text-muted-foreground"><Clock className="w-3 h-3 inline mr-1" />{p.lastModified}</p>
                         </div>
                       </div>

@@ -4,12 +4,15 @@ import { Download, CreditCard, Check, ArrowRight } from "lucide-react";
 import { setPendingExportContext } from "@/lib/payPerExport";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { trackEvent } from "@/lib/monitoring";
+import { formatEstimatedMinutes, type PresentationValueMetrics } from "@/lib/value-metrics";
 
 interface PaymentPromptModalProps {
   isOpen: boolean;
   onClose: () => void;
   sermonId: string;
   prepareForCheckout?: () => Promise<void> | void;
+  valueMetrics?: PresentationValueMetrics;
 }
 
 export function PaymentPromptModal({
@@ -17,11 +20,17 @@ export function PaymentPromptModal({
   onClose,
   sermonId,
   prepareForCheckout,
+  valueMetrics,
 }: PaymentPromptModalProps) {
   const handlePayClick = async () => {
     try {
       await prepareForCheckout?.();
       setPendingExportContext(sermonId);
+      trackEvent("guest_checkout_started", {
+        sermonId,
+        slideCount: valueMetrics?.slideCount || 0,
+        scripturePassageCount: valueMetrics?.scripturePassageCount || 0,
+      });
 
       const { data, error } = await supabase.functions.invoke("create-guest-checkout", {
         body: { origin: window.location.origin, sermonId },
@@ -46,14 +55,30 @@ export function PaymentPromptModal({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Download className="w-5 h-5 text-primary" />
-            Export Your Presentation
+            Your sermon deck is ready
           </DialogTitle>
           <DialogDescription>
-            Unlock export for this presentation with a one-time payment.
+            Review the value created, then unlock export for PowerPoint or ProPresenter.
           </DialogDescription>
         </DialogHeader>
         
         <div className="space-y-4 py-4">
+          {valueMetrics && (
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <div className="rounded-xl bg-primary/10 p-3">
+                <p className="text-lg font-semibold text-primary">{formatEstimatedMinutes(valueMetrics.estimatedMinutesSaved)}</p>
+                <p className="text-[11px] text-muted-foreground">estimated saved</p>
+              </div>
+              <div className="rounded-xl bg-muted/60 p-3">
+                <p className="text-lg font-semibold text-foreground">{valueMetrics.slideCount}</p>
+                <p className="text-[11px] text-muted-foreground">slides generated</p>
+              </div>
+              <div className="rounded-xl bg-muted/60 p-3">
+                <p className="text-lg font-semibold text-foreground">{valueMetrics.scripturePassageCount}</p>
+                <p className="text-[11px] text-muted-foreground">scriptures inserted</p>
+              </div>
+            </div>
+          )}
           <div className="bg-muted/50 rounded-lg p-4 space-y-2">
             <div className="flex items-center justify-between">
               <span className="font-medium">One-time Export Access</span>
@@ -86,7 +111,7 @@ export function PaymentPromptModal({
           </Button>
           <Button onClick={handlePayClick} className="flex-1">
             <CreditCard className="w-4 h-4 mr-2" />
-            Pay $15
+            Unlock Export
             <ArrowRight className="w-4 h-4 ml-1" />
           </Button>
         </div>
