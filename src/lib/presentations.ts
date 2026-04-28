@@ -3,6 +3,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { ensureResolvedAccountAccess } from "@/lib/account-access";
 import { deleteStoredBackground, isStorageBackground } from "@/lib/background-assets";
 import { getPrimaryCampus } from "@/lib/campuses";
+import { generateSlidesFromPresentation } from "@/lib/slide-generation";
+import { calculateValueMetrics, type PresentationValueMetrics } from "@/lib/value-metrics";
+
+export type SlideStyle = "minimal" | "balanced" | "speaker-friendly";
+export type ThemeStyle = "clean" | "bold" | "scripture-focused";
 
 export interface SermonPresentation {
   id: string;
@@ -22,6 +27,9 @@ export interface SermonPresentation {
     date: string;
     translation: string;
     verseBreakdown?: string;
+    proPresenterMode?: boolean;
+    slideStyle?: SlideStyle;
+    themeStyle?: ThemeStyle;
     points: Array<{
       id: string;
       type?: 'point' | 'verse';
@@ -45,6 +53,7 @@ export interface DashboardPresentation {
   formerCampusName?: string | null;
   slides: number;
   isDraft?: boolean;
+  valueMetrics?: PresentationValueMetrics;
   lastModified: string;
 }
 
@@ -96,6 +105,14 @@ interface GuestSermonRow {
 const GUEST_SERMONS_STORAGE_KEY = "guest_sermons";
 const serializeEditorSlides = (slides: any[] | null | undefined) => JSON.stringify(slides || []);
 const DEFAULT_PRESENTATION_SORT: NonNullable<DashboardPresentationFilters["sort"]> = "newest";
+
+function getLocalDateKey() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
 
 function isWrapped(slides: any): slides is SlidesWrapper {
   return slides && typeof slides === 'object' && !Array.isArray(slides) && ('formData' in slides || 'editorSlides' in slides);
@@ -189,6 +206,7 @@ function mapRowToDashboardPresentation(
   }
 ): DashboardPresentation {
   const slideCount = countSlides(row.slides);
+  const formData = extractFormData(row.slides);
   return {
     id: row.id,
     title: row.title,
@@ -198,7 +216,8 @@ function mapRowToDashboardPresentation(
     campusName: row.campus_name || null,
     formerCampusName: row.former_campus_name || null,
     slides: slideCount,
-    isDraft: slideCount === 0 && Boolean(extractFormData(row.slides)),
+    isDraft: slideCount === 0 && Boolean(formData),
+    valueMetrics: slideCount > 0 ? calculateValueMetrics({ slideCount, formData }) : undefined,
     lastModified: new Date(row.updated_at).toLocaleDateString(),
   };
 }
@@ -558,6 +577,55 @@ export async function savePresentationWithSlides(
     return null;
   }
   return data.id;
+}
+
+export async function duplicateMostRecentPresentationAsStartingPoint(): Promise<string | null> {
+  const access = await getPresentationAccessContext();
+  if (!access.isAuthenticated || !access.accountId) return null;
+
+  const { data, error } = await supabase
+    .from("sermons")
+    .select("id, title, series, campus_id, former_campus_name, presentation_date, scripture_reference, slides, created_at, updated_at")
+    .eq("account_id", access.accountId)
+    .order("presentation_date", { ascending: false })
+    .order("updated_at", { ascending: false })
+    .limit(100);
+
+  if (error || !data) return null;
+
+  const source = data.find((row) => countSlides(row.slides) > 0 && extractFormData(row.slides));
+  const formData = source ? extractFormData(source.slides) : undefined;
+  if (!source || !formData) return null;
+
+  const today = getLocalDateKey();
+  const newId = crypto.randomUUID();
+  const nextFormData: SermonPresentation["data"] = {
+    ...formData,
+    date: today,
+  };
+
+  const presentation: SermonPresentation = {
+    id: newId,
+    title: source.title || formData.title || "Untitled Presentation",
+    series: source.series || formData.series || null,
+    campusId: source.campus_id || null,
+    formerCampusName: source.former_campus_name || null,
+    presentationDate: today,
+    date: today,
+    slides: 0,
+    lastModified: "Just now",
+    scripture_reference: source.scripture_reference || undefined,
+    data: nextFormData,
+  };
+
+  const generatedSlides = generateSlidesFromPresentation(presentation);
+  return savePresentationWithSlides(
+    {
+      ...presentation,
+      slides: generatedSlides.length,
+    },
+    generatedSlides,
+  );
 }
 
 export async function deletePresentation(id: string): Promise<void> {

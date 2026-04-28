@@ -53,7 +53,7 @@ const CTA = () => {
           </h2>
 
           <p className="text-lg text-muted-foreground mb-10 max-w-2xl mx-auto">
-            Choose the plan that fits your ministry, then create, edit, and export presentation slides with one modern workflow.
+            Choose the plan that fits your ministry, create the deck in minutes, then export it into your existing workflow.
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">

@@ -11,6 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   BookOpen,
@@ -24,7 +25,7 @@ import {
   Book,
 } from "lucide-react";
 import { formatScriptureReferenceForDisplay, getFriendlyScriptureError, lookupScripture } from "@/lib/scripture-api";
-import { savePresentation, type SermonPresentation } from "@/lib/presentations";
+import { savePresentation, type SermonPresentation, type SlideStyle, type ThemeStyle } from "@/lib/presentations";
 import { useAuth } from "@/contexts/AuthContext";
 import { TRANSLATION_OPTIONS, DEFAULT_TRANSLATION } from "@/lib/translations";
 import { logError, trackEvent } from "@/lib/monitoring";
@@ -69,6 +70,9 @@ const CreateSermon = () => {
   const [campusesLoading, setCampusesLoading] = useState(false);
   const [globalTranslation, setGlobalTranslation] = useState(editData?.translation || DEFAULT_TRANSLATION);
   const [verseBreakdown, setVerseBreakdown] = useState(editData?.verseBreakdown || "verse-by-verse");
+  const [proPresenterMode, setProPresenterMode] = useState(Boolean(editData?.proPresenterMode));
+  const [slideStyle, setSlideStyle] = useState<SlideStyle>(editData?.slideStyle || "balanced");
+  const [themeStyle, setThemeStyle] = useState<ThemeStyle>(editData?.themeStyle || "clean");
   const [showTourBuilderPrompt, setShowTourBuilderPrompt] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [points, setPoints] = useState<SermonPoint[]>(
@@ -386,6 +390,18 @@ const CreateSermon = () => {
     });
   };
 
+  const handleProPresenterModeChange = (enabled: boolean) => {
+    setProPresenterMode(enabled);
+    if (enabled) {
+      trackEvent("creator_propresenter_mode_enabled");
+    }
+  };
+
+  const handleSlideStyleChange = (value: SlideStyle) => {
+    setSlideStyle(value);
+    trackEvent("creator_slide_style_selected", { slideStyle: value });
+  };
+
   useEffect(() => {
     return () => {
       Object.keys(lookupTimeouts.current).forEach((key) => clearLookupTimeout(key));
@@ -415,6 +431,9 @@ const CreateSermon = () => {
       date: presentationDate,
       verseBreakdown,
       translation: globalTranslation,
+      proPresenterMode,
+      slideStyle,
+      themeStyle,
       points: points.map((p) => ({
         id: p.id,
         type: p.type,
@@ -428,7 +447,7 @@ const CreateSermon = () => {
           : [],
       })),
     },
-  }), [campusId, draftId, globalTranslation, isEnterpriseAccount, points, presentationDate, series, title, verseBreakdown]);
+  }), [campusId, draftId, globalTranslation, isEnterpriseAccount, points, presentationDate, proPresenterMode, series, slideStyle, themeStyle, title, verseBreakdown]);
 
   useEffect(() => {
     if (saveStatus !== "saved") return;
@@ -486,12 +505,15 @@ const CreateSermon = () => {
       return;
     }
     setShowTourBuilderPrompt(false);
-    trackEvent("sermon_generation_submitted", {
+      trackEvent("sermon_generation_submitted", {
       editingExisting: Boolean(editId),
       pointCount: points.length,
       hasTitle: Boolean(title.trim()),
       verseBreakdown,
       translation: globalTranslation,
+      proPresenterMode,
+      slideStyle,
+      themeStyle,
     });
     
     const presentationPayload = buildPresentationPayload();
@@ -757,6 +779,63 @@ const CreateSermon = () => {
                   </p>
                 </div>
               )}
+
+              <div className="rounded-2xl border border-primary/15 bg-primary/5 p-4 space-y-4">
+                <div>
+                  <h3 className="font-serif text-lg font-semibold text-foreground">
+                    Workflow Preferences
+                  </h3>
+                  <p className="text-sm text-muted-foreground">
+                    Choose a look. You can still edit everything later.
+                  </p>
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="slideStyle">Slide Style</Label>
+                    <Select value={slideStyle} onValueChange={(value) => handleSlideStyleChange(value as SlideStyle)}>
+                      <SelectTrigger id="slideStyle" className="h-12">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="minimal">Minimal</SelectItem>
+                        <SelectItem value="balanced">Balanced</SelectItem>
+                        <SelectItem value="speaker-friendly">Speaker Friendly</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="themeStyle">Theme</Label>
+                    <Select value={themeStyle} onValueChange={(value) => setThemeStyle(value as ThemeStyle)}>
+                      <SelectTrigger id="themeStyle" className="h-12">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="clean">Clean</SelectItem>
+                        <SelectItem value="bold">Bold</SelectItem>
+                        <SelectItem value="scripture-focused">Scripture Focused</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-3 rounded-xl border border-border/60 bg-white/70 p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <Label htmlFor="proPresenterMode" className="text-sm font-semibold">
+                      Optimize for ProPresenter
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Uses shorter scripture chunks and cleaner formatting for export-ready ProPresenter slides.
+                    </p>
+                  </div>
+                  <Switch
+                    id="proPresenterMode"
+                    checked={proPresenterMode}
+                    onCheckedChange={handleProPresenterModeChange}
+                  />
+                </div>
+              </div>
 
               {/* Verse Breakdown */}
               <div className="space-y-3">

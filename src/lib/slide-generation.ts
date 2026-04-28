@@ -10,12 +10,43 @@ const titleSlideDateOptions: Intl.DateTimeFormatOptions = {
   day: "numeric",
 };
 
+function splitTextForSlides(text: string, maxLength: number): string[] {
+  const normalizedText = text.replace(/\s+/g, " ").trim();
+  if (normalizedText.length <= maxLength) return [normalizedText];
+
+  const words = normalizedText.split(" ");
+  const chunks: string[] = [];
+  let current = "";
+
+  words.forEach((word) => {
+    const next = current ? `${current} ${word}` : word;
+    if (next.length > maxLength && current) {
+      chunks.push(current);
+      current = word;
+      return;
+    }
+
+    current = next;
+  });
+
+  if (current) chunks.push(current);
+  return chunks;
+}
+
+function wrapScriptureText(text: string, proPresenterMode: boolean) {
+  return proPresenterMode ? text : `"${text}"`;
+}
+
 export function generateSlidesFromPresentation(presentation: SermonPresentation): SlideData[] {
   const slides: SlideData[] = [];
+  const proPresenterMode = Boolean(presentation.data?.proPresenterMode);
+  const slideStyle = presentation.data?.slideStyle || "balanced";
+  const themeStyle = presentation.data?.themeStyle || "clean";
   const defaultBackground = "transparent";
-  const defaultFont = "Georgia";
-  const defaultColor = "#FFFFFF";
-  const defaultLineSpacing = 1.5;
+  const defaultFont = themeStyle === "bold" ? "Arial Black" : "Georgia";
+  const defaultColor = themeStyle === "scripture-focused" ? "#F8FAFC" : "#FFFFFF";
+  const defaultLineSpacing = slideStyle === "minimal" || proPresenterMode ? 1.3 : slideStyle === "speaker-friendly" ? 1.65 : 1.5;
+  const fullPassageMaxLength = proPresenterMode ? 280 : slideStyle === "minimal" ? 340 : slideStyle === "speaker-friendly" ? 430 : 700;
 
   slides.push({
     id: `title-${Date.now()}`,
@@ -74,7 +105,7 @@ export function generateSlidesFromPresentation(presentation: SermonPresentation)
                 id: `scripture-${point.id}-${scriptureIndex}-${verseIndex}`,
                 type: "scripture",
                 content: {
-                  scripture: `"${verse.text}"`,
+                  scripture: wrapScriptureText(verse.text, proPresenterMode),
                   reference: `${verse.reference} (${presentation.data?.translation || "KJV"})`,
                 },
                 background: defaultBackground,
@@ -86,17 +117,23 @@ export function generateSlidesFromPresentation(presentation: SermonPresentation)
             return;
           }
 
-          slides.push({
-            id: `scripture-${point.id}-${scriptureIndex}`,
-            type: "scripture",
-            content: {
-              scripture: `"${scripture.text}"`,
-              reference: `${displayReference} (${presentation.data?.translation || "KJV"})`,
-            },
-            background: defaultBackground,
-            fontFamily: defaultFont,
-            textColor: defaultColor,
-            lineSpacing: defaultLineSpacing,
+          const passageChunks = splitTextForSlides(scripture.text, fullPassageMaxLength);
+          passageChunks.forEach((chunk, chunkIndex) => {
+            const hasMultipleChunks = passageChunks.length > 1;
+            slides.push({
+              id: hasMultipleChunks
+                ? `scripture-${point.id}-${scriptureIndex}-${chunkIndex}`
+                : `scripture-${point.id}-${scriptureIndex}`,
+              type: "scripture",
+              content: {
+                scripture: wrapScriptureText(chunk, proPresenterMode),
+                reference: `${displayReference} (${presentation.data?.translation || "KJV"})`,
+              },
+              background: defaultBackground,
+              fontFamily: defaultFont,
+              textColor: defaultColor,
+              lineSpacing: defaultLineSpacing,
+            });
           });
         });
       }

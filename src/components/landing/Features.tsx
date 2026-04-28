@@ -20,7 +20,7 @@ const features = [
     icon: FileDown,
     title: "Export Anywhere",
     description:
-      "Download as PowerPoint (.pptx) or ProPresenter (.pro) with perfect formatting preserved.",
+      "Build your deck first, then export to PowerPoint (.pptx) or ProPresenter (.probundle).",
   },
   {
     icon: BookOpen,
@@ -80,8 +80,8 @@ const Features = () => {
             <span className="text-gradient">Powerful Presentations</span>
           </h2>
           <p className="text-lg text-muted-foreground">
-            Built specifically for ministry leaders. Save hours every week with
-            tools designed for sermon preparation.
+            Built specifically for ministry leaders. Speed up sermon slide
+            creation before PowerPoint or ProPresenter.
           </p>
         </motion.div>
 

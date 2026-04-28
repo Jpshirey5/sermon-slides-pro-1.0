@@ -1,9 +1,9 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { Link, useParams, useSearchParams, useLocation, useNavigate } from "react-router-dom";
 import { motion, Reorder, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { BookOpen, ArrowLeft, Download, Play, GripVertical, Plus, Type, Palette, ChevronLeft, ChevronRight, Trash2, AlignVerticalSpaceAround, Undo2, Redo2, Copy, Check, Cloud, BookMarked, Pencil } from "lucide-react";
+import { BookOpen, ArrowLeft, Download, Play, GripVertical, Plus, Type, Palette, ChevronLeft, ChevronRight, Trash2, AlignVerticalSpaceAround, Undo2, Redo2, Copy, Check, Cloud, BookMarked, Pencil, Sparkles } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { BackgroundPicker } from "@/components/BackgroundPicker";
 import { exportToPowerPoint, SlideData } from "@/lib/export-pptx";
@@ -33,6 +33,7 @@ import {
 import { logError, trackEvent } from "@/lib/monitoring";
 import ProductTour, { type ProductTourStep } from "@/components/ProductTour";
 import { generateSlidesFromPresentation } from "@/lib/slide-generation";
+import { calculateValueMetrics, formatEstimatedMinutes } from "@/lib/value-metrics";
 
 // Microsoft Word standard fonts - alphabetically ordered
 const fonts = ["Arial", "Arial Black", "Book Antiqua", "Calibri", "Cambria", "Candara", "Century Gothic", "Comic Sans MS", "Consolas", "Constantia", "Corbel", "Courier New", "Franklin Gothic Medium", "Garamond", "Georgia", "Gill Sans MT", "Impact", "Lucida Console", "Lucida Sans Unicode", "Palatino Linotype", "Segoe UI", "Tahoma", "Times New Roman", "Trebuchet MS", "Verdana"];
@@ -136,6 +137,7 @@ const SlideEditor = () => {
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
   const [resolvedBackgroundImages, setResolvedBackgroundImages] = useState<Record<string, string>>({});
   const [isPresentationLoading, setIsPresentationLoading] = useState(true);
+  const [presentationFormData, setPresentationFormData] = useState<SermonPresentation["data"] | null>(null);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastSavedSlidesRef = useRef(JSON.stringify(defaultSlides));
   
@@ -157,6 +159,12 @@ const SlideEditor = () => {
   const isUndoRedoRef = useRef(false);
   const isInitialLoadRef = useRef(true);
   const upsellSessionKey = id && id !== "new" ? `export_upsell_seen:${id}` : null;
+  const valueMetrics = useMemo(
+    () => calculateValueMetrics({ slideCount: slides.length, formData: presentationFormData }),
+    [presentationFormData, slides.length],
+  );
+  const editorBackPath = subscription.subscribed ? "/dashboard" : "/";
+  const editorBackLabel = subscription.subscribed ? "Dashboard" : "Home";
 
   useEffect(() => {
     setIsExportUnlocked(Boolean(id && id !== "new" && getVerifiedExportUnlockSession(id)));
@@ -272,6 +280,7 @@ const SlideEditor = () => {
 
         if (presentationState) {
           setPresentationTitle(presentationState.title);
+          setPresentationFormData(presentationState.formData || null);
 
           const generatedPresentation: SermonPresentation | null = presentationState.formData
               ? {
@@ -342,6 +351,7 @@ const SlideEditor = () => {
       if (cancelled) return;
       if (!id || id === "new") {
         lastSavedSlidesRef.current = JSON.stringify(defaultSlides);
+        setPresentationFormData(null);
       }
       isInitialLoadRef.current = false;
       setIsPresentationLoading(false);
@@ -591,6 +601,12 @@ const SlideEditor = () => {
   const handleExportButtonClick = async () => {
     if (subscription.subscribed) {
       trackEvent("export_modal_opened", { sermonId: id || "unknown", source: "subscription" });
+      trackEvent("pre_export_modal_viewed", {
+        sermonId: id || "unknown",
+        source: "subscription",
+        slideCount: valueMetrics.slideCount,
+        scripturePassageCount: valueMetrics.scripturePassageCount,
+      });
       // Pro user — show export options immediately
       setShowExportModal(true);
       return;
@@ -605,6 +621,12 @@ const SlideEditor = () => {
         setIsVerifyingUnlock(false);
         if (verified) {
           trackEvent("export_modal_opened", { sermonId: id || "unknown", source: "one_time_unlock" });
+          trackEvent("pre_export_modal_viewed", {
+            sermonId: id || "unknown",
+            source: "one_time_unlock",
+            slideCount: valueMetrics.slideCount,
+            scripturePassageCount: valueMetrics.scripturePassageCount,
+          });
           setIsExportUnlocked(true);
           setShowExportModal(true);
           return;
@@ -633,6 +655,12 @@ const SlideEditor = () => {
 
     // Show payment modal
     trackEvent("export_payment_prompt_opened", { sermonId: id });
+    trackEvent("pre_export_modal_viewed", {
+      sermonId: id,
+      source: "guest_checkout",
+      slideCount: valueMetrics.slideCount,
+      scripturePassageCount: valueMetrics.scripturePassageCount,
+    });
     setShowPaymentModal(true);
   };
   
@@ -658,6 +686,13 @@ const SlideEditor = () => {
         format,
         slideCount: slides.length,
       });
+      if (subscription.subscribed) {
+        trackEvent("subscribed_export_started", {
+          sermonId: id || "unknown",
+          format,
+          slideCount: slides.length,
+        });
+      }
       if (format === "pptx") {
         await exportToPowerPoint(slides, presentationTitle);
         toast.success("PowerPoint file exported successfully!", {
@@ -990,9 +1025,9 @@ const SlideEditor = () => {
         <div className="h-full px-4">
           <div className="flex items-center justify-between h-full">
             {/* Back */}
-            <Link to="/dashboard" className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors">
+            <Link to={editorBackPath} className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors">
               <ArrowLeft className="w-5 h-5" />
-              <span className="hidden sm:inline">Dashboard</span>
+              <span className="hidden sm:inline">{editorBackLabel}</span>
             </Link>
 
             {/* Title + Paid Badge + Save Indicator */}
@@ -1041,6 +1076,15 @@ const SlideEditor = () => {
                   </motion.div>
                 )}
               </AnimatePresence>
+
+              {slides.length > 0 && (
+                <div className="hidden xl:flex items-center gap-1.5 text-xs text-muted-foreground bg-muted/50 px-2 py-1 rounded-full">
+                  <Sparkles className="w-3 h-3 text-primary" />
+                  <span>{formatEstimatedMinutes(valueMetrics.estimatedMinutesSaved)} saved</span>
+                  <span>·</span>
+                  <span>Ready for PowerPoint or ProPresenter</span>
+                </div>
+              )}
             </div>
 
             {/* Actions */}
@@ -1428,6 +1472,7 @@ const SlideEditor = () => {
         onClose={() => setShowPaymentModal(false)}
         sermonId={id || ""}
         prepareForCheckout={prepareForCheckout}
+        valueMetrics={valueMetrics}
       />
       
       {/* Export Options Modal */}
@@ -1436,6 +1481,7 @@ const SlideEditor = () => {
         onClose={() => setShowExportModal(false)}
         onExport={handleExport}
         isExporting={isExporting}
+        valueMetrics={valueMetrics}
       />
       <SubscriptionUpsellModal
         isOpen={showUpsellModal}
