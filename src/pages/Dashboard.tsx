@@ -53,6 +53,7 @@ import {
 } from "@/lib/account-deletion";
 import { formatBetaTrialCountdown } from "@/lib/beta";
 import { formatTimeSaved } from "@/lib/value-metrics";
+import { clearPendingCheckoutState } from "@/lib/pending-checkout";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -132,10 +133,7 @@ const Dashboard = () => {
   useEffect(() => {
     if (searchParams.get("checkout") === "success") {
       trackEvent("checkout_completed");
-      localStorage.removeItem("pending_pro_checkout");
-      localStorage.removeItem("pending_pro_checkout_email");
-      localStorage.removeItem("pending_pro_checkout_price_id");
-      localStorage.removeItem("pending_pro_checkout_url");
+      clearPendingCheckoutState();
       checkSubscription();
       setSearchParams({}, { replace: true });
     }

@@ -5,8 +5,7 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { logError, trackEvent } from "@/lib/monitoring";
-
-const CHECKOUT_URL_STORAGE_KEY = "pending_pro_checkout_url";
+import { clearPendingCheckoutState, setPendingCheckoutUrl } from "@/lib/pending-checkout";
 
 const CheckoutRedirect = () => {
   const navigate = useNavigate();
@@ -19,10 +18,7 @@ const CheckoutRedirect = () => {
 
     if (subscription.subscribed) {
       trackEvent("checkout_bypassed_existing_subscription");
-      localStorage.removeItem("pending_pro_checkout");
-      localStorage.removeItem("pending_pro_checkout_email");
-      localStorage.removeItem("pending_pro_checkout_price_id");
-      localStorage.removeItem(CHECKOUT_URL_STORAGE_KEY);
+      clearPendingCheckoutState();
       navigate("/dashboard", { replace: true });
       return;
     }
@@ -58,7 +54,7 @@ const CheckoutRedirect = () => {
         }
 
         trackEvent("checkout_redirected_to_stripe");
-        localStorage.setItem(CHECKOUT_URL_STORAGE_KEY, data.url);
+        setPendingCheckoutUrl(data.url);
         window.location.href = data.url;
       } catch (error) {
         logError(error, { scope: "checkout_redirect_start" });

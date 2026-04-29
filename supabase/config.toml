@@ -56,3 +56,6 @@ verify_jwt = false
 
 [functions.confirm-email-change]
 verify_jwt = false
+
+[functions.cleanup-pending-signups]
+verify_jwt = false
