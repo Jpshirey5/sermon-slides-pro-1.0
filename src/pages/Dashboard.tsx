@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import {
   getDashboardPresentationsPage,
+  getDashboardTimeSavedSummary,
   deletePresentation,
   duplicateMostRecentPresentationAsStartingPoint,
   getPresentation,
@@ -51,7 +52,7 @@ import {
   type AccountDeletionRequest,
 } from "@/lib/account-deletion";
 import { formatBetaTrialCountdown } from "@/lib/beta";
-import { formatEstimatedMinutes } from "@/lib/value-metrics";
+import { formatTimeSaved } from "@/lib/value-metrics";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -90,6 +91,7 @@ const Dashboard = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const { user, profile, subscription, signOut, checkSubscription, accountId } = useAuth();
   const [presentations, setPresentations] = useState<DashboardPresentation[]>([]);
+  const [timeSavedSummary, setTimeSavedSummary] = useState({ weekSeconds: 0, monthSeconds: 0 });
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMorePresentations, setHasMorePresentations] = useState(false);
@@ -130,6 +132,10 @@ const Dashboard = () => {
   useEffect(() => {
     if (searchParams.get("checkout") === "success") {
       trackEvent("checkout_completed");
+      localStorage.removeItem("pending_pro_checkout");
+      localStorage.removeItem("pending_pro_checkout_email");
+      localStorage.removeItem("pending_pro_checkout_price_id");
+      localStorage.removeItem("pending_pro_checkout_url");
       checkSubscription();
       setSearchParams({}, { replace: true });
     }
@@ -340,7 +346,11 @@ const Dashboard = () => {
   const refreshDashboardPresentations = useCallback(async () => {
     setLoading(true);
     try {
-      await loadPresentationsPage(0, true);
+      const [summary] = await Promise.all([
+        getDashboardTimeSavedSummary(),
+        loadPresentationsPage(0, true),
+      ]);
+      setTimeSavedSummary(summary);
     } finally {
       setLoading(false);
     }
@@ -773,12 +783,31 @@ const Dashboard = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4 }}
-            className="mb-10"
+            className="mb-10 grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(240px,320px)] md:items-start"
           >
-            <h1 className="font-serif text-3xl font-bold text-foreground mb-1">
-              Welcome back
-            </h1>
-            <p className="text-muted-foreground">{displayName}</p>
+            <div>
+              <h1 className="font-serif text-3xl font-bold text-foreground mb-1">
+                Welcome back
+              </h1>
+              <p className="text-muted-foreground">{displayName}</p>
+            </div>
+            <div className="rounded-2xl border border-primary/15 bg-white/80 p-4 shadow-soft">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">Overall time saved</p>
+              <div className="mt-3 grid grid-cols-2 gap-3">
+                <div>
+                  <p className="text-xs text-muted-foreground">This week</p>
+                  <p className="font-serif text-lg font-semibold text-foreground">
+                    {formatTimeSaved(timeSavedSummary.weekSeconds)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">This month</p>
+                  <p className="font-serif text-lg font-semibold text-foreground">
+                    {formatTimeSaved(timeSavedSummary.monthSeconds)}
+                  </p>
+                </div>
+              </div>
+            </div>
           </motion.div>
 
           {activeDeletionRequest && (
@@ -1122,7 +1151,7 @@ const Dashboard = () => {
                           </div>
                           {!p.isDraft && p.valueMetrics && (
                             <p className="mb-2 text-xs font-medium text-primary">
-                              You saved an estimated {formatEstimatedMinutes(p.valueMetrics.estimatedMinutesSaved)}
+                              You saved an estimated {formatTimeSaved(p.valueMetrics.estimatedTimeSavedSeconds)}
                             </p>
                           )}
                           <p className="text-xs text-muted-foreground"><Clock className="w-3 h-3 inline mr-1" />{p.lastModified}</p>

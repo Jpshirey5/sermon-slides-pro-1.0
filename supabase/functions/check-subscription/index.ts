@@ -103,6 +103,7 @@ serve(async (req) => {
         subscription_end: null,
         cancel_at_period_end: false,
         subscription_status: "inactive",
+        signup_status: "active",
         ...noBetaInfo,
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -123,6 +124,7 @@ serve(async (req) => {
         subscription_end: null,
         cancel_at_period_end: false,
         subscription_status: "inactive",
+        signup_status: "active",
         ...noBetaInfo,
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -144,6 +146,7 @@ serve(async (req) => {
         subscription_end: null,
         cancel_at_period_end: false,
         subscription_status: "inactive",
+        signup_status: "active",
         ...noBetaInfo,
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -155,7 +158,7 @@ serve(async (req) => {
     // Check if account already has a stripe_customer_id
     const { data: account } = await supabaseClient
       .from("accounts")
-      .select("stripe_customer_id, subscription_status, is_beta_user, beta_started_at, beta_trial_ends_at, beta_plan_tier")
+      .select("stripe_customer_id, subscription_status, signup_status, is_beta_user, beta_started_at, beta_trial_ends_at, beta_plan_tier")
       .eq("id", accountId)
       .single();
     const betaInfo = getBetaInfo(account);
@@ -184,6 +187,7 @@ serve(async (req) => {
             billing_interval: null,
             subscription_status: "trialing",
             subscription_period_end: betaInfo.beta_trial_ends_at,
+            signup_status: "active",
           })
           .eq("id", accountId);
         return new Response(JSON.stringify({
@@ -195,6 +199,7 @@ serve(async (req) => {
           subscription_end: betaInfo.beta_trial_ends_at,
           cancel_at_period_end: false,
           subscription_status: "trialing",
+          signup_status: "active",
           plan_tier: betaInfo.beta_plan_tier,
           ...betaInfo,
         }), {
@@ -215,6 +220,7 @@ serve(async (req) => {
         subscription_end: null,
         cancel_at_period_end: false,
         subscription_status: "inactive",
+        signup_status: account?.signup_status || "active",
         ...betaInfo,
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -320,6 +326,7 @@ serve(async (req) => {
           billing_interval: billingInterval,
           max_additional_users: maxAdditionalUsers,
           subscription_status: sub.status === "trialing" ? "trialing" : "active",
+          signup_status: "active",
           stripe_customer_id: customerId,
           stripe_subscription_id: sub.id,
           subscription_period_end: subscriptionEnd,
@@ -339,6 +346,7 @@ serve(async (req) => {
           billing_interval: null,
           max_additional_users: maxAdditionalUsers,
           subscription_status: "trialing",
+          signup_status: "active",
           subscription_period_end: subscriptionEnd,
         })
         .eq("id", accountId);
@@ -366,6 +374,7 @@ serve(async (req) => {
       subscription_end: subscriptionEnd,
       cancel_at_period_end: cancelAtPeriodEnd,
       subscription_status: subscriptionStatus,
+      signup_status: hasActiveSub || betaInfo.beta_trial_active ? "active" : account?.signup_status || "active",
       ...betaInfo,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

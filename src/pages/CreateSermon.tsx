@@ -91,6 +91,14 @@ const CreateSermon = () => {
         }))
       : []
   );
+
+  useEffect(() => {
+    if (!user || subscription.signup_status !== "pending_checkout") return;
+    const params = new URLSearchParams();
+    const pendingPriceId = localStorage.getItem("pending_pro_checkout_price_id");
+    if (pendingPriceId) params.set("priceId", pendingPriceId);
+    navigate(`/signup-incomplete${params.toString() ? `?${params.toString()}` : ""}`, { replace: true });
+  }, [navigate, subscription.signup_status, user]);
   
   // Track pending lookups with debounce
   const lookupTimeouts = useRef<Record<string, NodeJS.Timeout>>({});

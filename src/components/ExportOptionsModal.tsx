@@ -1,7 +1,7 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { FileText, Presentation, Download, Loader2 } from "lucide-react";
-import { formatEstimatedMinutes, type PresentationValueMetrics } from "@/lib/value-metrics";
+import { formatTimeSaved, type PresentationValueMetrics } from "@/lib/value-metrics";
 
 interface ExportOptionsModalProps {
   isOpen: boolean;
@@ -41,10 +41,10 @@ export function ExportOptionsModal({
           {valueMetrics && (
             <div className="rounded-xl border border-primary/15 bg-primary/5 p-4 text-sm">
               <p className="font-medium text-foreground">
-                You saved an estimated {formatEstimatedMinutes(valueMetrics.estimatedMinutesSaved)}.
+                You saved {formatTimeSaved(valueMetrics.estimatedTimeSavedSeconds)} by creating this sermon here.
               </p>
               <p className="text-muted-foreground">
-                {valueMetrics.slideCount} slides generated · {valueMetrics.scripturePassageCount} scripture passages inserted · Ready for PowerPoint or ProPresenter
+                {valueMetrics.slideCount} slides generated · {valueMetrics.scripturePassageCount} scripture passages inserted
               </p>
             </div>
           )}

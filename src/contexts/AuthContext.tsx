@@ -36,6 +36,7 @@ interface SubscriptionInfo {
   subscription_end: string | null;
   cancel_at_period_end: boolean;
   subscription_status: string | null;
+  signup_status: string | null;
   is_beta_user: boolean;
   beta_trial_active: boolean;
   beta_trial_ends_at: string | null;
@@ -81,6 +82,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     subscription_end: null,
     cancel_at_period_end: false,
     subscription_status: null,
+    signup_status: null,
     is_beta_user: false,
     beta_trial_active: false,
     beta_trial_ends_at: null,
@@ -137,6 +139,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             subscription_end: data.subscription_end || null,
             cancel_at_period_end: data.cancel_at_period_end || false,
             subscription_status: data.subscription_status || null,
+            signup_status: data.signup_status || null,
             is_beta_user: data.is_beta_user || false,
             beta_trial_active: data.beta_trial_active || false,
             beta_trial_ends_at: data.beta_trial_ends_at || null,
@@ -188,6 +191,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       subscription_end: null,
       cancel_at_period_end: false,
       subscription_status: null,
+      signup_status: null,
       is_beta_user: false,
       beta_trial_active: false,
       beta_trial_ends_at: null,
@@ -222,6 +226,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             subscription_end: null,
             cancel_at_period_end: false,
             subscription_status: null,
+            signup_status: null,
             is_beta_user: false,
             beta_trial_active: false,
             beta_trial_ends_at: null,

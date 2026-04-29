@@ -102,7 +102,7 @@ serve(async (req) => {
     if (!accountId) throw new Error("No account found for user");
     logStep("Found account", { accountId });
 
-    const [{ data: membership }, { data: activeDeletionRequest }] = await Promise.all([
+    const [{ data: membership }, { data: activeDeletionRequest }, { data: account }] = await Promise.all([
       supabaseClient
         .from("account_members")
         .select("role")
@@ -114,6 +114,11 @@ serve(async (req) => {
         .select("id")
         .eq("account_id", accountId)
         .eq("status", "pending")
+        .maybeSingle(),
+      supabaseClient
+        .from("accounts")
+        .select("signup_status")
+        .eq("id", accountId)
         .maybeSingle(),
     ]);
 
@@ -164,6 +169,7 @@ serve(async (req) => {
     }
 
     logStep("Using checkout price", { checkoutPriceId });
+    const isPendingSignup = account?.signup_status === "pending_checkout";
 
     if (existingSubs.data.length > 0) {
       logStep("Already subscribed, redirecting to dashboard");
@@ -180,7 +186,9 @@ serve(async (req) => {
       line_items: [{ price: checkoutPriceId, quantity: 1 }],
       mode: "subscription",
       success_url: `${origin}/dashboard?checkout=success`,
-      cancel_url: `${origin}/account`,
+      cancel_url: isPendingSignup
+        ? `${origin}/signup-incomplete?priceId=${encodeURIComponent(checkoutPriceId)}`
+        : `${origin}/account`,
       metadata: { account_id: accountId, price_id: checkoutPriceId },
     });
 

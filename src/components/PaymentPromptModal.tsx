@@ -5,7 +5,7 @@ import { setPendingExportContext } from "@/lib/payPerExport";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { trackEvent } from "@/lib/monitoring";
-import { formatEstimatedMinutes, type PresentationValueMetrics } from "@/lib/value-metrics";
+import { formatTimeSaved, type PresentationValueMetrics } from "@/lib/value-metrics";
 
 interface PaymentPromptModalProps {
   isOpen: boolean;
@@ -66,7 +66,7 @@ export function PaymentPromptModal({
           {valueMetrics && (
             <div className="grid grid-cols-3 gap-2 text-center">
               <div className="rounded-xl bg-primary/10 p-3">
-                <p className="text-lg font-semibold text-primary">{formatEstimatedMinutes(valueMetrics.estimatedMinutesSaved)}</p>
+                <p className="text-lg font-semibold text-primary">{formatTimeSaved(valueMetrics.estimatedTimeSavedSeconds)}</p>
                 <p className="text-[11px] text-muted-foreground">estimated saved</p>
               </div>
               <div className="rounded-xl bg-muted/60 p-3">
