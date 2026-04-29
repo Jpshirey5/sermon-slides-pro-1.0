@@ -343,22 +343,39 @@ const Dashboard = () => {
     }
   }, [campusFilterValue, debouncedSearch, presentationMonth, sortOrder]);
 
+  const refreshTimeSavedSummary = useCallback(async () => {
+    const summary = await getDashboardTimeSavedSummary();
+    setTimeSavedSummary(summary);
+  }, []);
+
   const refreshDashboardPresentations = useCallback(async () => {
     setLoading(true);
     try {
-      const [summary] = await Promise.all([
-        getDashboardTimeSavedSummary(),
-        loadPresentationsPage(0, true),
-      ]);
-      setTimeSavedSummary(summary);
+      await loadPresentationsPage(0, true);
+      await refreshTimeSavedSummary();
     } finally {
       setLoading(false);
     }
-  }, [loadPresentationsPage]);
+  }, [loadPresentationsPage, refreshTimeSavedSummary]);
 
   useEffect(() => {
     void refreshDashboardPresentations();
   }, [refreshDashboardPresentations]);
+
+  useEffect(() => {
+    const refreshOnReturn = () => {
+      if (document.visibilityState === "visible") {
+        void refreshTimeSavedSummary();
+      }
+    };
+
+    window.addEventListener("focus", refreshOnReturn);
+    document.addEventListener("visibilitychange", refreshOnReturn);
+    return () => {
+      window.removeEventListener("focus", refreshOnReturn);
+      document.removeEventListener("visibilitychange", refreshOnReturn);
+    };
+  }, [refreshTimeSavedSummary]);
 
   useEffect(() => {
     setSelectionMode(false);
