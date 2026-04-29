@@ -156,9 +156,24 @@ const createCancellationSupportTicket = async (
   return data.id as string;
 };
 
+const normalizeSiteUrl = (value: string | null | undefined) => {
+  const trimmed = clean(value);
+  if (!trimmed) return null;
+  const withProtocol =
+    trimmed.startsWith("http://") || trimmed.startsWith("https://")
+      ? trimmed
+      : `https://${trimmed}`;
+  try {
+    const url = new URL(withProtocol);
+    return `${url.protocol}//${url.host}`;
+  } catch {
+    return null;
+  }
+};
+
 const getSiteUrl = () =>
-  Deno.env.get("SITE_URL") ||
-  Deno.env.get("VITE_SITE_URL") ||
+  normalizeSiteUrl(Deno.env.get("SITE_URL")) ||
+  normalizeSiteUrl(Deno.env.get("VITE_SITE_URL")) ||
   "https://www.sermonslidepro.com";
 
 const sendAdminInviteEmail = async (email: string, token: string) => {

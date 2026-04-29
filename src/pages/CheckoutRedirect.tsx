@@ -6,6 +6,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { logError, trackEvent } from "@/lib/monitoring";
 
+const CHECKOUT_URL_STORAGE_KEY = "pending_pro_checkout_url";
+
 const CheckoutRedirect = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -20,6 +22,7 @@ const CheckoutRedirect = () => {
       localStorage.removeItem("pending_pro_checkout");
       localStorage.removeItem("pending_pro_checkout_email");
       localStorage.removeItem("pending_pro_checkout_price_id");
+      localStorage.removeItem(CHECKOUT_URL_STORAGE_KEY);
       navigate("/dashboard", { replace: true });
       return;
     }
@@ -55,8 +58,7 @@ const CheckoutRedirect = () => {
         }
 
         trackEvent("checkout_redirected_to_stripe");
-        localStorage.removeItem("pending_pro_checkout");
-        localStorage.removeItem("pending_pro_checkout_price_id");
+        localStorage.setItem(CHECKOUT_URL_STORAGE_KEY, data.url);
         window.location.href = data.url;
       } catch (error) {
         logError(error, { scope: "checkout_redirect_start" });

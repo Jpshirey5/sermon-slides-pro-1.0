@@ -507,6 +507,7 @@ export type Database = {
           max_additional_users: number | null
           name: string
           plan_tier: string | null
+          signup_status: string
           state: string | null
           stripe_customer_id: string | null
           stripe_subscription_id: string | null
@@ -529,6 +530,7 @@ export type Database = {
           max_additional_users?: number | null
           name?: string
           plan_tier?: string | null
+          signup_status?: string
           state?: string | null
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
@@ -551,6 +553,7 @@ export type Database = {
           max_additional_users?: number | null
           name?: string
           plan_tier?: string | null
+          signup_status?: string
           state?: string | null
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null

@@ -62,6 +62,11 @@ export interface DashboardPresentationsPage {
   hasMore: boolean;
 }
 
+export interface DashboardTimeSavedSummary {
+  weekSeconds: number;
+  monthSeconds: number;
+}
+
 export interface DashboardPresentationFilters {
   search?: string;
   presentationMonth?: string | null;
@@ -207,6 +212,7 @@ function mapRowToDashboardPresentation(
 ): DashboardPresentation {
   const slideCount = countSlides(row.slides);
   const formData = extractFormData(row.slides);
+  const editorSlides = extractEditorSlides(row.slides);
   return {
     id: row.id,
     title: row.title,
@@ -217,7 +223,7 @@ function mapRowToDashboardPresentation(
     formerCampusName: row.former_campus_name || null,
     slides: slideCount,
     isDraft: slideCount === 0 && Boolean(formData),
-    valueMetrics: slideCount > 0 ? calculateValueMetrics({ slideCount, formData }) : undefined,
+    valueMetrics: slideCount > 0 ? calculateValueMetrics({ slideCount, slides: editorSlides, formData }) : undefined,
     lastModified: new Date(row.updated_at).toLocaleDateString(),
   };
 }
@@ -428,6 +434,52 @@ export async function getDashboardPresentationsPage(
     );
 
   return { items, hasMore };
+}
+
+export async function getDashboardTimeSavedSummary(): Promise<DashboardTimeSavedSummary> {
+  const access = await getPresentationAccessContext();
+  if (!access.isAuthenticated || !access.accountId) {
+    return { weekSeconds: 0, monthSeconds: 0 };
+  }
+
+  const now = new Date();
+  const today = getLocalDateKey();
+  const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+  const weekStartDate = new Date(now);
+  weekStartDate.setDate(now.getDate() - now.getDay());
+  const weekStart = `${weekStartDate.getFullYear()}-${String(weekStartDate.getMonth() + 1).padStart(2, "0")}-${String(weekStartDate.getDate()).padStart(2, "0")}`;
+
+  const { data, error } = await supabase
+    .from("sermons")
+    .select("slides, presentation_date, created_at")
+    .eq("account_id", access.accountId)
+    .gte("presentation_date", monthStart)
+    .lte("presentation_date", today);
+
+  if (error || !data) {
+    return { weekSeconds: 0, monthSeconds: 0 };
+  }
+
+  return data.reduce<DashboardTimeSavedSummary>(
+    (summary, row) => {
+      const editorSlides = extractEditorSlides(row.slides);
+      if (!editorSlides || editorSlides.length === 0) return summary;
+
+      const metrics = calculateValueMetrics({
+        slideCount: editorSlides.length,
+        slides: editorSlides,
+        formData: extractFormData(row.slides),
+      });
+      const presentationDate = resolvePresentationDate(row.slides, row.created_at, row.presentation_date);
+
+      summary.monthSeconds += metrics.estimatedTimeSavedSeconds;
+      if (presentationDate >= weekStart) {
+        summary.weekSeconds += metrics.estimatedTimeSavedSeconds;
+      }
+      return summary;
+    },
+    { weekSeconds: 0, monthSeconds: 0 },
+  );
 }
 
 export async function savePresentation(presentation: SermonPresentation): Promise<string | null> {

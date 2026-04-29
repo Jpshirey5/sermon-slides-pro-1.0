@@ -190,6 +190,7 @@ serve(async (req) => {
               billing_interval: planMeta.billingInterval,
               max_additional_users: planMeta.maxAdditionalUsers,
               subscription_status: "active",
+              signup_status: "active",
               stripe_customer_id: customerId,
               stripe_subscription_id: subscriptionId,
             })
@@ -217,6 +218,7 @@ serve(async (req) => {
                 billing_interval: planMeta.billingInterval,
                 max_additional_users: planMeta.maxAdditionalUsers,
                 subscription_status: "active",
+                signup_status: "active",
                 stripe_subscription_id: subscriptionId,
               })
               .eq("id", account.id);
@@ -256,6 +258,7 @@ serve(async (req) => {
             billing_interval: isActive ? planMeta.billingInterval : null,
             max_additional_users: isActive ? planMeta.maxAdditionalUsers : 0,
             subscription_status: isActive ? "active" : status as any,
+            ...(isActive ? { signup_status: "active" } : {}),
             stripe_subscription_id: sub.id,
             subscription_period_end: subscriptionEnd,
           })

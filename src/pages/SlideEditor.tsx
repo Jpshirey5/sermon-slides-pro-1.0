@@ -33,7 +33,7 @@ import {
 import { logError, trackEvent } from "@/lib/monitoring";
 import ProductTour, { type ProductTourStep } from "@/components/ProductTour";
 import { generateSlidesFromPresentation } from "@/lib/slide-generation";
-import { calculateValueMetrics, formatEstimatedMinutes } from "@/lib/value-metrics";
+import { calculateValueMetrics, formatTimeSaved } from "@/lib/value-metrics";
 
 // Microsoft Word standard fonts - alphabetically ordered
 const fonts = ["Arial", "Arial Black", "Book Antiqua", "Calibri", "Cambria", "Candara", "Century Gothic", "Comic Sans MS", "Consolas", "Constantia", "Corbel", "Courier New", "Franklin Gothic Medium", "Garamond", "Georgia", "Gill Sans MT", "Impact", "Lucida Console", "Lucida Sans Unicode", "Palatino Linotype", "Segoe UI", "Tahoma", "Times New Roman", "Trebuchet MS", "Verdana"];
@@ -160,8 +160,8 @@ const SlideEditor = () => {
   const isInitialLoadRef = useRef(true);
   const upsellSessionKey = id && id !== "new" ? `export_upsell_seen:${id}` : null;
   const valueMetrics = useMemo(
-    () => calculateValueMetrics({ slideCount: slides.length, formData: presentationFormData }),
-    [presentationFormData, slides.length],
+    () => calculateValueMetrics({ slideCount: slides.length, slides, formData: presentationFormData }),
+    [presentationFormData, slides],
   );
   const editorBackPath = subscription.subscribed ? "/dashboard" : "/";
   const editorBackLabel = subscription.subscribed ? "Dashboard" : "Home";
@@ -266,6 +266,14 @@ const SlideEditor = () => {
 
     editorNavigate(`/signup?${params.toString()}`);
   };
+
+  useEffect(() => {
+    if (!user || subscription.signup_status !== "pending_checkout") return;
+    const params = new URLSearchParams();
+    const pendingPriceId = localStorage.getItem("pending_pro_checkout_price_id");
+    if (pendingPriceId) params.set("priceId", pendingPriceId);
+    editorNavigate(`/signup-incomplete${params.toString() ? `?${params.toString()}` : ""}`, { replace: true });
+  }, [editorNavigate, subscription.signup_status, user]);
 
 
   // Load presentation data - check for saved editor slides first
@@ -1080,9 +1088,7 @@ const SlideEditor = () => {
               {slides.length > 0 && (
                 <div className="hidden xl:flex items-center gap-1.5 text-xs text-muted-foreground bg-muted/50 px-2 py-1 rounded-full">
                   <Sparkles className="w-3 h-3 text-primary" />
-                  <span>{formatEstimatedMinutes(valueMetrics.estimatedMinutesSaved)} saved</span>
-                  <span>·</span>
-                  <span>Ready for PowerPoint or ProPresenter</span>
+                  <span>You saved {formatTimeSaved(valueMetrics.estimatedTimeSavedSeconds)} by creating this sermon here.</span>
                 </div>
               )}
             </div>

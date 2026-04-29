@@ -12,6 +12,7 @@ import SlideEditor from "./pages/SlideEditor";
 import PaymentSuccess from "./pages/PaymentSuccess";
 import Login from "./pages/Login";
 import SignUp from "./pages/SignUp";
+import SignupIncomplete from "./pages/SignupIncomplete";
 import InviteSignUp from "./pages/InviteSignUp";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
@@ -63,6 +64,7 @@ const App = () => (
               <Route path="/payment-success" element={<PaymentSuccess />} />
               <Route path="/login" element={<Login />} />
               <Route path="/signup" element={<SignUp />} />
+              <Route path="/signup-incomplete" element={<ProtectedRoute allowUnsubscribed allowPendingCheckout><SignupIncomplete /></ProtectedRoute>} />
               <Route path="/invite-signup" element={<InviteSignUp />} />
               <Route path="/auth/confirm" element={<AuthConfirm />} />
               <Route path="/auth/confirm-email-change" element={<ConfirmEmailChange />} />
@@ -87,7 +89,7 @@ const App = () => (
               <Route path="/contact" element={<Contact />} />
               <Route path="/trust-center" element={<TrustCenter />} />
               <Route path="/exit-survey" element={<ProtectedRoute allowUnsubscribed><ExitSurvey /></ProtectedRoute>} />
-              <Route path="/checkout-redirect" element={<ProtectedRoute allowUnsubscribed><CheckoutRedirect /></ProtectedRoute>} />
+              <Route path="/checkout-redirect" element={<ProtectedRoute allowUnsubscribed allowPendingCheckout><CheckoutRedirect /></ProtectedRoute>} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>

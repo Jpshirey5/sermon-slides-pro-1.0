@@ -47,6 +47,7 @@ const SignUp = () => {
   const selectedPriceId = searchParams.get("priceId");
   const nextPath = searchParams.get("next");
   const preselectedPlan = getPlanByPriceId(selectedPriceId);
+  const requiresPlanFirst = !inviteParam && !preselectedPlan;
 
   const [fullName, setFullName] = useState("");
   const [churchRole, setChurchRole] = useState("");
@@ -299,6 +300,13 @@ const SignUp = () => {
     if (!validated) return;
 
     const { normalizedEmail, trimmedName, trimmedChurchRole } = validated;
+    const selectedPlanConfig = selectedPlanId ? getPlanById(selectedPlanId) : preselectedPlan;
+    if (!inviteValid && !selectedPlanConfig) {
+      trackEvent("signup_validation_failed", { reason: "missing_subscription_plan", invited: false });
+      showNotice("Choose a subscription plan", "Please choose a subscription plan before creating your account.");
+      return;
+    }
+
     setLoading(true);
     try {
       trackEvent("signup_submitted", {
@@ -315,7 +323,6 @@ const SignUp = () => {
         metadata.org_state = state;
       }
 
-      const selectedPlanConfig = selectedPlanId ? getPlanById(selectedPlanId) : preselectedPlan;
       if (!inviteValid) {
         metadata.signup_intent = "checkout";
         if (selectedPlanConfig?.priceId) {
@@ -412,12 +419,15 @@ const SignUp = () => {
       return;
     }
 
-    setShowPlanSelection(true);
+    showNotice("Choose a subscription plan", "Please choose a subscription plan before creating your account.");
   };
 
   const handleSelectPlan = async (planId: SubscriptionPlanId) => {
+    const plan = getPlanById(planId);
+    if (!plan) return;
     setPlanLoading(planId);
-    await createAccount(planId);
+    trackEvent("signup_plan_selected", { planId });
+    navigate(`/signup?priceId=${encodeURIComponent(plan.priceId)}`);
   };
 
   if (inviteLoading) {
@@ -478,10 +488,12 @@ const SignUp = () => {
                 <BookOpen className="w-7 h-7 text-primary-foreground" />
               </div>
               <h1 className="font-serif text-2xl font-bold text-foreground mb-2">
-                {isInviteCompletionMode ? "Finish Creating Your Account" : "Create Account"}
+                {requiresPlanFirst ? "Choose Your Plan" : isInviteCompletionMode ? "Finish Creating Your Account" : "Create Account"}
               </h1>
               <p className="text-muted-foreground">
-                {isInviteCompletionMode
+                {requiresPlanFirst
+                  ? "Select a subscription plan before creating your account."
+                  : isInviteCompletionMode
                   ? `You're joining ${inviteOrgName} as a team member.`
                   : inviteValid
                   ? `You've been invited to join ${inviteOrgName}`
@@ -491,24 +503,26 @@ const SignUp = () => {
               </p>
             </div>
 
-            {!inviteValid && !showPlanSelection && (
+            {!inviteValid && !showPlanSelection && !requiresPlanFirst && (
               <div className="rounded-lg bg-primary/5 border border-primary/20 p-3 mb-6">
                 <p className="text-sm text-foreground font-medium">Paid account setup</p>
                 <p className="text-xs text-muted-foreground mt-1">All new accounts require a subscription. After you confirm your email, we’ll send you to secure checkout.</p>
               </div>
             )}
 
-            {showPlanSelection ? (
+            {showPlanSelection || requiresPlanFirst ? (
               <div className="space-y-4">
                 <SubscriptionPlanPicker
                   title="Choose Your Plan"
-                  description="Select Pro, Team, or Enterprise with monthly or annual billing to finish creating your account."
+                  description="Select Pro, Team, or Enterprise with monthly or annual billing before creating your account."
                   onSelectPlan={handleSelectPlan}
                   loadingPlanId={planLoading}
                 />
-                <Button variant="outline" className="w-full" onClick={() => setShowPlanSelection(false)} disabled={loading}>
-                  Back to Account Details
-                </Button>
+                {!requiresPlanFirst && (
+                  <Button variant="outline" className="w-full" onClick={() => setShowPlanSelection(false)} disabled={loading}>
+                    Back to Account Details
+                  </Button>
+                )}
               </div>
             ) : (
               <form onSubmit={handleSubmit} className="space-y-5">
