@@ -32,6 +32,7 @@ import {
   isDeletionCancelable,
   type AccountDeletionRequest,
 } from "@/lib/account-deletion";
+import { clearPendingCheckoutState } from "@/lib/pending-checkout";
 
 interface TeamMember {
   id: string;
@@ -804,9 +805,7 @@ const Account = () => {
   useEffect(() => {
     if (searchParams.get("checkout") === "success") {
       checkSubscription();
-      localStorage.removeItem("pending_pro_checkout");
-      localStorage.removeItem("pending_pro_checkout_email");
-      localStorage.removeItem("pending_pro_checkout_price_id");
+      clearPendingCheckoutState();
       toast.success("Subscription activated!");
       const next = new URLSearchParams(searchParams.toString());
       next.delete("checkout");
@@ -855,9 +854,7 @@ const Account = () => {
     setSearchParams(next, { replace: true });
 
     if (subscription.subscribed) {
-      localStorage.removeItem("pending_pro_checkout");
-      localStorage.removeItem("pending_pro_checkout_email");
-      localStorage.removeItem("pending_pro_checkout_price_id");
+      clearPendingCheckoutState();
       toast.success("Your subscription is already active.");
       return;
     }

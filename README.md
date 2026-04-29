@@ -137,6 +137,7 @@ Required server-side/runtime variables:
 - `SUPPORT_CONTACT_EMAIL` optional override for contact-form submissions, defaults to `support@sermonslidepro.com`
 - `BETA_EMAIL_WORKER_SECRET` for the daily beta lifecycle email worker
 - `FINALIZE_ACCOUNT_DELETIONS_SECRET` for the daily account deletion finalizer
+- `PENDING_SIGNUP_CLEANUP_SECRET` for the daily abandoned signup cleanup worker
 
 Supabase Dashboard requirements:
 
@@ -197,7 +198,15 @@ Daily account deletion finalizer:
 - Required header: `x-finalize-secret: <FINALIZE_ACCOUNT_DELETIONS_SECRET>`
 - Purpose: permanently finalizes due organization deletion requests after the grace/billing-term window.
 
-Both functions intentionally reject requests without their configured scheduler secret. Do not put the Supabase service-role key in client-side code or frontend environment variables.
+Daily pending signup cleanup:
+
+- Function URL: `https://hqtcgynnnghxihvykrin.supabase.co/functions/v1/cleanup-pending-signups`
+- Method: `POST`
+- Cadence: once daily
+- Required header: `x-cleanup-secret: <PENDING_SIGNUP_CLEANUP_SECRET>`
+- Purpose: deletes abandoned owner signups that are still `pending_checkout` after the safe cleanup window.
+
+These functions intentionally reject requests without their configured scheduler secret. Do not put the Supabase service-role key in client-side code or frontend environment variables.
 
 ## Deployment
 

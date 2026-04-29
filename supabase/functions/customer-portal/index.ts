@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@18.5.0";
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
+import { getTrustedAppOrigin } from "../_shared/app-url.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -182,7 +183,7 @@ serve(async (req) => {
       logStep("Using email stripe customer", { customerId });
     }
 
-    const origin = req.headers.get("origin") || "https://sermonslides.app";
+    const origin = getTrustedAppOrigin(req);
     const allowedPriceIds = getAllowedPriceIds();
     let portalSession;
     let mode: "default" | "change_plan" = "default";

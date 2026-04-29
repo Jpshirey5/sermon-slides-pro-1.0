@@ -6,8 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { logError, trackEvent } from "@/lib/monitoring";
 import { toast } from "sonner";
-
-const CHECKOUT_URL_STORAGE_KEY = "pending_pro_checkout_url";
+import { clearPendingCheckoutState, getFreshPendingCheckoutUrl, setPendingCheckoutUrl } from "@/lib/pending-checkout";
 
 const SignupIncomplete = () => {
   const navigate = useNavigate();
@@ -33,7 +32,7 @@ const SignupIncomplete = () => {
   const continueCheckout = async () => {
     setLoadingAction("continue");
     try {
-      const storedUrl = localStorage.getItem(CHECKOUT_URL_STORAGE_KEY);
+      const storedUrl = getFreshPendingCheckoutUrl();
       if (storedUrl) {
         trackEvent("signup_checkout_continue", { source: "stored_url" });
         window.location.href = storedUrl;
@@ -57,7 +56,7 @@ const SignupIncomplete = () => {
         throw new Error(error?.message || data?.error || "Could not restart checkout");
       }
 
-      localStorage.setItem(CHECKOUT_URL_STORAGE_KEY, data.url);
+      setPendingCheckoutUrl(data.url);
       trackEvent("signup_checkout_continue", { source: "new_session", hasPriceId: Boolean(priceId) });
       window.location.href = data.url;
     } catch (error) {
@@ -78,10 +77,7 @@ const SignupIncomplete = () => {
         if (error) throw error;
       }
 
-      localStorage.removeItem("pending_pro_checkout");
-      localStorage.removeItem("pending_pro_checkout_email");
-      localStorage.removeItem("pending_pro_checkout_price_id");
-      localStorage.removeItem(CHECKOUT_URL_STORAGE_KEY);
+      clearPendingCheckoutState();
       trackEvent("signup_checkout_abandoned");
       await signOut({ userInitiated: false });
       navigate("/", { replace: true });
