@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -45,9 +45,11 @@ const SignUp = () => {
   const legacyInviteToken = inviteParam && inviteParam !== "complete" ? inviteParam : null;
   const isInviteCompletionMode = inviteParam === "complete";
   const selectedPriceId = searchParams.get("priceId");
+  const checkoutStatus = searchParams.get("checkout");
   const nextPath = searchParams.get("next");
   const preselectedPlan = getPlanByPriceId(selectedPriceId);
-  const requiresPlanFirst = !inviteParam && !preselectedPlan;
+  const requiresPlanFirst = !inviteParam;
+  const autoStartedCheckoutRef = useRef(false);
 
   const [fullName, setFullName] = useState("");
   const [churchRole, setChurchRole] = useState("");
@@ -85,6 +87,14 @@ const SignUp = () => {
       nextPath: nextPath || "/dashboard",
     });
   }, [inviteParam, isInviteCompletionMode, legacyInviteToken, nextPath, preselectedPlan]);
+
+  useEffect(() => {
+    if (checkoutStatus !== "cancelled") return;
+    showNotice(
+      "Signup not completed",
+      "You haven’t completed signup yet. If you leave now, you’ll need to start the signup process over.",
+    );
+  }, [checkoutStatus]);
 
   useEffect(() => {
     if (!legacyInviteToken) return;
@@ -427,8 +437,32 @@ const SignUp = () => {
     if (!plan) return;
     setPlanLoading(planId);
     trackEvent("signup_plan_selected", { planId });
-    navigate(`/signup?priceId=${encodeURIComponent(plan.priceId)}`);
+    try {
+      const { data, error } = await supabase.functions.invoke("create-signup-checkout", {
+        body: { action: "create", priceId: plan.priceId },
+      });
+
+      if (error || data?.error || !data?.url) {
+        throw new Error(error?.message || data?.error || "Could not start checkout.");
+      }
+
+      trackEvent("signup_checkout_started", { planId });
+      window.location.href = data.url;
+    } catch (error) {
+      logError(error, { scope: "paid_signup_checkout_start", planId });
+      showNotice(
+        "Could not start checkout",
+        error instanceof Error && error.message ? error.message : "We couldn't start secure checkout. Please try again.",
+      );
+      setPlanLoading(null);
+    }
   };
+
+  useEffect(() => {
+    if (!preselectedPlan || inviteParam || autoStartedCheckoutRef.current) return;
+    autoStartedCheckoutRef.current = true;
+    void handleSelectPlan(preselectedPlan.id);
+  }, [inviteParam, preselectedPlan]);
 
   if (inviteLoading) {
     return (
@@ -481,27 +515,30 @@ const SignUp = () => {
       </header>
 
       <main className="flex-1 flex items-center justify-center px-4 py-8">
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }} className="w-full max-w-md">
-          <div className="rounded-2xl glass-panel p-8 shadow-elevated">
-            <div className="text-center mb-8">
-              <div className="w-14 h-14 rounded-2xl gradient-hero flex items-center justify-center mx-auto mb-4">
-                <BookOpen className="w-7 h-7 text-primary-foreground" />
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+          className={`w-full ${showPlanSelection || requiresPlanFirst ? "max-w-7xl" : "max-w-md"}`}
+        >
+          <div className="rounded-2xl glass-panel p-6 shadow-elevated sm:p-8">
+            {!showPlanSelection && !requiresPlanFirst && (
+              <div className="text-center mb-8">
+                <div className="w-14 h-14 rounded-2xl gradient-hero flex items-center justify-center mx-auto mb-4">
+                  <BookOpen className="w-7 h-7 text-primary-foreground" />
+                </div>
+                <h1 className="font-serif text-2xl font-bold text-foreground mb-2">
+                  {isInviteCompletionMode ? "Finish Creating Your Account" : "Create Account"}
+                </h1>
+                <p className="text-muted-foreground">
+                  {isInviteCompletionMode
+                    ? `You're joining ${inviteOrgName} as a team member.`
+                    : inviteValid
+                    ? `You've been invited to join ${inviteOrgName}`
+                    : "Create your account to continue to secure subscription checkout."}
+                </p>
               </div>
-              <h1 className="font-serif text-2xl font-bold text-foreground mb-2">
-                {requiresPlanFirst ? "Choose Your Plan" : isInviteCompletionMode ? "Finish Creating Your Account" : "Create Account"}
-              </h1>
-              <p className="text-muted-foreground">
-                {requiresPlanFirst
-                  ? "Select a subscription plan before creating your account."
-                  : isInviteCompletionMode
-                  ? `You're joining ${inviteOrgName} as a team member.`
-                  : inviteValid
-                  ? `You've been invited to join ${inviteOrgName}`
-                  : showPlanSelection
-                  ? "Choose your billing plan to finish setting up your account."
-                  : "Create your account to continue to secure subscription checkout."}
-              </p>
-            </div>
+            )}
 
             {!inviteValid && !showPlanSelection && !requiresPlanFirst && (
               <div className="rounded-lg bg-primary/5 border border-primary/20 p-3 mb-6">

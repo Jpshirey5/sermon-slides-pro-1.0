@@ -12,6 +12,7 @@ import SlideEditor from "./pages/SlideEditor";
 import PaymentSuccess from "./pages/PaymentSuccess";
 import Login from "./pages/Login";
 import SignUp from "./pages/SignUp";
+import SignupComplete from "./pages/SignupComplete";
 import SignupIncomplete from "./pages/SignupIncomplete";
 import InviteSignUp from "./pages/InviteSignUp";
 import ForgotPassword from "./pages/ForgotPassword";
@@ -64,6 +65,7 @@ const App = () => (
               <Route path="/payment-success" element={<PaymentSuccess />} />
               <Route path="/login" element={<Login />} />
               <Route path="/signup" element={<SignUp />} />
+              <Route path="/signup/complete" element={<SignupComplete />} />
               <Route path="/signup-incomplete" element={<ProtectedRoute allowUnsubscribed allowPendingCheckout><SignupIncomplete /></ProtectedRoute>} />
               <Route path="/invite-signup" element={<InviteSignUp />} />
               <Route path="/auth/confirm" element={<AuthConfirm />} />

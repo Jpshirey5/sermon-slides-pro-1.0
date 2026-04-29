@@ -17,7 +17,7 @@ const normalizeBaseUrl = (value: string | null | undefined) => {
   }
 };
 
-const getConfiguredSiteUrl = () =>
+export const getConfiguredAppOrigin = () =>
   normalizeBaseUrl(Deno.env.get("SITE_URL")) ||
   normalizeBaseUrl(Deno.env.get("VITE_SITE_URL")) ||
   PRODUCTION_SITE_URL;
@@ -29,7 +29,7 @@ const isLocalOrigin = (origin: string) =>
   origin === "http://127.0.0.1:5173";
 
 export const getTrustedAppOrigin = (req: Request, requestedOrigin?: string | null) => {
-  const configuredSiteUrl = getConfiguredSiteUrl();
+  const configuredSiteUrl = getConfiguredAppOrigin();
   const candidates = [
     normalizeBaseUrl(requestedOrigin),
     normalizeBaseUrl(req.headers.get("origin")),
