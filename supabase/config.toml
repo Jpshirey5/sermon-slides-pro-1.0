@@ -3,6 +3,9 @@ project_id = "hqtcgynnnghxihvykrin"
 [functions.create-checkout]
 verify_jwt = false
 
+[functions.create-signup-checkout]
+verify_jwt = false
+
 [functions.check-subscription]
 verify_jwt = false
 

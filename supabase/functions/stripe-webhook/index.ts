@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@18.5.0";
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
+import { getConfiguredAppOrigin } from "../_shared/app-url.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -37,6 +38,15 @@ const resolvePlanMetadata = (priceId?: string | null) => {
   if (!priceId) return { planTier: "free", billingInterval: null, maxAdditionalUsers: 0 };
   return PLAN_BY_PRICE_ID.get(priceId) || { planTier: "pro", billingInterval: null, maxAdditionalUsers: 0 };
 };
+
+const hashToken = async (token: string) => {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
+  return Array.from(new Uint8Array(digest))
+    .map((value) => value.toString(16).padStart(2, "0"))
+    .join("");
+};
+
+const generateToken = () => `${crypto.randomUUID()}${crypto.randomUUID()}`.replace(/-/g, "");
 
 const createAdminNotification = async (
   supabaseClient: ReturnType<typeof createClient>,
@@ -76,6 +86,42 @@ const getAccountForStripeCustomer = async (
     .eq("stripe_customer_id", customerId)
     .maybeSingle();
   return data || null;
+};
+
+const sendPaidSignupFinishEmail = async (email: string, token: string) => {
+  const resendApiKey = Deno.env.get("RESEND_API_KEY") ?? "";
+  const resendFromEmail = Deno.env.get("RESEND_FROM_EMAIL") ?? "";
+  const resendFromName = Deno.env.get("RESEND_FROM_NAME") || "Sermon Slide Pro";
+  if (!resendApiKey || !resendFromEmail) return { sent: false, error: "Resend is not configured" };
+
+  const finishUrl = `${getConfiguredAppOrigin()}/signup/complete?token=${encodeURIComponent(token)}`;
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${resendApiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from: `${resendFromName} <${resendFromEmail}>`,
+      to: [email],
+      subject: "Finish creating your Sermon Slide Pro account",
+      html: `
+        <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #1f2937;">
+          <h2>Your Sermon Slide Pro subscription is ready</h2>
+          <p>Thanks for subscribing. Finish creating your account so you can start building sermon slides.</p>
+          <p><a href="${finishUrl}">Finish creating your account</a></p>
+          <p>If you did not request this, you can ignore this email.</p>
+        </div>
+      `,
+      text: `Your Sermon Slide Pro subscription is ready.\n\nFinish creating your account: ${finishUrl}\n\nIf you did not request this, you can ignore this email.`,
+    }),
+  });
+
+  if (!response.ok) {
+    return { sent: false, error: `Resend failed: ${response.status} ${await response.text()}` };
+  }
+
+  return { sent: true, error: null };
 };
 
 const getStripeCustomerContact = async (
@@ -175,11 +221,97 @@ serve(async (req) => {
         const session = event.data.object as Stripe.Checkout.Session;
         const customerId = session.customer as string;
         const subscriptionId = session.subscription as string;
+        const signupFlow = session.metadata?.signup_flow;
+        const paidSignupId = session.metadata?.paid_signup_id;
+        const paidSignupTokenHash = session.metadata?.paid_signup_token_hash;
         const accountId = session.metadata?.account_id;
         const lineItemPriceId = typeof session.metadata?.price_id === "string" ? session.metadata.price_id : null;
         const planMeta = resolvePlanMetadata(lineItemPriceId);
 
         logStep("Checkout completed", { customerId, subscriptionId, accountId });
+
+        if (signupFlow === "paid_owner_signup") {
+          const checkoutEmail = (session.customer_details?.email || session.customer_email || "").trim().toLowerCase();
+          if (!paidSignupId || !paidSignupTokenHash) {
+            logStep("WARNING: Paid signup checkout missing metadata", { sessionId: session.id });
+            break;
+          }
+
+          const { data: conflictingProfiles } = checkoutEmail
+            ? await supabaseClient.from("profiles").select("id").ilike("email", checkoutEmail).limit(1)
+            : { data: [] };
+
+          const hasConflict = Boolean((conflictingProfiles || []).length);
+          const finishToken = generateToken();
+          const finishTokenHash = await hashToken(finishToken);
+
+          const updatePayload: Record<string, unknown> = {
+            checkout_email: checkoutEmail || null,
+            stripe_customer_id: customerId,
+            stripe_subscription_id: subscriptionId,
+            price_id: lineItemPriceId,
+            plan_tier: planMeta.planTier,
+            billing_interval: planMeta.billingInterval,
+            max_additional_users: planMeta.maxAdditionalUsers ?? 0,
+            paid_at: new Date().toISOString(),
+            metadata: { stripeEventId: event.id, stripeSessionId: session.id },
+          };
+
+          if (hasConflict) {
+            updatePayload.status = "email_conflict";
+          } else {
+            updatePayload.status = "paid";
+            updatePayload.finish_token_hash = finishTokenHash;
+          }
+
+          const { data: updatedPaidSignup, error: updateError } = await supabaseClient
+            .from("paid_signup_sessions" as any)
+            .update(updatePayload)
+            .eq("id", paidSignupId)
+            .eq("token_hash", paidSignupTokenHash)
+            .neq("status", "completed")
+            .select("id")
+            .maybeSingle();
+
+          if (updateError) {
+            logStep("Paid signup update failed", { error: updateError.message, paidSignupId });
+            break;
+          }
+          if (!updatedPaidSignup) {
+            logStep("Paid signup already completed or not found", { paidSignupId });
+            break;
+          }
+
+          if (hasConflict) {
+            await createAdminNotification(supabaseClient, {
+              type: "payment_issue",
+              title: "Paid Signup Email Conflict",
+              message: "A customer paid for signup using an email that already exists. Support may be required.",
+              externalEventId: event.id,
+              metadata: { eventId: event.id, customerId, subscriptionId, checkoutEmail, paidSignupId },
+            });
+            break;
+          }
+
+          if (checkoutEmail) {
+            const emailResult = await sendPaidSignupFinishEmail(checkoutEmail, finishToken);
+            await supabaseClient
+              .from("paid_signup_sessions" as any)
+              .update({
+                finish_email_sent_at: emailResult.sent ? new Date().toISOString() : null,
+                finish_email_error: emailResult.error,
+              })
+              .eq("id", paidSignupId);
+          }
+
+          await createAdminNotification(supabaseClient, {
+            title: "Paid signup completed checkout",
+            message: "A new customer paid and needs to finish creating their account.",
+            externalEventId: event.id,
+            metadata: { eventId: event.id, customerId, subscriptionId, checkoutEmail, planTier: planMeta.planTier },
+          });
+          break;
+        }
 
         if (accountId) {
           // Direct update via metadata

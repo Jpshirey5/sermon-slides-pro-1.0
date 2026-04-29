@@ -58,9 +58,7 @@ const AuthConfirm = () => {
           typeof metadata.signup_checkout_price_id === "string" ? metadata.signup_checkout_price_id : null;
         const metadataIntent = typeof metadata.signup_intent === "string" ? metadata.signup_intent : null;
         const intent = storedPendingCheckout ? "checkout" : metadataIntent;
-        const shouldStartCheckout =
-          authType !== "invite" &&
-          (intent === "checkout" || (authType === "signup" && metadataIntent !== "dashboard"));
+        const shouldStartCheckout = authType !== "invite" && intent === "checkout";
 
         const destination =
           authType === "invite"
