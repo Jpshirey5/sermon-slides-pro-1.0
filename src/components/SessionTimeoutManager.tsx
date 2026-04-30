@@ -13,6 +13,7 @@ import {
 
 const SessionTimeoutManager = () => {
   const { user, signOut } = useAuth();
+  const userId = user?.id;
   const navigate = useNavigate();
   const location = useLocation();
   const [warningOpen, setWarningOpen] = useState(false);
@@ -20,14 +21,30 @@ const SessionTimeoutManager = () => {
   const lastActivityRef = useRef(Date.now());
   const lastRecordedRef = useRef(0);
   const loggingOutRef = useRef(false);
+  const locationPathRef = useRef(location.pathname);
 
   useEffect(() => {
-    if (!user) {
+    if (!userId) {
       setWarningOpen(false);
       setSecondsRemaining(Math.ceil(WARNING_MS / 1000));
       loggingOutRef.current = false;
       return;
     }
+
+    const now = resetSessionInactivityTracking();
+    lastRecordedRef.current = now;
+    lastActivityRef.current = now;
+    loggingOutRef.current = false;
+    setWarningOpen(false);
+    setSecondsRemaining(Math.ceil(WARNING_MS / 1000));
+  }, [userId]);
+
+  useEffect(() => {
+    locationPathRef.current = location.pathname;
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (!userId) return;
 
     const getRemainingMs = () => IDLE_TIMEOUT_MS - (Date.now() - lastActivityRef.current);
 
@@ -38,25 +55,8 @@ const SessionTimeoutManager = () => {
       setStoredLogoutReason("inactive");
       localStorage.setItem(STORAGE_FORCED_LOGOUT_KEY, String(Date.now()));
       await signOut({ userInitiated: false });
-      navigate("/login?reason=inactive", { replace: true, state: { from: location.pathname } });
+      navigate("/login?reason=inactive", { replace: true, state: { from: locationPathRef.current } });
     };
-
-    const storedLastActivity = Number(localStorage.getItem(STORAGE_LAST_ACTIVITY_KEY));
-    const now = Date.now();
-    const startingActivity = Number.isFinite(storedLastActivity) && storedLastActivity > 0
-      ? storedLastActivity
-      : resetSessionInactivityTracking(now);
-
-    lastRecordedRef.current = startingActivity;
-    lastActivityRef.current = startingActivity;
-    loggingOutRef.current = false;
-    setWarningOpen(false);
-    setSecondsRemaining(Math.ceil(WARNING_MS / 1000));
-
-    if (getRemainingMs() <= 0) {
-      void signOutForInactivity();
-      return;
-    }
 
     const recordActivity = () => {
       if (loggingOutRef.current) return;
@@ -92,7 +92,7 @@ const SessionTimeoutManager = () => {
         loggingOutRef.current = true;
         setStoredLogoutReason("inactive");
         await signOut({ userInitiated: false });
-        navigate("/login?reason=inactive", { replace: true, state: { from: location.pathname } });
+        navigate("/login?reason=inactive", { replace: true, state: { from: locationPathRef.current } });
       }
     };
 
@@ -101,7 +101,7 @@ const SessionTimeoutManager = () => {
     document.addEventListener("visibilitychange", handleVisibility);
     window.addEventListener("storage", handleStorage);
 
-      const interval = window.setInterval(async () => {
+    const interval = window.setInterval(async () => {
       const remainingMs = getRemainingMs();
 
       if (remainingMs <= WARNING_MS && remainingMs > 0) {
@@ -120,7 +120,7 @@ const SessionTimeoutManager = () => {
       document.removeEventListener("visibilitychange", handleVisibility);
       window.removeEventListener("storage", handleStorage);
     };
-  }, [location.pathname, navigate, signOut, user]);
+  }, [navigate, signOut, userId]);
 
   const handleStaySignedIn = () => {
     const now = Date.now();
