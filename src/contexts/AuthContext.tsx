@@ -168,7 +168,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const signOut = async (options?: { userInitiated?: boolean }) => {
+  const signOut = useCallback(async (options?: { userInitiated?: boolean }) => {
     const userInitiated = options?.userInitiated ?? true;
     userInitiatedSignOutRef.current = userInitiated;
     if (userInitiated) {
@@ -197,7 +197,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       beta_trial_ends_at: null,
       beta_trial_days_remaining: null,
     });
-  };
+  }, []);
 
   useEffect(() => {
     const { data: { subscription: authSub } } = supabase.auth.onAuthStateChange(
