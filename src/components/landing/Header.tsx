@@ -30,6 +30,7 @@ const Header = () => {
           <nav className="hidden md:flex items-center gap-8">
             <a href="#features" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Features</a>
             <a href="#testimonials" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Testimonials</a>
+            <a href="#workflow-comparison" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Workflow Comparison</a>
             <a href="#pricing" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Pricing</a>
             <Link to="/contact" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Contact</Link>
             {/* <Link to="/trust-center" className="text-sm text-muted-foreground hover:text-foreground transition-colors">Trust Center</Link> */}
@@ -57,6 +58,7 @@ const Header = () => {
         {isOpen && (
           <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="md:hidden mt-2 glass-panel rounded-2xl py-4 px-4 border border-border/60">
             <nav className="flex flex-col gap-4">
+              <a href="#workflow-comparison" className="text-muted-foreground hover:text-foreground transition-colors" onClick={() => setIsOpen(false)}>Workflow Comparison</a>
               <a href="#features" className="text-muted-foreground hover:text-foreground transition-colors" onClick={() => setIsOpen(false)}>Features</a>
               <a href="#pricing" className="text-muted-foreground hover:text-foreground transition-colors" onClick={() => setIsOpen(false)}>Pricing</a>
               <a href="#testimonials" className="text-muted-foreground hover:text-foreground transition-colors" onClick={() => setIsOpen(false)}>Testimonials</a>
