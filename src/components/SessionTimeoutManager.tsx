@@ -29,18 +29,42 @@ const SessionTimeoutManager = () => {
       return;
     }
 
-    const now = resetSessionInactivityTracking();
-    lastRecordedRef.current = now;
-    lastActivityRef.current = now;
+    const getRemainingMs = () => IDLE_TIMEOUT_MS - (Date.now() - lastActivityRef.current);
+
+    const signOutForInactivity = async () => {
+      if (loggingOutRef.current) return;
+      loggingOutRef.current = true;
+      setWarningOpen(false);
+      setStoredLogoutReason("inactive");
+      localStorage.setItem(STORAGE_FORCED_LOGOUT_KEY, String(Date.now()));
+      await signOut({ userInitiated: false });
+      navigate("/login?reason=inactive", { replace: true, state: { from: location.pathname } });
+    };
+
+    const storedLastActivity = Number(localStorage.getItem(STORAGE_LAST_ACTIVITY_KEY));
+    const now = Date.now();
+    const startingActivity = Number.isFinite(storedLastActivity) && storedLastActivity > 0
+      ? storedLastActivity
+      : resetSessionInactivityTracking(now);
+
+    lastRecordedRef.current = startingActivity;
+    lastActivityRef.current = startingActivity;
     loggingOutRef.current = false;
     setWarningOpen(false);
     setSecondsRemaining(Math.ceil(WARNING_MS / 1000));
-  }, [user]);
 
-  useEffect(() => {
-    if (!user) return;
+    if (getRemainingMs() <= 0) {
+      void signOutForInactivity();
+      return;
+    }
 
     const recordActivity = () => {
+      if (loggingOutRef.current) return;
+      if (getRemainingMs() <= 0) {
+        void signOutForInactivity();
+        return;
+      }
+
       const now = Date.now();
       if (now - lastRecordedRef.current < 1000) return;
       lastRecordedRef.current = now;
@@ -77,20 +101,16 @@ const SessionTimeoutManager = () => {
     document.addEventListener("visibilitychange", handleVisibility);
     window.addEventListener("storage", handleStorage);
 
-    const interval = window.setInterval(async () => {
-      const remainingMs = IDLE_TIMEOUT_MS - (Date.now() - lastActivityRef.current);
+      const interval = window.setInterval(async () => {
+      const remainingMs = getRemainingMs();
 
       if (remainingMs <= WARNING_MS && remainingMs > 0) {
         setSecondsRemaining(Math.ceil(remainingMs / 1000));
         setWarningOpen(true);
       }
 
-      if (remainingMs <= 0 && !loggingOutRef.current) {
-        loggingOutRef.current = true;
-        setStoredLogoutReason("inactive");
-        localStorage.setItem(STORAGE_FORCED_LOGOUT_KEY, String(Date.now()));
-        await signOut({ userInitiated: false });
-        navigate("/login?reason=inactive", { replace: true, state: { from: location.pathname } });
+      if (remainingMs <= 0) {
+        await signOutForInactivity();
       }
     }, 1000);
 
