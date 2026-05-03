@@ -9,8 +9,8 @@ export interface PresentationValueMetrics {
   scripturePassageCount: number;
 }
 
-export const POINT_SLIDE_TIME_SAVED_SECONDS = 30;
-export const VERSE_SLIDE_TIME_SAVED_SECONDS = 90;
+export const POINT_SLIDE_TIME_SAVED_SECONDS = 150;
+export const VERSE_SLIDE_TIME_SAVED_SECONDS = 240;
 
 type SlideLike = {
   type?: string;

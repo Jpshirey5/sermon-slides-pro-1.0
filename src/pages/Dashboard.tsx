@@ -22,6 +22,8 @@ import {
   RefreshCw,
   CheckSquare,
   AlertTriangle,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import {
   getDashboardPresentationsPage,
@@ -86,13 +88,32 @@ const getLocalDateKey = () => {
   return `${year}-${month}-${day}`;
 };
 
+const getLocalMonthKey = () => getLocalDateKey().slice(0, 7);
+
+const formatMonthLabel = (monthKey: string) => {
+  const [year, month] = monthKey.split("-").map(Number);
+  if (!year || !month) return monthKey;
+
+  return new Intl.DateTimeFormat("en-US", {
+    month: "long",
+    year: "numeric",
+  }).format(new Date(year, month - 1, 1));
+};
+
+const shiftMonthKey = (monthKey: string, offset: number) => {
+  const [year, month] = monthKey.split("-").map(Number);
+  const date = new Date(year, month - 1 + offset, 1);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+};
+
 const Dashboard = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const { user, profile, subscription, signOut, checkSubscription, accountId } = useAuth();
   const [presentations, setPresentations] = useState<DashboardPresentation[]>([]);
-  const [timeSavedSummary, setTimeSavedSummary] = useState({ weekSeconds: 0, monthSeconds: 0 });
+  const [selectedTimeSavedMonth, setSelectedTimeSavedMonth] = useState(getLocalMonthKey);
+  const [timeSavedSummary, setTimeSavedSummary] = useState({ totalSeconds: 0, weekSeconds: 0 });
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMorePresentations, setHasMorePresentations] = useState(false);
@@ -124,6 +145,9 @@ const Dashboard = () => {
   const isEnterpriseAccount = subscription.plan_tier === "enterprise";
   const latestPresentationLoadIdRef = useRef(0);
   const activeGlobalMessage = globalMessagesQueue[0] || null;
+  const currentMonthKey = getLocalMonthKey();
+  const isViewingCurrentTimeSavedMonth = selectedTimeSavedMonth === currentMonthKey;
+  const canGoToNextTimeSavedMonth = selectedTimeSavedMonth < currentMonthKey;
 
   // Handle returning from Stripe checkout
   useEffect(() => {
@@ -342,23 +366,33 @@ const Dashboard = () => {
   }, [campusFilterValue, debouncedSearch, presentationMonth, sortOrder]);
 
   const refreshTimeSavedSummary = useCallback(async () => {
-    const summary = await getDashboardTimeSavedSummary();
+    const summary = await getDashboardTimeSavedSummary(selectedTimeSavedMonth);
     setTimeSavedSummary(summary);
-  }, []);
+  }, [selectedTimeSavedMonth]);
 
   const refreshDashboardPresentations = useCallback(async () => {
     setLoading(true);
     try {
       await loadPresentationsPage(0, true);
-      await refreshTimeSavedSummary();
     } finally {
       setLoading(false);
     }
-  }, [loadPresentationsPage, refreshTimeSavedSummary]);
+  }, [loadPresentationsPage]);
+
+  const refreshDashboardData = useCallback(async () => {
+    await Promise.all([
+      refreshDashboardPresentations(),
+      refreshTimeSavedSummary(),
+    ]);
+  }, [refreshDashboardPresentations, refreshTimeSavedSummary]);
 
   useEffect(() => {
     void refreshDashboardPresentations();
   }, [refreshDashboardPresentations]);
+
+  useEffect(() => {
+    void refreshTimeSavedSummary();
+  }, [refreshTimeSavedSummary]);
 
   useEffect(() => {
     const refreshOnReturn = () => {
@@ -808,20 +842,55 @@ const Dashboard = () => {
             </div>
             <div className="rounded-2xl border border-primary/15 bg-white/80 p-4 shadow-soft">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">Overall time saved</p>
-              <div className="mt-3 grid grid-cols-2 gap-3">
-                <div>
-                  <p className="text-xs text-muted-foreground">This week</p>
-                  <p className="font-serif text-lg font-semibold text-foreground">
-                    {formatTimeSaved(timeSavedSummary.weekSeconds)}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">This month</p>
-                  <p className="font-serif text-lg font-semibold text-foreground">
-                    {formatTimeSaved(timeSavedSummary.monthSeconds)}
-                  </p>
-                </div>
+              <div className="mt-3 flex w-full items-center justify-between rounded-full border border-border/70 bg-white/70">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 shrink-0 rounded-full"
+                  aria-label="View previous month"
+                  onClick={() => setSelectedTimeSavedMonth((month) => shiftMonthKey(month, -1))}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <p className="min-w-0 px-2 text-center text-sm font-medium text-foreground">
+                  {formatMonthLabel(selectedTimeSavedMonth)}
+                </p>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 shrink-0 rounded-full"
+                  aria-label="View next month"
+                  onClick={() => setSelectedTimeSavedMonth((month) => shiftMonthKey(month, 1))}
+                  disabled={!canGoToNextTimeSavedMonth}
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
               </div>
+              {isViewingCurrentTimeSavedMonth ? (
+                <div className="mt-4 grid grid-cols-2 gap-3">
+                  <div>
+                    <p className="text-xs text-muted-foreground">This week</p>
+                    <p className="font-serif text-lg font-semibold text-foreground">
+                      {formatTimeSaved(timeSavedSummary.weekSeconds)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">This month</p>
+                    <p className="font-serif text-lg font-semibold text-foreground">
+                      {formatTimeSaved(timeSavedSummary.totalSeconds)}
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-4">
+                  <p className="text-xs text-muted-foreground">Saved this month</p>
+                  <p className="font-serif text-2xl font-semibold text-foreground">
+                    {formatTimeSaved(timeSavedSummary.totalSeconds)}
+                  </p>
+                </div>
+              )}
             </div>
           </motion.div>
 
@@ -971,7 +1040,7 @@ const Dashboard = () => {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => void refreshDashboardPresentations()}
+                      onClick={() => void refreshDashboardData()}
                       disabled={loading}
                     >
                       <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
