@@ -63,8 +63,8 @@ export interface DashboardPresentationsPage {
 }
 
 export interface DashboardTimeSavedSummary {
+  totalSeconds: number;
   weekSeconds: number;
-  monthSeconds: number;
 }
 
 export interface DashboardPresentationFilters {
@@ -436,28 +436,35 @@ export async function getDashboardPresentationsPage(
   return { items, hasMore };
 }
 
-export async function getDashboardTimeSavedSummary(): Promise<DashboardTimeSavedSummary> {
+export async function getDashboardTimeSavedSummary(monthKey: string): Promise<DashboardTimeSavedSummary> {
   const access = await getPresentationAccessContext();
   if (!access.isAuthenticated || !access.accountId) {
-    return { weekSeconds: 0, monthSeconds: 0 };
+    return { totalSeconds: 0, weekSeconds: 0 };
+  }
+
+  const [year, month] = monthKey.split("-").map(Number);
+  if (!year || !month || month < 1 || month > 12) {
+    return { totalSeconds: 0, weekSeconds: 0 };
   }
 
   const now = new Date();
-  const today = getLocalDateKey();
-  const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+  const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const shouldCalculateWeek = monthKey === currentMonthKey;
+  const monthStart = `${year}-${String(month).padStart(2, "0")}-01`;
+  const monthEnd = `${year}-${String(month).padStart(2, "0")}-${String(new Date(year, month, 0).getDate()).padStart(2, "0")}`;
   const weekStartDate = new Date(now);
   weekStartDate.setDate(now.getDate() - now.getDay());
   const weekStart = `${weekStartDate.getFullYear()}-${String(weekStartDate.getMonth() + 1).padStart(2, "0")}-${String(weekStartDate.getDate()).padStart(2, "0")}`;
 
   const { data, error } = await supabase
     .from("sermons")
-    .select("slides, presentation_date, created_at")
+    .select("slides, presentation_date")
     .eq("account_id", access.accountId)
     .gte("presentation_date", monthStart)
-    .lte("presentation_date", today);
+    .lte("presentation_date", monthEnd);
 
   if (error || !data) {
-    return { weekSeconds: 0, monthSeconds: 0 };
+    return { totalSeconds: 0, weekSeconds: 0 };
   }
 
   return data.reduce<DashboardTimeSavedSummary>(
@@ -470,15 +477,14 @@ export async function getDashboardTimeSavedSummary(): Promise<DashboardTimeSaved
         slides: editorSlides,
         formData: extractFormData(row.slides),
       });
-      const presentationDate = resolvePresentationDate(row.slides, row.created_at, row.presentation_date);
 
-      summary.monthSeconds += metrics.estimatedTimeSavedSeconds;
-      if (presentationDate >= weekStart) {
+      summary.totalSeconds += metrics.estimatedTimeSavedSeconds;
+      if (shouldCalculateWeek && row.presentation_date && row.presentation_date >= weekStart) {
         summary.weekSeconds += metrics.estimatedTimeSavedSeconds;
       }
       return summary;
     },
-    { weekSeconds: 0, monthSeconds: 0 },
+    { totalSeconds: 0, weekSeconds: 0 },
   );
 }
 
