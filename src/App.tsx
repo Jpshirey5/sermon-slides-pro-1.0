@@ -40,6 +40,7 @@ import AdminCustomers from "./pages/admin/AdminCustomers";
 import AdminCustomerDetail from "./pages/admin/AdminCustomerDetail";
 import AdminSupport from "./pages/admin/AdminSupport";
 import AdminBilling from "./pages/admin/AdminBilling";
+import AdminFinancials from "./pages/admin/AdminFinancials";
 import AdminMessages from "./pages/admin/AdminMessages";
 import AdminUsers from "./pages/admin/AdminUsers";
 
@@ -80,6 +81,7 @@ const App = () => (
                 <Route path="customers/:id" element={<AdminCustomerDetail />} />
                 <Route path="support" element={<AdminSupport />} />
                 <Route path="billing" element={<AdminBilling />} />
+                <Route path="financials" element={<AdminFinancials />} />
                 <Route path="messages" element={<AdminMessages />} />
                 <Route path="users" element={<AdminUsers />} />
               </Route>

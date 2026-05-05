@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { AlertCircle, CreditCard, Inbox, Users } from "lucide-react";
 import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
-import { adminApi, formatAdminDate, formatMoney } from "@/lib/admin-api";
+import { adminApi, formatAdminDate } from "@/lib/admin-api";
 import { Button } from "@/components/ui/button";
 import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 
@@ -36,20 +36,11 @@ const renderActiveChartDot = (props: any) => {
   );
 };
 
-const formatRevenueAxis = (value: number) => {
-  const dollars = value / 100;
-  if (Math.abs(dollars) >= 1000) return `${Math.round(dollars / 1000)}k`;
-  return `${Math.round(dollars)}`;
-};
-
 const AdminOverview = () => {
   const [data, setData] = useState<any>(null);
   const [activity, setActivity] = useState<any>(null);
-  const [revenue, setRevenue] = useState<any>(null);
-  const [rangeDays, setRangeDays] = useState(30);
   const [loading, setLoading] = useState(true);
   const [activityLoading, setActivityLoading] = useState(true);
-  const [revenueLoading, setRevenueLoading] = useState(true);
 
   useEffect(() => {
     adminApi("overview")
@@ -59,18 +50,10 @@ const AdminOverview = () => {
 
   useEffect(() => {
     setActivityLoading(true);
-    adminApi("overview_activity", { days: rangeDays })
+    adminApi("overview_activity", { days: 30 })
       .then(setActivity)
       .finally(() => setActivityLoading(false));
-
-    setRevenueLoading(true);
-    adminApi("overview_revenue", { days: rangeDays })
-      .then(setRevenue)
-      .catch((error) => {
-        setRevenue({ error: error instanceof Error ? error.message : "Unable to load Stripe revenue." });
-      })
-      .finally(() => setRevenueLoading(false));
-  }, [rangeDays]);
+  }, []);
 
   if (loading) return <p className="text-muted-foreground">Loading overview...</p>;
 
@@ -81,9 +64,6 @@ const AdminOverview = () => {
     { label: "Past Due / Failed", value: metrics.pastDueAccounts, icon: AlertCircle },
     { label: "Open Support", value: metrics.openSupportRequests, icon: Inbox },
   ];
-  const revenueSummary = revenue?.summary || {};
-  const revenueCurrency = revenueSummary.currency || "usd";
-
   return (
     <div className="space-y-8">
       <div>
@@ -106,8 +86,8 @@ const AdminOverview = () => {
         })}
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.85fr)]">
-        <section className="order-2 rounded-2xl glass-panel p-5">
+      <div className="grid gap-6">
+        <section className="rounded-2xl glass-panel p-5">
           <div>
             <div>
               <h2 className="font-serif text-xl font-semibold">Signup and Deletion Activity</h2>
@@ -163,143 +143,6 @@ const AdminOverview = () => {
             {activity?.notes?.userDeletions && (
               <p className="mt-3 text-xs text-muted-foreground">{activity.notes.userDeletions}</p>
             )}
-          </div>
-        </section>
-
-        <section className="order-1 rounded-2xl glass-panel p-5">
-          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-            <div>
-              <h2 className="font-serif text-xl font-semibold">Stripe Revenue</h2>
-              <p className="text-sm text-muted-foreground">Take-home revenue after Stripe fees, plus current subscription run-rate.</p>
-            </div>
-            <div className="flex shrink-0 items-center gap-2 whitespace-nowrap">
-              {[1, 7, 30, 90].map((days) => (
-                <Button
-                  key={days}
-                  size="sm"
-                  variant={rangeDays === days ? "hero" : "outline"}
-                  onClick={() => setRangeDays(days)}
-                >
-                  {days} day{days === 1 ? "" : "s"}
-                </Button>
-              ))}
-            </div>
-          </div>
-
-          <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
-            <div className="rounded-xl border border-border/70 bg-white/65 p-3">
-              <p className="text-xs text-muted-foreground">Net After Stripe Fees</p>
-              <p className="mt-1 text-2xl font-semibold text-foreground">
-                {formatMoney(revenueSummary.netAfterFeesCents ?? 0, revenueCurrency)}
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Gross {formatMoney(revenueSummary.grossRevenueCents ?? 0, revenueCurrency)}
-              </p>
-            </div>
-            <div className="rounded-xl border border-border/70 bg-white/65 p-3">
-              <p className="text-xs text-muted-foreground">Current MRR</p>
-              <p className="mt-1 text-2xl font-semibold text-foreground">
-                {formatMoney(revenueSummary.currentMrrCents ?? 0, revenueCurrency)}
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {revenueSummary.activeSubscriptionCount ?? 0} active subscriptions
-              </p>
-            </div>
-          </div>
-
-          {revenue?.error && (
-            <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-              Stripe revenue could not be loaded: {revenue.error}
-            </div>
-          )}
-
-          <div className="mt-5">
-            {revenueLoading ? (
-              <div className="flex h-72 items-center justify-center rounded-xl border border-border/70 bg-white/55 text-sm text-muted-foreground">
-                Loading Stripe revenue...
-              </div>
-            ) : (
-              <ChartContainer
-                className="h-72 w-full"
-                config={{
-                  netAfterFeesCents: { label: "Net After Fees", color: "hsl(var(--primary))" },
-                  stripeFeesCents: { label: "Stripe Fees", color: "#dc2626" },
-                  refundedCents: { label: "Refunds", color: "#f97316" },
-                }}
-              >
-                <LineChart data={revenue?.items || []} margin={{ left: 8, right: 16, top: 8 }}>
-                  <CartesianGrid vertical={false} stroke="hsl(var(--border))" strokeDasharray="0" />
-                  <YAxis
-                    tickLine={false}
-                    axisLine={false}
-                    tickMargin={8}
-                    width={44}
-                    tickFormatter={(value) => formatRevenueAxis(Number(value))}
-                  />
-                  <XAxis
-                    dataKey="date"
-                    tickLine={false}
-                    axisLine={false}
-                    tickMargin={8}
-                    tickFormatter={(value) => {
-                      const [, month, day] = String(value).split("-");
-                      return `${month}/${day}`;
-                    }}
-                  />
-                  <ChartTooltip
-                    content={
-                      <ChartTooltipContent
-                        indicator="dot"
-                        formatter={(value, name) => (
-                          <div className="flex min-w-40 items-center justify-between gap-4">
-                            <span className="text-muted-foreground">{name}</span>
-                            <span className="font-mono font-medium text-foreground">
-                              {formatMoney(Number(value), revenueCurrency)}
-                            </span>
-                          </div>
-                        )}
-                      />
-                    }
-                  />
-                  <Line
-                    dataKey="netAfterFeesCents"
-                    name="Net After Fees"
-                    type="linear"
-                    stroke="var(--color-netAfterFeesCents)"
-                    strokeWidth={2.75}
-                    dot={renderChartDot}
-                    activeDot={renderActiveChartDot}
-                  />
-                  <Line
-                    dataKey="stripeFeesCents"
-                    name="Stripe Fees"
-                    type="linear"
-                    stroke="var(--color-stripeFeesCents)"
-                    strokeWidth={2.25}
-                    dot={renderChartDot}
-                    activeDot={renderActiveChartDot}
-                  />
-                  <Line
-                    dataKey="refundedCents"
-                    name="Refunds"
-                    type="linear"
-                    stroke="var(--color-refundedCents)"
-                    strokeWidth={2.25}
-                    dot={renderChartDot}
-                    activeDot={renderActiveChartDot}
-                  />
-                  <ChartLegend content={<ChartLegendContent />} />
-                </LineChart>
-              </ChartContainer>
-            )}
-          </div>
-
-          <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-            <span>{revenueSummary.paidInvoiceCount ?? 0} paid invoices</span>
-            <span>{formatMoney(revenueSummary.stripeFeesCents ?? 0, revenueCurrency)} Stripe fees</span>
-            <span>{formatMoney(revenueSummary.refundedCents ?? 0, revenueCurrency)} refunded</span>
-            <span>{formatMoney(revenueSummary.netRevenueCents ?? 0, revenueCurrency)} net before fees</span>
-            {revenueSummary.mixedCurrencies && <span>Multiple Stripe currencies detected.</span>}
           </div>
         </section>
       </div>
