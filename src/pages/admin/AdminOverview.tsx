@@ -41,6 +41,7 @@ const AdminOverview = () => {
   const [activity, setActivity] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [activityLoading, setActivityLoading] = useState(true);
+  const [activityRangeDays, setActivityRangeDays] = useState(30);
 
   useEffect(() => {
     adminApi("overview")
@@ -50,10 +51,10 @@ const AdminOverview = () => {
 
   useEffect(() => {
     setActivityLoading(true);
-    adminApi("overview_activity", { days: 30 })
+    adminApi("overview_activity", { days: activityRangeDays })
       .then(setActivity)
       .finally(() => setActivityLoading(false));
-  }, []);
+  }, [activityRangeDays]);
 
   if (loading) return <p className="text-muted-foreground">Loading overview...</p>;
 
@@ -88,12 +89,31 @@ const AdminOverview = () => {
 
       <div className="grid gap-6">
         <section className="rounded-2xl glass-panel p-5">
-          <div>
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <h2 className="font-serif text-xl font-semibold">Signup and Deletion Activity</h2>
               <p className="text-sm text-muted-foreground">
                 Organization and user movement from real platform data.
               </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {[
+                { label: "1 Day", days: 1 },
+                { label: "7 Days", days: 7 },
+                { label: "30 Days", days: 30 },
+                { label: "90 Days", days: 90 },
+              ].map((option) => (
+                <Button
+                  key={option.days}
+                  type="button"
+                  variant={activityRangeDays === option.days ? "hero" : "outline"}
+                  size="sm"
+                  onClick={() => setActivityRangeDays(option.days)}
+                  className="min-w-[76px]"
+                >
+                  {option.label}
+                </Button>
+              ))}
             </div>
           </div>
 

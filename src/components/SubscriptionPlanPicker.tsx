@@ -8,6 +8,8 @@ interface SubscriptionPlanPickerProps {
   description: string;
   onSelectPlan: (planId: SubscriptionPlanId) => void;
   loadingPlanId?: SubscriptionPlanId | null;
+  selectedPlanId?: SubscriptionPlanId | null;
+  selectionMode?: "submit" | "pick";
 }
 
 const SubscriptionPlanPicker = ({
@@ -15,6 +17,8 @@ const SubscriptionPlanPicker = ({
   description,
   onSelectPlan,
   loadingPlanId = null,
+  selectedPlanId = null,
+  selectionMode = "submit",
 }: SubscriptionPlanPickerProps) => {
   const [billingInterval, setBillingInterval] = useState<BillingInterval>("monthly");
 
@@ -75,12 +79,17 @@ const SubscriptionPlanPicker = ({
           const plan = billingInterval === "monthly" ? family.monthly : family.annual;
           const isFeatured = family.tier === "team";
           const isLoading = loadingPlanId === plan.id;
+          const isSelected = selectedPlanId === plan.id;
 
           return (
             <div
               key={family.tier}
               className={`relative flex h-full min-w-0 flex-col overflow-hidden rounded-2xl border p-5 transition-shadow ${
-                isFeatured ? "border-2 border-primary/70 bg-white/90 shadow-elevated" : "border-border/70 bg-white/70"
+                isSelected
+                  ? "border-2 border-primary bg-white shadow-elevated ring-2 ring-primary/15"
+                  : isFeatured
+                  ? "border-2 border-primary/70 bg-white/90 shadow-elevated"
+                  : "border-border/70 bg-white/70"
               }`}
             >
               {isFeatured && (
@@ -112,7 +121,7 @@ const SubscriptionPlanPicker = ({
                   {billingInterval === "annual" ? "Billed annually" : "Billed monthly"}
                 </p>
                 <Button
-                  variant="hero"
+                  variant={selectionMode === "pick" && isSelected ? "outline" : "hero"}
                   className="w-full mt-auto"
                   size="lg"
                   disabled={Boolean(loadingPlanId)}
@@ -121,7 +130,7 @@ const SubscriptionPlanPicker = ({
                   {isLoading ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
                   ) : (
-                    "Select"
+                    selectionMode === "pick" && isSelected ? "Selected" : "Select"
                   )}
                 </Button>
               </div>

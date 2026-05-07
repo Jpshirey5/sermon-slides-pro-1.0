@@ -20,6 +20,8 @@ const logStep = (step: string, details?: Record<string, unknown>) => {
 
 const clean = (value: unknown) => String(value ?? "").trim();
 const normalizeEmail = (value: unknown) => clean(value).toLowerCase();
+const CURRENT_TERMS_VERSION = "2026-05-07";
+const CURRENT_PRIVACY_VERSION = "2026-05-07";
 
 const CANONICAL_PRICE_IDS = [
   "price_1TEfgIP2Yr0z0IcsX2VXk6wJ",
@@ -194,7 +196,12 @@ serve(async (req) => {
     }
 
     const priceId = clean(body?.priceId);
+    const acceptedLegal = body?.acceptedLegal === true;
+    const termsVersion = clean(body?.termsVersion) || CURRENT_TERMS_VERSION;
+    const privacyVersion = clean(body?.privacyVersion) || CURRENT_PRIVACY_VERSION;
+
     if (!priceId || !priceId.startsWith("price_")) throw new Error("A subscription plan is required");
+    if (!acceptedLegal) throw new Error("You must agree to the Terms and Conditions and acknowledge the Privacy Policy");
     if (!getAllowedPriceIds().includes(priceId)) throw new Error("Unsupported subscription price selected");
 
     const planMeta = resolvePlanMetadata(priceId);
@@ -212,6 +219,13 @@ serve(async (req) => {
         max_additional_users: planMeta.maxAdditionalUsers ?? 0,
         status: "checkout_started",
         expires_at: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(),
+        metadata: {
+          priceId,
+          termsAcceptedAt: new Date().toISOString(),
+          privacyAcknowledgedAt: new Date().toISOString(),
+          termsVersion,
+          privacyVersion,
+        },
       })
       .select("id")
       .single();
