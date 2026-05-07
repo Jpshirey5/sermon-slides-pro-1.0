@@ -16,7 +16,6 @@ const AdminLogin = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [bootstrapLoading, setBootstrapLoading] = useState(false);
 
   useEffect(() => {
     document.title = "Sermon Slide Pro | Admin Center";
@@ -40,19 +39,6 @@ const AdminLogin = () => {
       toast.error(error instanceof Error ? error.message : "Admin login failed.");
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleBootstrap = async () => {
-    setBootstrapLoading(true);
-    try {
-      await adminApi("bootstrap");
-      toast.success("Admin access activated.");
-      navigate("/admin", { replace: true });
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not activate admin access.");
-    } finally {
-      setBootstrapLoading(false);
     }
   };
 
@@ -80,15 +66,6 @@ const AdminLogin = () => {
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Log In"}
           </Button>
         </form>
-
-        <div className="mt-5 rounded-xl border border-border/70 bg-white/65 p-4">
-          <p className="text-xs text-muted-foreground mb-3">
-            First admin only: sign in with an allowlisted email, then activate bootstrap access.
-          </p>
-          <Button variant="outline" className="w-full" onClick={handleBootstrap} disabled={bootstrapLoading}>
-            {bootstrapLoading ? "Activating..." : "Activate First Admin"}
-          </Button>
-        </div>
 
         <div className="mt-6 text-center">
           <Link to="/" className="text-sm text-primary hover:underline">
