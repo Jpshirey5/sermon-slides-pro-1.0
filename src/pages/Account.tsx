@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { BookOpen, ArrowLeft, CreditCard, User, Crown, Users, Mail, Loader2, AlertTriangle, Building2, Check, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
@@ -52,6 +51,8 @@ interface PendingInvite {
   expires_at: string;
 }
 
+type AccountSection = "profile" | "team" | "campuses" | "subscription";
+
 const getInviteCapacityMessage = (maxAdditionalUsers: number | null) => {
   if (maxAdditionalUsers === null) {
     return "Supports additional users.";
@@ -91,6 +92,7 @@ const Account = () => {
   const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
   const [pendingInvitesLoading, setPendingInvitesLoading] = useState(false);
   const [orgName, setOrgName] = useState("");
+  const [orgLocation, setOrgLocation] = useState("");
   const [isOwner, setIsOwner] = useState(false);
   const [campuses, setCampuses] = useState<Campus[]>([]);
   const [campusesLoading, setCampusesLoading] = useState(false);
@@ -105,9 +107,9 @@ const Account = () => {
   const [subscriptionModalOpen, setSubscriptionModalOpen] = useState(false);
   const [subscriptionModalStep, setSubscriptionModalStep] = useState<"actions" | "plans">("actions");
   const [planChangeLoading, setPlanChangeLoading] = useState<SubscriptionPlanId | null>(null);
-  const [openSections, setOpenSections] = useState<string[]>([]);
   const [activeDeletionRequest, setActiveDeletionRequest] = useState<AccountDeletionRequest | null>(null);
   const [cancelingDeletionRequest, setCancelingDeletionRequest] = useState(false);
+  const [activeSection, setActiveSection] = useState<AccountSection>("profile");
 
   useEffect(() => {
     if (!profile) return;
@@ -132,7 +134,10 @@ const Account = () => {
       .select("name, city, state")
       .eq("id", accountId)
       .single();
-    if (data) setOrgName(`${data.name}${data.city ? ` — ${data.city}, ${data.state}` : ''}`);
+    if (data) {
+      setOrgName(data.name || "");
+      setOrgLocation(data.city ? `${data.city}, ${data.state}` : data.state || "");
+    }
   };
 
   const loadActiveDeletionRequest = useCallback(async () => {
@@ -657,6 +662,12 @@ const Account = () => {
   const primaryCampus = campuses.find((campus) => campus.isPrimary) || null;
   const deletionCancelable = isDeletionCancelable(activeDeletionRequest);
   const ownerTeamMember = teamMembers.find((member) => member.role === "owner") || null;
+  const accountNavItems: Array<{ section: AccountSection; id: string; label: string; icon: typeof User }> = [
+    { section: "profile", id: "account-profile", label: "Personal Preferences", icon: User },
+    { section: "team", id: "account-team", label: "Team", icon: Users },
+    ...(isEnterprisePlan ? [{ section: "campuses" as AccountSection, id: "account-campuses", label: "Campuses", icon: Building2 }] : []),
+    { section: "subscription", id: "account-subscription", label: "Billing & Subscription", icon: CreditCard },
+  ];
   const enterpriseOwnerDefaultTranslation =
     ownerTeamMember?.default_translation || null;
   const defaultTranslationInherited = isEnterprisePlan && teamLoaded && !isOwner;
@@ -674,6 +685,12 @@ const Account = () => {
       setDefaultTranslation(enterpriseOwnerDefaultTranslation || DEFAULT_TRANSLATION);
     }
   }, [defaultTranslationInherited, enterpriseOwnerDefaultTranslation]);
+
+  useEffect(() => {
+    if (!isEnterprisePlan && activeSection === "campuses") {
+      setActiveSection("profile");
+    }
+  }, [activeSection, isEnterprisePlan]);
 
   const accountTourSteps = useMemo<ProductTourStep[]>(() => {
     const steps: ProductTourStep[] = [
@@ -727,17 +744,23 @@ const Account = () => {
   const handleAccountTourStepChange = useCallback((step: ProductTourStep | null) => {
     if (!step?.targetId) return;
 
-    const sectionsByTarget: Record<string, string[]> = {
-      "account-profile-section": ["profile"],
-      "account-default-translation": ["profile"],
-      "account-dashboard-campus": ["profile"],
-      "account-team-invite": ["team"],
-      "account-campuses-management": ["campuses"],
+    const sectionTargets: Record<string, { section: AccountSection; targetId: string }> = {
+      "account-profile-section": { section: "profile", targetId: "account-profile" },
+      "account-default-translation": { section: "profile", targetId: "account-default-translation" },
+      "account-dashboard-campus": { section: "profile", targetId: "account-dashboard-campus" },
+      "account-team-invite": { section: "team", targetId: "account-team-invite" },
+      "account-campuses-management": { section: "campuses", targetId: "account-campuses-management" },
     };
-    const requiredSections = sectionsByTarget[step.targetId] || [];
-    if (requiredSections.length === 0) return;
+    const target = sectionTargets[step.targetId];
+    if (!target) return;
 
-    setOpenSections((current) => Array.from(new Set([...current, ...requiredSections])));
+    setActiveSection(target.section);
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        document.getElementById(target.targetId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    });
   }, []);
 
   const handleCreateCampus = async () => {
@@ -895,7 +918,7 @@ const Account = () => {
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-8 max-w-2xl">
+      <main className="container mx-auto max-w-5xl px-4 py-8">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
           <h1 className="font-serif text-3xl font-bold text-foreground mb-8">Account</h1>
 
@@ -951,164 +974,218 @@ const Account = () => {
             </div>
           )}
 
-          <Accordion type="multiple" value={openSections} onValueChange={setOpenSections} className="space-y-6">
-            <AccordionItem value="profile" className="rounded-2xl glass-panel border-none px-6" data-tour-id="account-profile-section">
-              <AccordionTrigger className="py-6 font-normal no-underline hover:no-underline">
-                <div className="flex items-center gap-3">
-                  <User className="w-5 h-5 text-muted-foreground" />
-                  <h2 className="font-serif text-xl font-semibold text-foreground">Profile</h2>
+          <div className="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)] lg:items-start">
+            <aside className="rounded-[28px] glass-panel p-6 lg:sticky lg:top-24">
+              <div className="rounded-[24px] bg-gradient-to-br from-primary/12 via-primary/5 to-white p-6">
+                <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-glow">
+                  <User className="h-7 w-7" />
                 </div>
-              </AccordionTrigger>
-              <AccordionContent className="pb-6">
+                <h2 className="mt-5 font-serif text-2xl font-semibold text-foreground">{fullName || "Your Account"}</h2>
+                <p className="mt-1 text-sm text-muted-foreground break-words">{user?.email}</p>
+                {orgName && <p className="mt-3 text-sm text-foreground">{orgName}</p>}
+                {orgLocation && <p className="mt-1 text-xs text-muted-foreground">{orgLocation}</p>}
+                <div className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-white/80 px-3 py-1 text-xs font-medium text-muted-foreground">
+                  {isOwner ? <Crown className="h-3.5 w-3.5 text-primary" /> : <Users className="h-3.5 w-3.5 text-primary" />}
+                  {isOwner ? "Account Owner" : "Team Member"}
+                </div>
+              </div>
+
+              <div className="mt-6 space-y-2">
+                {accountNavItems.map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => setActiveSection(item.section)}
+                      className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm transition-colors ${
+                        activeSection === item.section
+                          ? "bg-primary text-primary-foreground shadow-sm"
+                          : "text-muted-foreground hover:bg-white/75 hover:text-foreground"
+                      }`}
+                    >
+                      <Icon className="h-4 w-4" />
+                      <span>{item.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </aside>
+
+            <div className="space-y-6">
+              {activeSection === "profile" && (
+              <section
+                id="account-profile"
+                className="rounded-[28px] glass-panel p-6 scroll-mt-24"
+                data-tour-id="account-profile-section"
+              >
+                <div className="mb-6 flex items-center gap-3">
+                  <User className="h-5 w-5 text-muted-foreground" />
+                  <div>
+                    <h2 className="font-serif text-2xl font-semibold text-foreground">Personal Preferences</h2>
+                    <p className="text-sm text-muted-foreground">Set personal preferences for your workspace.</p>
+                  </div>
+                </div>
+
                 <div className="space-y-4">
-                  {orgName && (
-                    <div>
-                      <Label className="text-muted-foreground text-sm">Organization</Label>
-                      <p className="text-foreground">{orgName}</p>
+                  <div className="rounded-2xl border border-border/70 bg-white/70 p-5">
+                    <div className="space-y-2">
+                      <Label htmlFor="churchRole">Role at Church</Label>
+                      <div className="flex flex-col gap-2 sm:flex-row">
+                        <Input
+                          id="churchRole"
+                          value={churchRole}
+                          onChange={(event) => setChurchRole(event.target.value)}
+                          placeholder="Lead Pastor, Worship Director, Ministry Assistant"
+                          className="h-10"
+                        />
+                        <Button
+                          onClick={handleSaveChurchRole}
+                          disabled={savingChurchRole || churchRole.trim() === (profile?.church_role || "")}
+                          size="sm"
+                          className="sm:self-start"
+                        >
+                          {savingChurchRole ? "Saving..." : "Save"}
+                        </Button>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        This helps your organization know how you serve at the church.
+                      </p>
                     </div>
-                  )}
-                  <div>
-                    <Label className="text-muted-foreground text-sm">Full Name</Label>
-                    <p className="text-foreground">{fullName || "Not set"}</p>
                   </div>
-                  <div>
-                    <Label className="text-muted-foreground text-sm">Email</Label>
-                    <p className="text-foreground">{user?.email}</p>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="churchRole">Role at Church</Label>
-                    <div className="flex gap-2">
-                      <Input
-                        id="churchRole"
-                        value={churchRole}
-                        onChange={(event) => setChurchRole(event.target.value)}
-                        placeholder="Lead Pastor, Worship Director, Ministry Assistant"
-                        className="h-10"
-                      />
-                      <Button
-                        onClick={handleSaveChurchRole}
-                        disabled={savingChurchRole || churchRole.trim() === (profile?.church_role || "")}
-                        size="sm"
-                      >
-                        {savingChurchRole ? "Saving..." : "Save"}
-                      </Button>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      This helps your organization know how you serve at the church.
-                    </p>
-                  </div>
-                  <div className="space-y-2" data-tour-id="account-default-translation">
-                    <Label htmlFor="defaultTranslation">Default Translation</Label>
-                    <div className="flex gap-2">
-                      <Select
-                        value={defaultTranslationSelectValue}
-                        onValueChange={setDefaultTranslation}
-                        disabled={defaultTranslationInherited || defaultTranslationLoading}
-                      >
-                        <SelectTrigger id="defaultTranslation" className="h-10">
-                          <SelectValue placeholder="Loading translation..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {TRANSLATION_OPTIONS.map((t) => (
-                            <SelectItem key={t.code} value={t.code}>
-                              <span className="font-medium">{t.code}</span>
-                              <span className="text-muted-foreground ml-2">{t.name}</span>
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Button
-                        onClick={handleSaveDefaultTranslation}
-                        disabled={
-                          defaultTranslationInherited ||
-                          defaultTranslationLoading ||
-                          savingDefaultTranslation ||
-                          defaultTranslation === savedDefaultTranslation
-                        }
-                        size="sm"
-                      >
-                        {savingDefaultTranslation ? "Saving..." : "Save"}
-                      </Button>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      {defaultTranslationInherited
-                        ? "Enterprise team members inherit this from the organization owner."
-                        : inheritedDefaultTranslationLoading
-                        ? "Loading your organization’s default translation..."
-                        : isEnterprisePlan
-                        ? "Enterprise team members will inherit this translation for new presentations."
-                        : "New presentations will start with this translation by default."}
-                    </p>
-                  </div>
-                  {isEnterprisePlan && (
-                    <div className="space-y-2" data-tour-id="account-dashboard-campus">
-                      <Label htmlFor="dashboardCampusPreference">Associated Campus</Label>
-                      <div className="flex gap-2">
-                        <Select value={dashboardCampusPreference} onValueChange={setDashboardCampusPreference}>
-                          <SelectTrigger id="dashboardCampusPreference" className="h-10">
-                            <SelectValue />
+
+                  <div
+                    id="account-default-translation"
+                    className="rounded-2xl border border-border/70 bg-white/70 p-5"
+                    data-tour-id="account-default-translation"
+                  >
+                    <div className="space-y-2">
+                      <Label htmlFor="defaultTranslation">Default Translation</Label>
+                      <div className="flex flex-col gap-2 sm:flex-row">
+                        <Select
+                          value={defaultTranslationSelectValue}
+                          onValueChange={setDefaultTranslation}
+                          disabled={defaultTranslationInherited || defaultTranslationLoading}
+                        >
+                          <SelectTrigger id="defaultTranslation" className="h-10">
+                            <SelectValue placeholder="Loading translation..." />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="all">All Campuses</SelectItem>
-                            {campuses.map((campus) => (
-                              <SelectItem key={campus.id} value={campus.id}>
-                                {campus.isPrimary ? `${campus.name} (Primary)` : campus.name}
+                            {TRANSLATION_OPTIONS.map((t) => (
+                              <SelectItem key={t.code} value={t.code}>
+                                <span className="font-medium">{t.code}</span>
+                                <span className="ml-2 text-muted-foreground">{t.name}</span>
                               </SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
                         <Button
-                          onClick={handleSaveDashboardCampusPreference}
+                          onClick={handleSaveDefaultTranslation}
                           disabled={
-                            campusesLoading ||
-                            savingDashboardCampusPreference ||
-                            dashboardCampusPreference === (profile?.preferred_dashboard_campus_id || "all")
+                            defaultTranslationInherited ||
+                            defaultTranslationLoading ||
+                            savingDefaultTranslation ||
+                            defaultTranslation === savedDefaultTranslation
                           }
                           size="sm"
+                          className="sm:self-start"
                         >
-                          {savingDashboardCampusPreference ? "Saving..." : "Save"}
+                          {savingDefaultTranslation ? "Saving..." : "Save"}
                         </Button>
                       </div>
                       <p className="text-xs text-muted-foreground">
-                        Choose which campus the dashboard should open to by default. You can still switch campuses from the dashboard.
+                        {defaultTranslationInherited
+                          ? "Enterprise team members inherit this from the organization owner."
+                          : inheritedDefaultTranslationLoading
+                          ? "Loading your organization’s default translation..."
+                          : isEnterprisePlan
+                          ? "Enterprise team members will inherit this translation for new presentations."
+                          : "New presentations will start with this translation by default."}
                       </p>
+                    </div>
+                  </div>
+
+                  {isEnterprisePlan && (
+                    <div
+                      id="account-dashboard-campus"
+                      className="rounded-2xl border border-border/70 bg-white/70 p-5"
+                      data-tour-id="account-dashboard-campus"
+                    >
+                      <div className="space-y-2">
+                        <Label htmlFor="dashboardCampusPreference">Associated Campus</Label>
+                        <div className="flex flex-col gap-2 sm:flex-row">
+                          <Select value={dashboardCampusPreference} onValueChange={setDashboardCampusPreference}>
+                            <SelectTrigger id="dashboardCampusPreference" className="h-10">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">All Campuses</SelectItem>
+                              {campuses.map((campus) => (
+                                <SelectItem key={campus.id} value={campus.id}>
+                                  {campus.isPrimary ? `${campus.name} (Primary)` : campus.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <Button
+                            onClick={handleSaveDashboardCampusPreference}
+                            disabled={
+                              campusesLoading ||
+                              savingDashboardCampusPreference ||
+                              dashboardCampusPreference === (profile?.preferred_dashboard_campus_id || "all")
+                            }
+                            size="sm"
+                            className="sm:self-start"
+                          >
+                            {savingDashboardCampusPreference ? "Saving..." : "Save"}
+                          </Button>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Choose which campus the dashboard should open to by default. You can still switch campuses from the dashboard.
+                        </p>
+                      </div>
                     </div>
                   )}
                 </div>
-              </AccordionContent>
-            </AccordionItem>
+              </section>
+              )}
 
-            <AccordionItem value="team" className="rounded-2xl glass-panel border-none px-6">
-              <AccordionTrigger className="py-6 font-normal no-underline hover:no-underline">
-                <div className="flex items-center gap-3">
-                  <Users className="w-5 h-5 text-muted-foreground" />
-                  <h2 className="font-serif text-xl font-semibold text-foreground">Team</h2>
+              {activeSection === "team" && (
+              <section id="account-team" className="rounded-[28px] glass-panel p-6 scroll-mt-24">
+                <div className="mb-6 flex items-center gap-3">
+                  <Users className="h-5 w-5 text-muted-foreground" />
+                  <div>
+                    <h2 className="font-serif text-2xl font-semibold text-foreground">Team</h2>
+                    <p className="text-sm text-muted-foreground">Manage the people who collaborate inside this organization.</p>
+                  </div>
                 </div>
-              </AccordionTrigger>
-              <AccordionContent className="pb-6">
+
                 {teamLoading ? (
                   <div className="flex items-center gap-2 text-muted-foreground">
-                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <Loader2 className="h-4 w-4 animate-spin" />
                     <span>Loading team...</span>
                   </div>
                 ) : (
-                  <div className="space-y-3 mb-6">
-                    {teamMembers.map(member => (
-                      <div key={member.id} className="flex items-center justify-between p-3 rounded-lg bg-white/65 border border-border/70">
+                  <div className="space-y-3">
+                    {teamMembers.map((member) => (
+                      <div
+                        key={member.id}
+                        className="flex flex-col gap-3 rounded-2xl border border-border/70 bg-white/70 p-4 md:flex-row md:items-center md:justify-between"
+                      >
                         <div className="min-w-0">
-                          <p className="text-sm font-medium text-foreground">{member.full_name || "Unnamed"}</p>
-                          <p className="text-xs text-muted-foreground truncate">{member.email}</p>
+                          <p className="text-sm font-semibold text-foreground">{member.full_name || "Unnamed"}</p>
+                          <p className="truncate text-xs text-muted-foreground">{member.email}</p>
                           {member.church_role && (
-                            <p className="text-xs text-muted-foreground truncate">
-                              Role: {member.church_role}
-                            </p>
+                            <p className="truncate text-xs text-muted-foreground">Role: {member.church_role}</p>
                           )}
                         </div>
-                        <div className="flex items-center gap-2">
-                          <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-                            member.role === 'owner' ? 'bg-primary/10 text-primary' : 'bg-secondary text-muted-foreground'
-                          }`}>
-                            {member.role === 'owner' ? 'Owner' : 'Member'}
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span
+                            className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+                              member.role === "owner" ? "bg-primary/10 text-primary" : "bg-secondary text-muted-foreground"
+                            }`}
+                          >
+                            {member.role === "owner" ? "Owner" : "Member"}
                           </span>
                           {isOwner && member.role !== "owner" && member.user_id !== user?.id && (
                             <Button
@@ -1127,100 +1204,101 @@ const Account = () => {
                 )}
 
                 {isOwner && (
-                  <div className="pt-4 border-t border-border">
-                    <Label className="text-sm font-medium text-foreground mb-2 block">Invite a team member</Label>
-                    <div className="flex gap-2" data-tour-id="account-team-invite">
-                      <Input
-                        type="email"
-                        placeholder="colleague@church.org"
-                        value={inviteEmail}
-                        onChange={(e) => setInviteEmail(e.target.value)}
-                        className="h-10"
-                        disabled={inviteLimitReached}
-                      />
-                      <Button onClick={handleInvite} disabled={inviting || !inviteEmail || inviteLimitReached} size="sm">
-                        {inviting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
-                        <span className="ml-1">Invite</span>
-                      </Button>
-                    </div>
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      {inviteLimitReached
-                        ? getInviteCapacityMessage(capacity.maxAdditionalUsers)
-                        : getInviteCapacityMessage(capacity.maxAdditionalUsers)}
-                    </p>
-                  </div>
-                )}
-
-                {isOwner && (
-                  <div className="pt-4 border-t border-border mt-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <Label className="text-sm font-medium text-foreground block">Pending invites</Label>
-                      <Button variant="ghost" size="sm" onClick={loadPendingInvites} disabled={pendingInvitesLoading}>
-                        {pendingInvitesLoading ? "Refreshing..." : "Refresh"}
-                      </Button>
-                    </div>
-
-                    {pendingInvites.length === 0 ? (
-                      <p className="text-xs text-muted-foreground">No pending invites.</p>
-                    ) : (
-                      <div className="space-y-2">
-                        {pendingInvites.map((invite) => (
-                          <div key={invite.id} className="flex items-center justify-between p-3 rounded-lg bg-white/65 border border-border/70">
-                            <div>
-                              <p className="text-sm font-medium text-foreground">{invite.email}</p>
-                              <p className="text-xs text-muted-foreground">
-                                Sent {new Date(invite.created_at).toLocaleDateString()} · Expires {new Date(invite.expires_at).toLocaleDateString()}
-                              </p>
-                            </div>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => resendInvite(invite)}
-                              disabled={resendingInviteId === invite.id}
-                            >
-                              {resendingInviteId === invite.id ? "Sending..." : "Resend"}
-                            </Button>
-                          </div>
-                        ))}
+                  <div className="mt-6 space-y-4">
+                    <div className="rounded-2xl border border-border/70 bg-white/70 p-5">
+                      <Label className="mb-2 block text-sm font-medium text-foreground">Invite a team member</Label>
+                      <div id="account-team-invite" className="flex flex-col gap-2 sm:flex-row" data-tour-id="account-team-invite">
+                        <Input
+                          type="email"
+                          placeholder="colleague@church.org"
+                          value={inviteEmail}
+                          onChange={(e) => setInviteEmail(e.target.value)}
+                          className="h-10"
+                          disabled={inviteLimitReached}
+                        />
+                        <Button onClick={handleInvite} disabled={inviting || !inviteEmail || inviteLimitReached} size="sm">
+                          {inviting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
+                          <span className="ml-1">Invite</span>
+                        </Button>
                       </div>
-                    )}
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        {getInviteCapacityMessage(capacity.maxAdditionalUsers)}
+                      </p>
+                    </div>
+
+                    <div className="rounded-2xl border border-border/70 bg-white/70 p-5">
+                      <div className="mb-2 flex items-center justify-between gap-3">
+                        <Label className="block text-sm font-medium text-foreground">Pending invites</Label>
+                        <Button variant="ghost" size="sm" onClick={loadPendingInvites} disabled={pendingInvitesLoading}>
+                          {pendingInvitesLoading ? "Refreshing..." : "Refresh"}
+                        </Button>
+                      </div>
+
+                      {pendingInvites.length === 0 ? (
+                        <p className="text-xs text-muted-foreground">No pending invites.</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {pendingInvites.map((invite) => (
+                            <div
+                              key={invite.id}
+                              className="flex flex-col gap-3 rounded-xl border border-border/70 bg-background/70 p-3 sm:flex-row sm:items-center sm:justify-between"
+                            >
+                              <div>
+                                <p className="text-sm font-medium text-foreground">{invite.email}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  Sent {new Date(invite.created_at).toLocaleDateString()} · Expires {new Date(invite.expires_at).toLocaleDateString()}
+                                </p>
+                              </div>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => resendInvite(invite)}
+                                disabled={resendingInviteId === invite.id}
+                              >
+                                {resendingInviteId === invite.id ? "Sending..." : "Resend"}
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
-              </AccordionContent>
-            </AccordionItem>
+              </section>
+              )}
 
-            {isEnterprisePlan && (
-              <AccordionItem value="campuses" className="rounded-2xl glass-panel border-none px-6" data-tour-id="account-campuses-management">
-                <AccordionTrigger className="py-6 font-normal no-underline hover:no-underline">
-                  <div className="flex items-center gap-3">
-                    <Building2 className="w-5 h-5 text-muted-foreground" />
-                    <h2 className="font-serif text-xl font-semibold text-foreground">Campuses</h2>
+              {isEnterprisePlan && activeSection === "campuses" && (
+                <section
+                  id="account-campuses"
+                  className="rounded-[28px] glass-panel p-6 scroll-mt-24"
+                  data-tour-id="account-campuses-management"
+                >
+                  <div className="mb-6 flex items-center gap-3">
+                    <Building2 className="h-5 w-5 text-muted-foreground" />
+                    <div>
+                      <h2 className="font-serif text-2xl font-semibold text-foreground">Campuses</h2>
+                      <p className="text-sm text-muted-foreground">
+                        Enterprise accounts can organize presentations across up to 5 campuses.
+                      </p>
+                    </div>
                   </div>
-                </AccordionTrigger>
-                <AccordionContent className="pb-6">
-                  <p className="text-sm text-muted-foreground mb-6">
-                    Enterprise accounts can organize presentations across up to 5 campuses.
-                  </p>
 
                   {campusesLoading ? (
                     <div className="flex items-center gap-2 text-muted-foreground">
-                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <Loader2 className="h-4 w-4 animate-spin" />
                       <span>Loading campuses...</span>
                     </div>
                   ) : (
-                    <div className="space-y-3">
+                    <div id="account-campuses-management" className="space-y-3">
                       {campuses.map((campus) => {
                         const isEditing = editingCampusId === campus.id;
                         const isOnlyPrimaryCampus = campus.isPrimary && campuses.length === 1;
                         return (
-                          <div
-                            key={campus.id}
-                            className="rounded-lg border border-border/70 bg-white/65 p-3"
-                          >
+                          <div key={campus.id} className="rounded-2xl border border-border/70 bg-white/70 p-4">
                             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                               <div className="min-w-0 flex-1">
                                 {isEditing ? (
-                                  <div className="flex gap-2">
+                                  <div className="flex flex-col gap-2 sm:flex-row">
                                     <Input
                                       value={editingCampusName}
                                       onChange={(event) => setEditingCampusName(event.target.value)}
@@ -1248,14 +1326,14 @@ const Account = () => {
                                 ) : (
                                   <>
                                     <div className="flex items-center gap-2">
-                                      <p className="text-sm font-medium text-foreground truncate">{campus.name}</p>
+                                      <p className="truncate text-sm font-medium text-foreground">{campus.name}</p>
                                       {campus.isPrimary && (
                                         <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
                                           Primary
                                         </span>
                                       )}
                                     </div>
-                                    <p className="text-xs text-muted-foreground mt-1">
+                                    <p className="mt-1 text-xs text-muted-foreground">
                                       {campus.isPrimary
                                         ? "New Enterprise presentations default here unless another campus is selected."
                                         : primaryCampus
@@ -1275,7 +1353,7 @@ const Account = () => {
                                       onClick={() => void handleSetPrimaryCampus(campus.id)}
                                       disabled={Boolean(campusActionLoading)}
                                     >
-                                      <Check className="w-4 h-4 mr-1" />
+                                      <Check className="mr-1 h-4 w-4" />
                                       Make Primary
                                     </Button>
                                   )}
@@ -1308,9 +1386,9 @@ const Account = () => {
                   )}
 
                   {isOwner && (
-                    <div className="pt-4 border-t border-border mt-4 space-y-2">
-                      <Label className="text-sm font-medium text-foreground block">Add a campus</Label>
-                      <div className="flex gap-2">
+                    <div className="mt-6 rounded-2xl border border-border/70 bg-white/70 p-5">
+                      <Label className="mb-2 block text-sm font-medium text-foreground">Add a campus</Label>
+                      <div className="flex flex-col gap-2 sm:flex-row">
                         <Input
                           value={newCampusName}
                           onChange={(event) => setNewCampusName(event.target.value)}
@@ -1326,102 +1404,121 @@ const Account = () => {
                           {campusActionLoading === "create" ? "Adding..." : "Add Campus"}
                         </Button>
                       </div>
-                      <p className="text-xs text-muted-foreground">
+                      <p className="mt-2 text-xs text-muted-foreground">
                         {canCreateMoreCampuses
                           ? `${campuses.length} of 5 campuses used.`
                           : "You have reached the 5-campus limit for Enterprise."}
                       </p>
                     </div>
                   )}
-                </AccordionContent>
-              </AccordionItem>
-            )}
+                </section>
+              )}
 
-            <AccordionItem value="subscription" className="rounded-2xl glass-panel border-none px-6">
-              <AccordionTrigger className="py-6 font-normal no-underline hover:no-underline">
-                <div className="flex items-center gap-3">
-                  <CreditCard className="w-5 h-5 text-muted-foreground" />
-                  <h2 className="font-serif text-xl font-semibold text-foreground">Subscription</h2>
-                </div>
-              </AccordionTrigger>
-              <AccordionContent className="pb-6">
-                <div className="space-y-4">
-                  <div className="flex items-center gap-3">
-                    <span className="text-muted-foreground">Plan:</span>
-                    <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium ${
-                      subscription.subscribed ? "bg-primary/10 text-primary" : "bg-secondary text-muted-foreground"
-                    }`}>
-                      {subscription.subscribed && <Crown className="w-3.5 h-3.5" />}
-                      {planLabel}
-                    </span>
-                  </div>
-                  {subscription.subscribed && (
-                    <div>
-                      <span className="text-muted-foreground">Billing: </span>
-                      <span className="text-foreground">
-                        {resolvedPlan ? resolvedPlan.displayPrice : "Pro"}
-                      </span>
-                    </div>
-                  )}
-                  {subscription.subscribed && (
-                    <div>
-                      <span className="text-muted-foreground">Interval: </span>
-                      <span className="text-foreground">
-                        {resolvedPlan
-                          ? resolvedPlan.interval === "annual" ? "Annual" : "Monthly"
-                          : "Unavailable"}
-                      </span>
-                    </div>
-                  )}
+              {activeSection === "subscription" && (
+              <section id="account-subscription" className="rounded-[28px] glass-panel p-6 scroll-mt-24">
+                <div className="mb-6 flex items-center gap-3">
+                  <CreditCard className="h-5 w-5 text-muted-foreground" />
                   <div>
-                    <span className="text-muted-foreground">Status: </span>
-                    <span className={statusClassName}>
-                      {statusLabel}
-                    </span>
+                    <h2 className="font-serif text-2xl font-semibold text-foreground">Subscription</h2>
+                    <p className="text-sm text-muted-foreground">Price details, subscription status, and owner-only subscription controls.</p>
                   </div>
-                  {subscription.subscribed && (
-                    <div>
-                      <span className="text-muted-foreground">
-                        {isCancelingSubscription ? "Ends on: " : "Renews on: "}
-                      </span>
-                      <span className="text-foreground">
-                        {formattedSubscriptionEnd || "Unavailable"}
+                </div>
+
+                <div className="grid gap-4 xl:grid-cols-3">
+                  <div className="rounded-2xl border border-border/70 bg-white/70 p-5">
+                    <Label className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Plan</Label>
+                    <div className="mt-3">
+                      <span
+                        className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium ${
+                          subscription.subscribed ? "bg-primary/10 text-primary" : "bg-secondary text-muted-foreground"
+                        }`}
+                      >
+                        {subscription.subscribed && <Crown className="h-3.5 w-3.5" />}
+                        {planLabel}
                       </span>
                     </div>
-                  )}
-                  {isCancelingSubscription && formattedSubscriptionEnd && (
-                    <div className="rounded-xl border border-amber-300/50 bg-amber-50/60 p-4">
-                      <p className="text-sm text-amber-900">
-                        You still have access till this {formattedSubscriptionEnd}.
+                  </div>
+
+                  <div className="rounded-2xl border border-border/70 bg-white/70 p-5">
+                    <Label className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Status</Label>
+                    <p className={`mt-3 text-base font-semibold ${statusClassName}`}>{statusLabel}</p>
+                  </div>
+
+                  {subscription.subscribed && (
+                    <div className="rounded-2xl border border-border/70 bg-white/70 p-5">
+                      <Label className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Price</Label>
+                      <p className="mt-3 text-base font-medium text-foreground">
+                        {resolvedPlan ? resolvedPlan.displayPrice : "Pro"}
                       </p>
                     </div>
                   )}
+
+                  {subscription.subscribed && (
+                    <div className="rounded-2xl border border-border/70 bg-white/70 p-5">
+                      <Label className="text-xs uppercase tracking-[0.14em] text-muted-foreground">
+                        {isCancelingSubscription ? "Access Ends" : "Renewal Date"}
+                      </Label>
+                      <p className="mt-3 text-base font-medium text-foreground">{formattedSubscriptionEnd || "Unavailable"}</p>
+                    </div>
+                  )}
+
+                  {subscription.subscribed && (
+                    <div className="rounded-2xl border border-border/70 bg-white/70 p-5 xl:col-span-1">
+                      <Label className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Interval</Label>
+                      <p className="mt-3 text-base font-medium text-foreground">
+                        {resolvedPlan ? (resolvedPlan.interval === "annual" ? "Annual" : "Monthly") : "Unavailable"}
+                      </p>
+                    </div>
+                  )}
+
+                  {subscription.subscribed && (
+                    <div className="rounded-2xl border border-border/70 bg-white/70 p-5">
+                      <div className="flex min-h-[96px] items-center justify-center">
+                        {isOwner ? (
+                          activeDeletionRequest ? (
+                            <Button variant="outline" disabled className="w-full">
+                              Deletion Scheduled
+                            </Button>
+                          ) : isCancelingSubscription ? (
+                            <Button onClick={handleManageSubscription} disabled={portalLoading} variant="hero" className="w-full">
+                              {portalLoading ? "Opening..." : "Resubscribe"}
+                            </Button>
+                          ) : (
+                            <Button onClick={openSubscriptionModal} disabled={portalLoading} variant="outline" className="w-full">
+                              {portalLoading ? "Opening..." : "Manage Subscription"}
+                            </Button>
+                          )
+                        ) : (
+                          <p className="text-sm text-muted-foreground">
+                            Only the account owner can manage this subscription.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-6 space-y-4">
+                  {isCancelingSubscription && formattedSubscriptionEnd && (
+                    <div className="rounded-2xl border border-amber-300/50 bg-amber-50/60 p-4">
+                      <p className="text-sm text-amber-900">You still have access till this {formattedSubscriptionEnd}.</p>
+                    </div>
+                  )}
                   {activeDeletionRequest && (
-                    <div className="rounded-xl border border-amber-300/50 bg-amber-50/60 p-4">
+                    <div className="rounded-2xl border border-amber-300/50 bg-amber-50/60 p-4">
                       <p className="text-sm text-amber-900">
                         Billing changes are paused while organization deletion is scheduled. Cancel the deletion request during the 7-day grace period if you want to keep this account.
                       </p>
                     </div>
                   )}
-                  <div className="pt-4 flex gap-3">
-                    {isOwner ? (
-                      activeDeletionRequest ? (
-                        <Button variant="outline" disabled>
-                          Deletion Scheduled
-                        </Button>
-                      ) : isCancelingSubscription ? (
-                        <Button onClick={handleManageSubscription} disabled={portalLoading} variant="hero">
-                          {portalLoading ? "Opening..." : "Resubscribe"}
-                        </Button>
-                      ) : subscription.subscribed ? (
-                        <Button onClick={openSubscriptionModal} disabled={portalLoading} variant="outline">
-                          {portalLoading ? "Opening..." : "Manage Subscription"}
-                        </Button>
-                      ) : (
-                        <div className="w-full space-y-4">
+
+                  {!subscription.subscribed && (
+                    <div className="rounded-2xl border border-border/70 bg-white/70 p-5">
+                      {isOwner ? (
+                        <div className="space-y-4">
                           <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
-                            <p className="text-sm text-foreground font-medium">Subscription required</p>
-                            <p className="text-xs text-muted-foreground mt-1">
+                            <p className="text-sm font-medium text-foreground">Subscription required</p>
+                            <p className="mt-1 text-xs text-muted-foreground">
                               Choose Pro, Team, or Enterprise with monthly or annual billing to activate your account and continue.
                             </p>
                           </div>
@@ -1432,18 +1529,18 @@ const Account = () => {
                             loadingPlanId={requiredPlanLoading}
                           />
                         </div>
-                      )
-                    ) : (
-                      <p className="text-xs text-muted-foreground pt-2">
-                        Only the account owner can change billing or manage the subscription for this organization.
-                      </p>
-                    )}
-                  </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">
+                          Only the account owner can change billing or manage the subscription for this organization.
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
-              </AccordionContent>
-            </AccordionItem>
-
-          </Accordion>
+              </section>
+              )}
+            </div>
+          </div>
         </motion.div>
       </main>
 
