@@ -69,13 +69,11 @@ const Account = () => {
   const navigate = useNavigate();
   const { user, profile, subscription, refreshProfile, signOut, checkSubscription, accountId } = useAuth();
   const [fullName, setFullName] = useState(profile?.full_name || "");
-  const [churchRole, setChurchRole] = useState(profile?.church_role || "");
   const [defaultTranslation, setDefaultTranslation] = useState(profile?.default_translation || DEFAULT_TRANSLATION);
   const [dashboardCampusPreference, setDashboardCampusPreference] = useState(
     profile?.preferred_dashboard_campus_id || "all"
   );
   const [savingDefaultTranslation, setSavingDefaultTranslation] = useState(false);
-  const [savingChurchRole, setSavingChurchRole] = useState(false);
   const [savingDashboardCampusPreference, setSavingDashboardCampusPreference] = useState(false);
   const [portalLoading, setPortalLoading] = useState(false);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
@@ -114,7 +112,6 @@ const Account = () => {
   useEffect(() => {
     if (!profile) return;
     if (profile?.full_name) setFullName(profile.full_name);
-    setChurchRole(profile?.church_role || "");
     setDefaultTranslation(profile?.default_translation || DEFAULT_TRANSLATION);
     setDashboardCampusPreference(profile?.preferred_dashboard_campus_id || "all");
   }, [profile]);
@@ -189,24 +186,6 @@ const Account = () => {
     }
     setTeamLoaded(true);
     setTeamLoading(false);
-  };
-
-  const handleSaveChurchRole = async () => {
-    if (!user) return;
-    setSavingChurchRole(true);
-    const { error } = await supabase.rpc("update_my_church_role", {
-      _church_role: churchRole.trim() || null,
-    });
-
-    if (error) {
-      toast.error("Failed to update church role.");
-    } else {
-      toast.success("Church role updated!");
-      await loadTeam();
-      await refreshProfile();
-    }
-
-    setSavingChurchRole(false);
   };
 
   const loadPendingInvites = async () => {
@@ -696,8 +675,8 @@ const Account = () => {
     const steps: ProductTourStep[] = [
       {
         targetId: "account-profile-section",
-        title: "Your profile and organization",
-        description: "This card holds your organization, name, email, and workflow defaults.",
+        title: "Your Profile Preferences",
+        description: "Set your personal preferences when working in the platform.",
       },
       {
         targetId: "account-default-translation",
@@ -716,9 +695,9 @@ const Account = () => {
 
     if (isOwner && isTeamOrEnterprisePlan) {
       steps.push({
-        targetId: "account-team-invite",
-        title: "Invite your team",
-        description: "Owners can invite pastors, worship leaders, or staff into the organization.",
+        targetId: "account-team-section",
+        title: "Your team",
+        description: "View who is on your team and add members to your organization from this section.",
       });
     }
 
@@ -729,6 +708,12 @@ const Account = () => {
         description: "Enterprise owners can add, rename, set primary, and remove campuses, up to 5 total.",
       });
     }
+
+    steps.push({
+      targetId: "account-subscription-section",
+      title: "Billing & Subscription",
+      description: "Review your current price and subscription details here before moving into creation.",
+    });
 
     steps.push({
       title: "Ready to create",
@@ -748,8 +733,9 @@ const Account = () => {
       "account-profile-section": { section: "profile", targetId: "account-profile" },
       "account-default-translation": { section: "profile", targetId: "account-default-translation" },
       "account-dashboard-campus": { section: "profile", targetId: "account-dashboard-campus" },
-      "account-team-invite": { section: "team", targetId: "account-team-invite" },
+      "account-team-section": { section: "team", targetId: "account-team" },
       "account-campuses-management": { section: "campuses", targetId: "account-campuses-management" },
+      "account-subscription-section": { section: "subscription", targetId: "account-subscription" },
     };
     const target = sectionTargets[step.targetId];
     if (!target) return;
@@ -982,6 +968,9 @@ const Account = () => {
                 </div>
                 <h2 className="mt-5 font-serif text-2xl font-semibold text-foreground">{fullName || "Your Account"}</h2>
                 <p className="mt-1 text-sm text-muted-foreground break-words">{user?.email}</p>
+                <p className="mt-3 text-sm text-foreground" data-tour-id="account-role-at-church">
+                  Role: {profile?.church_role?.trim() || "Not set"}
+                </p>
                 {orgName && <p className="mt-3 text-sm text-foreground">{orgName}</p>}
                 {orgLocation && <p className="mt-1 text-xs text-muted-foreground">{orgLocation}</p>}
                 <div className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-white/80 px-3 py-1 text-xs font-medium text-muted-foreground">
@@ -1028,32 +1017,6 @@ const Account = () => {
                 </div>
 
                 <div className="space-y-4">
-                  <div className="rounded-2xl border border-border/70 bg-white/70 p-5">
-                    <div className="space-y-2">
-                      <Label htmlFor="churchRole">Role at Church</Label>
-                      <div className="flex flex-col gap-2 sm:flex-row">
-                        <Input
-                          id="churchRole"
-                          value={churchRole}
-                          onChange={(event) => setChurchRole(event.target.value)}
-                          placeholder="Lead Pastor, Worship Director, Ministry Assistant"
-                          className="h-10"
-                        />
-                        <Button
-                          onClick={handleSaveChurchRole}
-                          disabled={savingChurchRole || churchRole.trim() === (profile?.church_role || "")}
-                          size="sm"
-                          className="sm:self-start"
-                        >
-                          {savingChurchRole ? "Saving..." : "Save"}
-                        </Button>
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        This helps your organization know how you serve at the church.
-                      </p>
-                    </div>
-                  </div>
-
                   <div
                     id="account-default-translation"
                     className="rounded-2xl border border-border/70 bg-white/70 p-5"
@@ -1151,7 +1114,7 @@ const Account = () => {
               )}
 
               {activeSection === "team" && (
-              <section id="account-team" className="rounded-[28px] glass-panel p-6 scroll-mt-24">
+              <section id="account-team" className="rounded-[28px] glass-panel p-6 scroll-mt-24" data-tour-id="account-team-section">
                 <div className="mb-6 flex items-center gap-3">
                   <Users className="h-5 w-5 text-muted-foreground" />
                   <div>
@@ -1415,7 +1378,7 @@ const Account = () => {
               )}
 
               {activeSection === "subscription" && (
-              <section id="account-subscription" className="rounded-[28px] glass-panel p-6 scroll-mt-24">
+              <section id="account-subscription" className="rounded-[28px] glass-panel p-6 scroll-mt-24" data-tour-id="account-subscription-section">
                 <div className="mb-6 flex items-center gap-3">
                   <CreditCard className="h-5 w-5 text-muted-foreground" />
                   <div>
