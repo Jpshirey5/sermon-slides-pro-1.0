@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { getPendingCheckoutPath, getPostConfirmPath } from "@/lib/site-url";
 import { logError, trackEvent } from "@/lib/monitoring";
+import { readProductTourState, startProductTour } from "@/lib/product-tour";
 
 const AuthConfirm = () => {
   const navigate = useNavigate();
@@ -66,6 +67,13 @@ const AuthConfirm = () => {
             : shouldStartCheckout
               ? getPendingCheckoutPath(storedPriceId ?? metadataPriceId)
               : getPostConfirmPath(intent, storedPriceId ?? metadataPriceId);
+
+        if (authType !== "invite" && metadataIntent === "paid_signup") {
+          const existingTourState = readProductTourState(currentSession.user.id);
+          if (!existingTourState || existingTourState.status === "pending") {
+            startProductTour(currentSession.user.id);
+          }
+        }
 
         trackEvent("email_confirmation_succeeded", {
           intent: authType === "invite" ? "invite" : (intent ?? "dashboard"),

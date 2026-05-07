@@ -24,6 +24,8 @@ import Account from "./pages/Account";
 import ExitSurvey from "./pages/ExitSurvey";
 import CheckoutRedirect from "./pages/CheckoutRedirect";
 import Contact from "./pages/Contact";
+import PrivacyPolicy from "./pages/PrivacyPolicy";
+import TermsAndConditions from "./pages/TermsAndConditions";
 import TrustCenter from "./pages/TrustCenter";
 import NotFound from "./pages/NotFound";
 import SessionTimeoutManager from "@/components/SessionTimeoutManager";
@@ -91,6 +93,8 @@ const App = () => (
               
               <Route path="/account" element={<ProtectedRoute allowUnsubscribed><Account /></ProtectedRoute>} />
               <Route path="/contact" element={<Contact />} />
+              <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+              <Route path="/terms-and-conditions" element={<TermsAndConditions />} />
               <Route path="/trust-center" element={<TrustCenter />} />
               <Route path="/exit-survey" element={<ProtectedRoute allowUnsubscribed><ExitSurvey /></ProtectedRoute>} />
               <Route path="/checkout-redirect" element={<ProtectedRoute allowUnsubscribed allowPendingCheckout><CheckoutRedirect /></ProtectedRoute>} />

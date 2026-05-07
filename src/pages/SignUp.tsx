@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,7 @@ import { getPlanById, getPlanByPriceId, type SubscriptionPlanId } from "@/lib/su
 import { logError, trackEvent } from "@/lib/monitoring";
 import { markDeferredDashboardMessages, startProductTour } from "@/lib/product-tour";
 import { buildAppUrl } from "@/lib/site-url";
+import { Checkbox } from "@/components/ui/checkbox";
 
 const US_STATES = [
   "Alabama","Alaska","Arizona","Arkansas","California","Colorado","Connecticut","Delaware","Florida","Georgia",
@@ -38,6 +39,9 @@ type SignupNotice = {
   onContinue?: () => void;
 };
 
+const TERMS_VERSION = "2026-05-07";
+const PRIVACY_VERSION = "2026-05-07";
+
 const SignUp = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -49,7 +53,6 @@ const SignUp = () => {
   const nextPath = searchParams.get("next");
   const preselectedPlan = getPlanByPriceId(selectedPriceId);
   const requiresPlanFirst = !inviteParam;
-  const autoStartedCheckoutRef = useRef(false);
 
   const [fullName, setFullName] = useState("");
   const [churchRole, setChurchRole] = useState("");
@@ -62,6 +65,8 @@ const SignUp = () => {
   const [loading, setLoading] = useState(false);
   const [showPlanSelection, setShowPlanSelection] = useState(false);
   const [planLoading, setPlanLoading] = useState<SubscriptionPlanId | null>(null);
+  const [selectedPlanId, setSelectedPlanId] = useState<SubscriptionPlanId | null>(preselectedPlan?.id || null);
+  const [agreedToLegal, setAgreedToLegal] = useState(false);
   const [notice, setNotice] = useState<SignupNotice | null>(null);
 
   // Invite state
@@ -432,24 +437,53 @@ const SignUp = () => {
     showNotice("Choose a subscription plan", "Please choose a subscription plan before creating your account.");
   };
 
-  const handleSelectPlan = async (planId: SubscriptionPlanId) => {
-    const plan = getPlanById(planId);
-    if (!plan) return;
-    setPlanLoading(planId);
+  useEffect(() => {
+    if (!preselectedPlan) return;
+    setSelectedPlanId(preselectedPlan.id);
+  }, [preselectedPlan]);
+
+  const handleSelectPlan = (planId: SubscriptionPlanId) => {
+    setSelectedPlanId(planId);
     trackEvent("signup_plan_selected", { planId });
+  };
+
+  const handleContinueToCheckout = async () => {
+    if (!selectedPlanId) {
+      showNotice("Choose a subscription plan", "Please choose a subscription plan before continuing to checkout.");
+      return;
+    }
+    if (!agreedToLegal) {
+      showNotice("Agreement required", "Please agree to the Terms and Conditions and acknowledge the Privacy Policy before continuing.");
+      return;
+    }
+
+    const plan = getPlanById(selectedPlanId);
+    if (!plan) {
+      showNotice("Plan unavailable", "We couldn't find the selected plan. Please choose a plan again.");
+      return;
+    }
+
+    const activePlanId = selectedPlanId;
+    setPlanLoading(activePlanId);
     try {
       const { data, error } = await supabase.functions.invoke("create-signup-checkout", {
-        body: { action: "create", priceId: plan.priceId },
+        body: {
+          action: "create",
+          priceId: plan.priceId,
+          acceptedLegal: true,
+          termsVersion: TERMS_VERSION,
+          privacyVersion: PRIVACY_VERSION,
+        },
       });
 
       if (error || data?.error || !data?.url) {
         throw new Error(error?.message || data?.error || "Could not start checkout.");
       }
 
-      trackEvent("signup_checkout_started", { planId });
+      trackEvent("signup_checkout_started", { planId: activePlanId });
       window.location.href = data.url;
     } catch (error) {
-      logError(error, { scope: "paid_signup_checkout_start", planId });
+      logError(error, { scope: "paid_signup_checkout_start", planId: activePlanId });
       showNotice(
         "Could not start checkout",
         error instanceof Error && error.message ? error.message : "We couldn't start secure checkout. Please try again.",
@@ -457,12 +491,6 @@ const SignUp = () => {
       setPlanLoading(null);
     }
   };
-
-  useEffect(() => {
-    if (!preselectedPlan || inviteParam || autoStartedCheckoutRef.current) return;
-    autoStartedCheckoutRef.current = true;
-    void handleSelectPlan(preselectedPlan.id);
-  }, [inviteParam, preselectedPlan]);
 
   if (inviteLoading) {
     return (
@@ -554,8 +582,62 @@ const SignUp = () => {
                   description="Select Pro, Team, or Enterprise with monthly or annual billing before creating your account."
                   onSelectPlan={handleSelectPlan}
                   loadingPlanId={planLoading}
+                  selectedPlanId={selectedPlanId}
+                  selectionMode="pick"
                 />
-                {!requiresPlanFirst && (
+                {requiresPlanFirst ? (
+                  <div className="mx-auto max-w-3xl rounded-2xl border border-border/70 bg-white/80 p-5 shadow-soft">
+                    <div className="space-y-4">
+                      <div>
+                        <p className="text-sm font-medium text-foreground">Before you continue</p>
+                        <p className="text-sm text-muted-foreground">
+                          Choose your subscription plan and agree to the legal terms before we send you to secure Stripe checkout.
+                        </p>
+                      </div>
+
+                      {!selectedPlanId && (
+                        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                          Choose a subscription plan to continue.
+                        </div>
+                      )}
+
+                      <div className="flex items-start gap-3 rounded-xl border border-border/70 bg-background/80 px-4 py-4">
+                        <Checkbox
+                          id="signup-legal-consent"
+                          checked={agreedToLegal}
+                          onCheckedChange={(checked) => setAgreedToLegal(checked === true)}
+                          className="mt-0.5"
+                        />
+                        <Label htmlFor="signup-legal-consent" className="text-sm font-normal leading-6 text-muted-foreground">
+                          I agree to the{" "}
+                          <Link to="/terms-and-conditions" className="font-medium text-primary hover:underline">
+                            Terms and Conditions
+                          </Link>{" "}
+                          and acknowledge the{" "}
+                          <Link to="/privacy-policy" className="font-medium text-primary hover:underline">
+                            Privacy Policy
+                          </Link>
+                          .
+                        </Label>
+                      </div>
+
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <p className="text-xs text-muted-foreground">
+                          Agreement versions: Terms {TERMS_VERSION} · Privacy {PRIVACY_VERSION}
+                        </p>
+                        <Button
+                          variant="hero"
+                          size="lg"
+                          onClick={handleContinueToCheckout}
+                          disabled={!selectedPlanId || !agreedToLegal || Boolean(planLoading)}
+                          className="w-full sm:w-auto"
+                        >
+                          {planLoading ? "Starting Checkout..." : "Continue to Secure Checkout"}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
                   <Button variant="outline" className="w-full" onClick={() => setShowPlanSelection(false)} disabled={loading}>
                     Back to Account Details
                   </Button>

@@ -200,9 +200,9 @@ export default function Contact() {
                   </div>
                   <Label htmlFor="agree-to-policies" className="text-sm font-normal text-muted-foreground">
                     By selecting this, you agree to our{" "}
-                    <a href="#" className="font-medium text-primary hover:underline">
+                    <Link to="/privacy-policy" className="font-medium text-primary hover:underline">
                       privacy policy
-                    </a>
+                    </Link>
                     .
                   </Label>
                 </div>
