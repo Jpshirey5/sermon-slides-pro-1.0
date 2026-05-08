@@ -45,7 +45,7 @@ const GetStartedModal = ({ open, onOpenChange }: GetStartedModalProps) => {
               <FileText className="w-6 h-6 text-foreground" />
             </div>
             <h3 className="font-serif text-lg font-semibold text-foreground mb-1">
-              Pay Per Export
+              Try for Free
             </h3>
             <p className="text-sm text-muted-foreground mb-4">
               Create your presentation first, then pay only when you are ready to export.
@@ -67,7 +67,7 @@ const GetStartedModal = ({ open, onOpenChange }: GetStartedModalProps) => {
               <Crown className="w-6 h-6 text-primary-foreground" />
             </div>
             <h3 className="font-serif text-lg font-semibold text-foreground mb-1">
-              Account Setup
+              Unlock Full Access
             </h3>
             <p className="text-sm text-muted-foreground mb-4">
               Choose Pro, Team, or Enterprise to unlock the full account experience.
