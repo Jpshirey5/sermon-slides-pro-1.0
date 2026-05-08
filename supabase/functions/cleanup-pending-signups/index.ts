@@ -1,16 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-cleanup-secret, x-client-info, apikey, content-type",
-};
 
-const json = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
 
 const logStep = (step: string, details?: Record<string, unknown>) => {
   console.log(`[CLEANUP-PENDING-SIGNUPS] ${step}${details ? ` - ${JSON.stringify(details)}` : ""}`);
@@ -23,6 +14,16 @@ const parsePositiveNumber = (value: unknown, fallback: number, max: number) => {
 };
 
 serve(async (req) => {
+  const origin = req.headers.get("origin") ?? "";
+  const corsHeaders = {
+    "Access-Control-Allow-Origin": ["https://sermonslidepro.com", "http://localhost:8080", "http://localhost:5173"].includes(origin) ? origin : "https://sermonslidepro.com",
+    "Access-Control-Allow-Headers": "authorization, x-cleanup-secret, x-client-info, apikey, content-type",
+  };
+  const json = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
