@@ -777,7 +777,7 @@ const CreateSermon = () => {
 
               {/* Verse Breakdown */}
               <div className="space-y-3">
-                <Label>Verse Breakdown</Label>
+                <Label>Verse Passage Breakdown</Label>
                 <RadioGroup
                   value={verseBreakdown}
                   onValueChange={setVerseBreakdown}
@@ -792,17 +792,22 @@ const CreateSermon = () => {
                   <div className="flex items-center gap-2">
                     <RadioGroupItem value="full-verses" id="full-verses" />
                     <Label htmlFor="full-verses" className="cursor-pointer font-normal">
-                      Full Verses
+                      Full Passages
                     </Label>
                   </div>
                 </RadioGroup>
+                <p className="text-xs text-muted-foreground">
+                  {verseBreakdown === "verse-by-verse"
+                    ? "Each verse will be placed on its own slide (single verses or multiverse passages)."
+                    : "Multiverse passages will be placed on the same slide."}
+                </p>
               </div>
             </div>
 
             {/* Sermon Points */}
             <div className="space-y-4" data-tour-id="create-sermon-points">
               <h2 className="font-serif text-xl font-semibold text-foreground">
-                Sermon Points
+                Sermon Layout
               </h2>
 
               <Reorder.Group axis="y" values={points} onReorder={setPoints} className="space-y-4">
