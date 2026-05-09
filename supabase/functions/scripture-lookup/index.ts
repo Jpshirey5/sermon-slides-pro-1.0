@@ -167,13 +167,6 @@ function getTranslationBibleId(translation: string): string | undefined {
   return builtIn[translation] || envBibleId(translation);
 }
 
-async function jsonResponse(body: ScriptureResponse, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
-}
-
 async function readJsonBody(req: Request): Promise<Record<string, unknown> | null> {
   const rawBody = await req.text();
   if (!rawBody.trim()) return null;
@@ -191,6 +184,11 @@ serve(async (req) => {
     "Access-Control-Allow-Origin": ["https://sermonslidepro.com", "https://www.sermonslidepro.com", "http://localhost:8080", "http://localhost:5173"].includes(origin) ? origin : "https://sermonslidepro.com",
     "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
   };
+  const jsonResponse = (body: ScriptureResponse, status = 200) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
