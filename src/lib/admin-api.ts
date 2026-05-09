@@ -49,7 +49,7 @@ export const adminApi = async <T = any>(action: AdminApiAction, body: Record<str
     const context = (error as any).context;
     if (context) {
       try {
-        const payload = await context.json();
+        const payload = typeof context.json === "function" ? await context.json() : context;
         if (payload?.error) throw new Error(payload.error);
       } catch (parseError) {
         if (parseError instanceof Error && parseError.message !== "Body is unusable") {

@@ -140,7 +140,7 @@ async function readJsonBody(req: Request): Promise<unknown | null> {
 serve(async (req) => {
   const origin = req.headers.get("origin") ?? "";
   const corsHeaders = {
-    "Access-Control-Allow-Origin": ["https://sermonslidepro.com", "http://localhost:8080", "http://localhost:5173"].includes(origin) ? origin : "https://sermonslidepro.com",
+    "Access-Control-Allow-Origin": ["https://sermonslidepro.com", "https://www.sermonslidepro.com", "http://localhost:8080", "http://localhost:5173"].includes(origin) ? origin : "https://sermonslidepro.com",
     "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
   };
   if (req.method === "OPTIONS") {

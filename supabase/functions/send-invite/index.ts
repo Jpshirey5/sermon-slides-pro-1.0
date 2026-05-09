@@ -85,7 +85,7 @@ const getAuthenticatedUser = async (req: Request, supabaseUrl: string, anonKey: 
 serve(async (req) => {
   const origin = req.headers.get("origin") ?? "";
   const corsHeaders = {
-    "Access-Control-Allow-Origin": ["https://sermonslidepro.com", "http://localhost:8080", "http://localhost:5173"].includes(origin) ? origin : "https://sermonslidepro.com",
+    "Access-Control-Allow-Origin": ["https://sermonslidepro.com", "https://www.sermonslidepro.com", "http://localhost:8080", "http://localhost:5173"].includes(origin) ? origin : "https://sermonslidepro.com",
     "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   };
   const json = (body: Record<string, unknown>, status = 200) =>
