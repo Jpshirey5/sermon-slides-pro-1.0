@@ -78,6 +78,18 @@ const hashToken = async (token: string) => {
 
 const generateToken = () => `${crypto.randomUUID()}${crypto.randomUUID()}`.replace(/-/g, "");
 
+const _rlMap = new Map<string, { count: number; windowStart: number }>();
+const _rlCheck = (ip: string, limit: number, windowMs: number): boolean => {
+  const now = Date.now();
+  const entry = _rlMap.get(ip);
+  if (!entry || now - entry.windowStart > windowMs) {
+    _rlMap.set(ip, { count: 1, windowStart: now });
+    return false;
+  }
+  entry.count += 1;
+  return entry.count > limit;
+};
+
 serve(async (req) => {
   const origin = req.headers.get("origin") ?? "";
   const corsHeaders = {
@@ -91,6 +103,9 @@ serve(async (req) => {
     });
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
+
+  const ip = req.headers.get("x-forwarded-for")?.split(",")[0].trim() ?? req.headers.get("cf-connecting-ip") ?? "unknown";
+  if (_rlCheck(ip, 10, 60_000)) return json({ error: "Too many requests. Please try again later." }, 429);
 
   const supabaseAdmin = createClient(
     Deno.env.get("SUPABASE_URL") ?? "",

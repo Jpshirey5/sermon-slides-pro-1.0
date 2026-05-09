@@ -29,6 +29,18 @@ type AuthContext = {
   email: string;
 } | null;
 
+const _rlMap = new Map<string, { count: number; windowStart: number }>();
+const _rlCheck = (ip: string, limit: number, windowMs: number): boolean => {
+  const now = Date.now();
+  const entry = _rlMap.get(ip);
+  if (!entry || now - entry.windowStart > windowMs) {
+    _rlMap.set(ip, { count: 1, windowStart: now });
+    return false;
+  }
+  entry.count += 1;
+  return entry.count > limit;
+};
+
 const lookupDnsRecord = async (domain: string, recordType: "MX" | "A" | "AAAA") => {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), DNS_LOOKUP_TIMEOUT_MS);
@@ -138,6 +150,14 @@ serve(async (req) => {
   };
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
+  }
+
+  const ip = req.headers.get("x-forwarded-for")?.split(",")[0].trim() ?? req.headers.get("cf-connecting-ip") ?? "unknown";
+  if (_rlCheck(ip, 5, 60_000)) {
+    return new Response(JSON.stringify({ error: "Too many requests. Please try again later." }), {
+      status: 429,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 
   try {
