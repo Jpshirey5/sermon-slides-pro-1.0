@@ -547,13 +547,35 @@ const CreateSermon = () => {
   const createTourSteps: ProductTourStep[] = [
     {
       targetId: "create-sermon-title",
-      title: "Add sermon details",
-      description: "Start with the title, series, date, and campus if your account uses campuses.",
+      title: "Sermon title",
+      description: "Give this sermon a clear, recognizable title — it appears on the first slide and on your dashboard.",
     },
+    {
+      targetId: "create-sermon-series",
+      title: "Sermon series",
+      description: "Optional. If this sermon is part of a series, add the series name so it groups with related sermons.",
+    },
+    {
+      targetId: "create-sermon-date",
+      title: "Presentation date",
+      description: "This is the date the sermon will actually be preached — used to sort upcoming sermons on your dashboard.",
+    },
+    ...(isEnterpriseAccount
+      ? [{
+          targetId: "create-sermon-campus",
+          title: "Choose a campus",
+          description: "Save this sermon to the campus that will be preaching it so it can be filtered on the dashboard later.",
+        }]
+      : []),
     {
       targetId: "create-sermon-translation",
       title: "Use your default translation",
       description: "This starts from your Account default but can be changed for this sermon.",
+    },
+    {
+      targetId: "create-sermon-verse-breakdown",
+      title: "Verse passage breakdown",
+      description: "Choose whether multi-verse passages get one slide per verse, or stay grouped on a single slide.",
     },
     {
       targetId: "create-sermon-points",
@@ -708,6 +730,7 @@ const CreateSermon = () => {
                 <div className="space-y-2">
                   <Label htmlFor="series">Series</Label>
                   <Input
+                    data-tour-id="create-sermon-series"
                     id="series"
                     type="text"
                     placeholder="e.g., Summer in Psalms"
@@ -722,6 +745,7 @@ const CreateSermon = () => {
                 <div className="space-y-2">
                   <Label htmlFor="presentationDate">Presentation Date</Label>
                   <Input
+                    data-tour-id="create-sermon-date"
                     id="presentationDate"
                     type="date"
                     value={presentationDate}
@@ -758,7 +782,7 @@ const CreateSermon = () => {
                 <div className="space-y-2">
                   <Label htmlFor="campus">Campus</Label>
                   <Select value={campusId} onValueChange={setCampusId} disabled={campusesLoading || availableCampuses.length === 0}>
-                    <SelectTrigger id="campus" className="h-12">
+                    <SelectTrigger id="campus" className="h-12" data-tour-id="create-sermon-campus">
                       <SelectValue placeholder={campusesLoading ? "Loading campuses..." : "Select a campus"} />
                     </SelectTrigger>
                     <SelectContent>
@@ -776,7 +800,7 @@ const CreateSermon = () => {
               )}
 
               {/* Verse Breakdown */}
-              <div className="space-y-3">
+              <div className="space-y-3" data-tour-id="create-sermon-verse-breakdown">
                 <Label>Verse Passage Breakdown</Label>
                 <RadioGroup
                   value={verseBreakdown}
