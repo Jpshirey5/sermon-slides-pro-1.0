@@ -3,10 +3,11 @@ import { Link, useParams, useSearchParams, useLocation, useNavigate } from "reac
 import { motion, Reorder, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { BookOpen, ArrowLeft, Download, Play, GripVertical, Plus, Type, Palette, ChevronLeft, ChevronRight, Trash2, AlignVerticalSpaceAround, Undo2, Redo2, Copy, Check, Cloud, BookMarked, Pencil, Sparkles } from "lucide-react";
+import { BookOpen, ArrowLeft, Download, Play, GripVertical, Plus, Type, Palette, ChevronLeft, ChevronRight, Trash2, AlignVerticalSpaceAround, Undo2, Redo2, Copy, Check, Cloud, BookMarked, Pencil, Sparkles, Printer } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { BackgroundPicker } from "@/components/BackgroundPicker";
 import { exportToPowerPoint, SlideData } from "@/lib/export-pptx";
+import { exportToPdf } from "@/lib/export-pdf";
 import { exportAsProBundle, validateSlidesForExport } from "@/services/proPresenterExport";
 import { ExportOptionsModal } from "@/components/ExportOptionsModal";
 import { PaymentPromptModal } from "@/components/PaymentPromptModal";
@@ -131,6 +132,7 @@ const SlideEditor = () => {
   const [selectedSlides, setSelectedSlides] = useState<Set<number>>(new Set([0]));
   const [isPreviewMode, setIsPreviewMode] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [isPrinting, setIsPrinting] = useState(false);
   const [presentationTitle, setPresentationTitle] = useState("New Presentation");
   const [isDragging, setIsDragging] = useState(false);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
@@ -739,6 +741,47 @@ const SlideEditor = () => {
     }
   };
 
+  const handlePrintPdf = async () => {
+    const validation = validateSlidesForExport(slides);
+    if (!validation.isValid) {
+      toast.error("Cannot print", {
+        description: validation.errors.join(' '),
+      });
+      return;
+    }
+
+    setIsPrinting(true);
+    try {
+      trackEvent("pdf_print_started", {
+        sermonId: id || "unknown",
+        slideCount: slides.length,
+      });
+      await exportToPdf(slides, presentationTitle);
+      toast.success("PDF ready to print", {
+        description: `${slides.length} slides saved to ${presentationTitle}.pdf`,
+      });
+      trackEvent("pdf_print_succeeded", {
+        sermonId: id || "unknown",
+        slideCount: slides.length,
+      });
+    } catch (error) {
+      logError(error, {
+        scope: "editor_print_pdf",
+        sermonId: id || "unknown",
+        slideCount: slides.length,
+      });
+      trackEvent("pdf_print_failed", {
+        sermonId: id || "unknown",
+      });
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      toast.error("Could not create PDF", {
+        description: `${errorMessage}. Please try again.`,
+      });
+    } finally {
+      setIsPrinting(false);
+    }
+  };
+
   const prepareForCheckout = async () => {
     if (!id || id === "new") return;
     trackEvent("export_checkout_prepared", { sermonId: id, slideCount: slides.length });
@@ -764,6 +807,23 @@ const SlideEditor = () => {
       targetId: "editor-styles",
       title: "Style the presentation",
       description: "Adjust fonts, colors, spacing, and backgrounds to match your church or sermon series.",
+    },
+    ...(id && id !== "new"
+      ? [{
+          targetId: "editor-edit-button",
+          title: "Edit the sermon form",
+          description: "Jump back to the sermon form to add or remove points, change scripture, or update the title.",
+        }]
+      : []),
+    {
+      targetId: "editor-preview-button",
+      title: "Walk through your slides",
+      description: "Open the full-screen preview to step through what the congregation will see, slide by slide.",
+    },
+    {
+      targetId: "editor-print-pdf-button",
+      title: "Print to PDF",
+      description: "Export a printable PDF — one slide per page — for handouts or speaker notes outside of ProPresenter or PowerPoint.",
     },
     {
       targetId: "editor-export-button",
@@ -1120,14 +1180,20 @@ const SlideEditor = () => {
                   } else {
                     toast.error("Original sermon form data not found.");
                   }
-                }} title="Edit sermon form">
+                }} title="Edit sermon form" data-tour-id="editor-edit-button">
                   <Pencil className="w-4 h-4" />
                   <span className="hidden sm:inline">Edit</span>
                 </Button>
               )}
-              <Button variant="outline" onClick={() => setIsPreviewMode(true)}>
+              <Button variant="outline" onClick={() => setIsPreviewMode(true)} data-tour-id="editor-preview-button">
                 <Play className="w-4 h-4" />
                 <span className="hidden sm:inline">Preview</span>
+              </Button>
+              <Button variant="outline" disabled={isPrinting} onClick={handlePrintPdf} data-tour-id="editor-print-pdf-button">
+                <Printer className="w-4 h-4" />
+                <span className="hidden sm:inline">
+                  {isPrinting ? "Preparing..." : "Print PDF"}
+                </span>
               </Button>
               <Button variant="hero" disabled={isExporting || isVerifyingUnlock} onClick={handleExportButtonClick} data-tour-id="editor-export-button">
                 <Download className="w-4 h-4" />

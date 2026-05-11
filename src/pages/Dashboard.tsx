@@ -777,9 +777,26 @@ const Dashboard = () => {
       description: "Saved work, drafts, filters, and completed presentations live here so you can return to them anytime.",
     },
     {
+      targetId: "dashboard-refresh-button",
+      title: "Refresh your dashboard",
+      description: "Pull in the latest changes if presentations were added or updated from another device or teammate.",
+    },
+    ...(presentations.length > 0
+      ? [{
+          targetId: "dashboard-select-button",
+          title: "Select multiple presentations",
+          description: "Enter selection mode to export several presentations at once or delete the ones you no longer need.",
+        }]
+      : []),
+    {
       targetId: "dashboard-create-button",
       title: "Create from here",
       description: "This is the main path for starting a new sermon presentation from your title, points, and scripture.",
+    },
+    {
+      targetId: "dashboard-contact-support",
+      title: "Need help? Contact support",
+      description: "Reach our team any time with questions, feature requests, or issues — we're here to help.",
     },
     {
       targetId: "dashboard-account-button",
@@ -807,7 +824,7 @@ const Dashboard = () => {
                 </span>
               </Link>
               <div className="flex items-center gap-2">
-                <Button variant="ghost" size="sm" onClick={() => setShowSupportDialog(true)}>
+                <Button variant="ghost" size="sm" onClick={() => setShowSupportDialog(true)} data-tour-id="dashboard-contact-support">
                   <LifeBuoy className="w-4 h-4" />
                   <span className="hidden sm:inline">Contact Support</span>
                 </Button>
@@ -1042,6 +1059,7 @@ const Dashboard = () => {
                       size="sm"
                       onClick={() => void refreshDashboardData()}
                       disabled={loading}
+                      data-tour-id="dashboard-refresh-button"
                     >
                       <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
                       Refresh
@@ -1052,6 +1070,7 @@ const Dashboard = () => {
                         size="sm"
                         onClick={selectionMode ? handleCancelSelection : handleOpenSelectionMode}
                         aria-pressed={selectionMode}
+                        data-tour-id="dashboard-select-button"
                       >
                         <CheckSquare className="w-4 h-4" />
                         Select

@@ -25,6 +25,7 @@ import {
   type Campus,
 } from "@/lib/campuses";
 import ProductTour, { type ProductTourStep } from "@/components/ProductTour";
+import { startProductTour } from "@/lib/product-tour";
 import {
   formatDeletionDate,
   getActiveAccountDeletionRequest,
@@ -641,12 +642,20 @@ const Account = () => {
   const primaryCampus = campuses.find((campus) => campus.isPrimary) || null;
   const deletionCancelable = isDeletionCancelable(activeDeletionRequest);
   const ownerTeamMember = teamMembers.find((member) => member.role === "owner") || null;
-  const accountNavItems: Array<{ section: AccountSection; id: string; label: string; icon: typeof User }> = [
+  const accountNavItems: Array<{ section: AccountSection; id: string; label: string; icon: typeof User; action?: "replay-tour" }> = [
     { section: "profile", id: "account-profile", label: "Personal Preferences", icon: User },
     { section: "team", id: "account-team", label: "Team", icon: Users },
     ...(isEnterprisePlan ? [{ section: "campuses" as AccountSection, id: "account-campuses", label: "Campuses", icon: Building2 }] : []),
     { section: "subscription", id: "account-subscription", label: "Billing & Subscription", icon: CreditCard },
+    { section: "profile", id: "account-replay-tour", label: "Replay Platform Tour", icon: Sparkles, action: "replay-tour" },
   ];
+
+  const handleReplayTour = useCallback(() => {
+    if (!user?.id) return;
+    startProductTour(user.id);
+    toast.success("Restarting the platform tour…");
+    navigate("/dashboard");
+  }, [navigate, user?.id]);
   const enterpriseOwnerDefaultTranslation =
     ownerTeamMember?.default_translation || null;
   const defaultTranslationInherited = isEnterprisePlan && teamLoaded && !isOwner;
@@ -982,13 +991,21 @@ const Account = () => {
               <div className="mt-6 space-y-2">
                 {accountNavItems.map((item) => {
                   const Icon = item.icon;
+                  const isReplayTour = item.action === "replay-tour";
+                  const isActive = !isReplayTour && activeSection === item.section;
                   return (
                     <button
                       key={item.id}
                       type="button"
-                      onClick={() => setActiveSection(item.section)}
+                      onClick={() => {
+                        if (isReplayTour) {
+                          handleReplayTour();
+                        } else {
+                          setActiveSection(item.section);
+                        }
+                      }}
                       className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm transition-colors ${
-                        activeSection === item.section
+                        isActive
                           ? "bg-primary text-primary-foreground shadow-sm"
                           : "text-muted-foreground hover:bg-white/75 hover:text-foreground"
                       }`}
