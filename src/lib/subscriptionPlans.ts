@@ -38,10 +38,10 @@ export interface PlanFamilyConfig {
 const LEGACY_PRICE_ID_ALIASES: Partial<Record<SubscriptionPlanId, string[]>> = {
   pro_monthly: ["price_1TEfgIP2Yr0z0IcsX2VXk6wJ"],
   pro_annual: ["price_1TEfi2P2Yr0z0Icsnod1blF1"],
-  team_monthly: ["price_1TEfggP2Yr0z0IcsHHgS6kye"],
-  team_annual: ["price_1TEfjmP2Yr0z0IcsXW3ZujSG"],
-  enterprise_monthly: ["price_1TEfhaP2Yr0z0IcsGlDJJyu7"],
-  enterprise_annual: ["price_1TEfkDP2Yr0z0IcsUhXwzh9z", "price_1TJJlpP2Yr0z0IcsDJBpCJHa"],
+  team_monthly: ["price_1TJJjFP2Yr0z0IcsZRFgIQlX", "price_1TEfggP2Yr0z0IcsHHgS6kye"],
+  team_annual: ["price_1TJJjWP2Yr0z0IcsAV9Y4SV5", "price_1TEfjmP2Yr0z0IcsXW3ZujSG"],
+  enterprise_monthly: ["price_1TJJlcP2Yr0z0IcsUb9IHJuS", "price_1TEfhaP2Yr0z0IcsGlDJJyu7"],
+  enterprise_annual: ["price_1TJQdEP2Yr0z0IcsjUAm4Xq6", "price_1TEfkDP2Yr0z0IcsUhXwzh9z", "price_1TJJlpP2Yr0z0IcsDJBpCJHa"],
 };
 
 const getPublicPriceId = (envKey: keyof ImportMetaEnv, fallback = "") =>
@@ -105,37 +105,37 @@ export const SUBSCRIPTION_PLANS: Record<SubscriptionPlanId, SubscriptionPlanConf
     "pro",
     "monthly",
     "$49",
-    getPublicPriceId("VITE_STRIPE_PRICE_PRO_MONTHLY", "price_1TEfgIP2Yr0z0IcsX2VXk6wJ")
+    getPublicPriceId("VITE_STRIPE_PRICE_PRO_MONTHLY", "price_1TVyQnP2Yr0z0IcsKcAHhYX8")
   ),
   pro_annual: createPlan(
     "pro",
     "annual",
     "$490",
-    getPublicPriceId("VITE_STRIPE_PRICE_PRO_ANNUAL", "price_1TEfi2P2Yr0z0Icsnod1blF1")
+    getPublicPriceId("VITE_STRIPE_PRICE_PRO_ANNUAL", "price_1TVyQqP2Yr0z0IcsKQ6KN3xA")
   ),
   team_monthly: createPlan(
     "team",
     "monthly",
     "$99",
-    getPublicPriceId("VITE_STRIPE_PRICE_TEAM_MONTHLY", "price_1TJJjFP2Yr0z0IcsZRFgIQlX")
+    getPublicPriceId("VITE_STRIPE_PRICE_TEAM_MONTHLY", "price_1TVyQtP2Yr0z0IcsfNMO4n3o")
   ),
   team_annual: createPlan(
     "team",
     "annual",
     "$990",
-    getPublicPriceId("VITE_STRIPE_PRICE_TEAM_ANNUAL", "price_1TJJjWP2Yr0z0IcsAV9Y4SV5")
+    getPublicPriceId("VITE_STRIPE_PRICE_TEAM_ANNUAL", "price_1TVyQxP2Yr0z0IcsMr2gCkbm")
   ),
   enterprise_monthly: createPlan(
     "enterprise",
     "monthly",
     "$199",
-    getPublicPriceId("VITE_STRIPE_PRICE_ENTERPRISE_MONTHLY", "price_1TJJlcP2Yr0z0IcsUb9IHJuS")
+    getPublicPriceId("VITE_STRIPE_PRICE_ENTERPRISE_MONTHLY", "price_1TVyQzP2Yr0z0Ics7qONt0Fm")
   ),
   enterprise_annual: createPlan(
     "enterprise",
     "annual",
     "$1990",
-    getPublicPriceId("VITE_STRIPE_PRICE_ENTERPRISE_ANNUAL", "price_1TJQdEP2Yr0z0IcsjUAm4Xq6")
+    getPublicPriceId("VITE_STRIPE_PRICE_ENTERPRISE_ANNUAL", "price_1TVyR1P2Yr0z0IcsBZck11XI")
   ),
 };
 
