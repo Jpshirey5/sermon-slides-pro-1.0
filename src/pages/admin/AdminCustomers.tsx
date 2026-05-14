@@ -1,10 +1,70 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Search } from "lucide-react";
+import { Download, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { adminApi, formatAdminDate, formatMoney } from "@/lib/admin-api";
+
+const escapeCsv = (value: unknown) => {
+  const str = value === null || value === undefined ? "" : String(value);
+  return `"${str.replace(/"/g, '""')}"`;
+};
+
+const exportContactsCsv = (items: any[]) => {
+  const headers = [
+    "Owner Name",
+    "Email",
+    "Organization",
+    "City",
+    "State",
+    "Country",
+    "Plan",
+    "Subscription Status",
+    "Beta",
+    "Next Invoice Date",
+    "Next Invoice Amount",
+    "Support Requests",
+    "Created",
+    "Stripe Customer ID",
+  ];
+
+  const rows = items.map((item) => {
+    const nextInvoice = item.nextInvoice || {};
+    const amount =
+      typeof nextInvoice.amountDue === "number"
+        ? (nextInvoice.amountDue / 100).toFixed(2)
+        : "";
+    return [
+      item.owner?.full_name || "",
+      item.owner?.email || "",
+      item.account?.name || "",
+      item.account?.city || "",
+      item.account?.state || "",
+      item.account?.country || "",
+      item.account?.plan_tier || "free",
+      item.adminSubscriptionStatusLabel || item.account?.subscription_status || "",
+      item.account?.is_beta_user ? "yes" : "no",
+      nextInvoice.nextInvoiceAt ? formatAdminDate(nextInvoice.nextInvoiceAt) : "",
+      amount,
+      item.supportRequestCount ?? 0,
+      item.account?.created_at ? formatAdminDate(item.account.created_at) : "",
+      item.account?.stripe_customer_id || "",
+    ];
+  });
+
+  const csv = [headers, ...rows].map((row) => row.map(escapeCsv).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  const date = new Date().toISOString().slice(0, 10);
+  link.download = `contacts-${date}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+};
 
 const filters = [
   { value: "all", label: "All" },
@@ -78,9 +138,19 @@ const AdminCustomers = () => {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="font-serif text-3xl font-bold">Customers</h1>
-        <p className="text-muted-foreground mt-1">Search accounts, subscription states, and customer context.</p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="font-serif text-3xl font-bold">Customers</h1>
+          <p className="text-muted-foreground mt-1">Search accounts, subscription states, and customer context.</p>
+        </div>
+        <Button
+          variant="outline"
+          onClick={() => exportContactsCsv(items)}
+          disabled={loading || items.length === 0}
+        >
+          <Download className="h-4 w-4" />
+          Export Contacts
+        </Button>
       </div>
 
       <div className="rounded-2xl glass-panel p-5">
