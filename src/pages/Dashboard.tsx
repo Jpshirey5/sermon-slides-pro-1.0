@@ -1064,18 +1064,17 @@ const Dashboard = () => {
                       <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
                       Refresh
                     </Button>
-                    {presentations.length > 0 && (
-                      <Button
-                        variant={selectionMode ? "hero" : "outline"}
-                        size="sm"
-                        onClick={selectionMode ? handleCancelSelection : handleOpenSelectionMode}
-                        aria-pressed={selectionMode}
-                        data-tour-id="dashboard-select-button"
-                      >
-                        <CheckSquare className="w-4 h-4" />
-                        Select
-                      </Button>
-                    )}
+                    <Button
+                      variant={selectionMode ? "hero" : "outline"}
+                      size="sm"
+                      onClick={selectionMode ? handleCancelSelection : handleOpenSelectionMode}
+                      aria-pressed={selectionMode}
+                      disabled={presentations.length === 0}
+                      data-tour-id="dashboard-select-button"
+                    >
+                      <CheckSquare className="w-4 h-4" />
+                      Select
+                    </Button>
                   </div>
                 </div>
 
