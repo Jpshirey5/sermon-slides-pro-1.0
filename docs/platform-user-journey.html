@@ -63,7 +63,7 @@
   <h1>Sermon Slide Pro User Journey Documentation</h1>
   <p class="meta">
     Prepared from the current implementation in <b>sermon-slides-pro-1.0</b> as of
-    <b>April 10, 2026</b>. This is the canonical internal operations document in the
+    <b>May 17, 2026</b>. This is the canonical internal operations document in the
     <b>/docs</b> folder and is intended for support, onboarding, handoff, and product
     operations.
   </p>
@@ -73,7 +73,8 @@
     Sermon Slide Pro is a web application for building sermon presentations from a structured
     sermon form, refining them in a slide editor, and exporting them for presentation software.
     The application supports both a pay-per-export path and authenticated subscription-based
-    account usage.
+    account usage. A separate Admin Center supports internal staff with customer, billing,
+    support, and messaging operations.
   </p>
 
   <table>
@@ -86,20 +87,32 @@
       <td>Structured creation flow with title, series, presentation date, points, verses, and automatic scripture lookup</td>
     </tr>
     <tr>
+      <td>Refine the sermon outline before slides are generated</td>
+      <td>Sermon Review step with drag-to-reorder blocks, edits, and autosave</td>
+    </tr>
+    <tr>
       <td>Refine the final deck</td>
-      <td>Slide editor with generation, manual editing, reordering, background control, preview, and autosave</td>
+      <td>Slide editor with generation, manual editing, reordering, background control, preview, print, and autosave</td>
     </tr>
     <tr>
       <td>Use slides in service software</td>
-      <td>Export to <b>.pptx</b> and <b>.probundle</b></td>
+      <td>Export to <b>.pptx</b> and <b>.probundle</b>, plus a Print action</td>
     </tr>
     <tr>
       <td>Support recurring weekly workflow</td>
       <td>Saved presentations, dashboard management, account settings, subscription controls, and team support</td>
     </tr>
     <tr>
+      <td>Quantify ongoing value to the customer</td>
+      <td>Per-account Time Saved tracking on the dashboard, with week and lifetime totals</td>
+    </tr>
+    <tr>
       <td>Organize larger ministries</td>
       <td>Enterprise-only campus support with up to 5 campuses and campus-filtered dashboard views</td>
+    </tr>
+    <tr>
+      <td>Internal operations</td>
+      <td>Admin Center with customers, support inbox, billing, broadcast messages, and admin-user controls</td>
     </tr>
   </table>
 
@@ -109,14 +122,17 @@
   <p>The public website is the route at <b>/</b> and is composed of the following sections:</p>
   <ul>
     <li>Hero</li>
+    <li>Comparison (against alternatives)</li>
     <li>Features</li>
     <li>Testimonials</li>
     <li>Pricing</li>
     <li>Call to action</li>
   </ul>
   <p>
-    Route-level navigation now resets to the top of the page, so when a user returns to the
-    landing page they land back on the hero section instead of their prior scroll position.
+    Route-level navigation resets to the top of the page, so when a user returns to the landing
+    page they land back on the hero section instead of their prior scroll position. Legal and
+    compliance pages (<b>/privacy-policy</b>, <b>/terms-and-conditions</b>, <b>/trust-center</b>)
+    are accessible from the footer and from inline links during signup.
   </p>
 
   <h3>2.2 Pricing Model Presented to the User</h3>
@@ -148,40 +164,48 @@
     </tr>
   </table>
 
-  <p>The current pricing UI supports both <b>monthly</b> and <b>annual</b> billing for Pro, Team, and Enterprise.</p>
+  <p>The pricing UI supports both <b>monthly</b> and <b>annual</b> billing for Pro, Team, and Enterprise. Stripe promotion codes are honored during checkout.</p>
 
   <table>
     <tr>
       <th>Plan</th>
       <th>Monthly</th>
       <th>Annual</th>
+      <th>Total users</th>
       <th>Notes</th>
     </tr>
     <tr>
       <td>Pro</td>
       <td>$49</td>
       <td>$490</td>
+      <td>1</td>
       <td>Single-user workflow</td>
     </tr>
     <tr>
       <td>Team</td>
       <td>$99</td>
       <td>$990</td>
-      <td>Up to 3 total users</td>
+      <td>Up to 3 (owner + 2 invited)</td>
+      <td>Shared account</td>
     </tr>
     <tr>
       <td>Enterprise</td>
       <td>$199</td>
-      <td>$1990</td>
-      <td>Up to 10 total users and multi-campus support</td>
+      <td>$1,990</td>
+      <td>Up to 10 (owner + 9 invited)</td>
+      <td>Multi-campus support, up to 5 campuses</td>
     </tr>
   </table>
+
+  <p>Annual plans save the equivalent of two months versus monthly billing.</p>
 
   <h3>2.3 Current Entry Paths</h3>
   <ol>
     <li><b>Pay-per-export path:</b> user opens the creator without needing an account first.</li>
     <li><b>Account subscription path:</b> user selects Pro, Team, or Enterprise and moves through signup and Stripe checkout.</li>
+    <li><b>Signup-during-checkout path:</b> the signup-checkout edge function pre-creates the account and routes the user back through <b>/signup/complete</b> or <b>/signup-incomplete</b> if email confirmation is still pending.</li>
     <li><b>Authenticated upgrade path:</b> signed-in users can begin subscription checkout from the Account page.</li>
+    <li><b>Beta path:</b> approved beta users are flagged on their subscription record and surfaced with a Beta badge on the Account page.</li>
   </ol>
 
   <h2>3. Authentication and Account Access</h2>
@@ -189,33 +213,36 @@
   <h3>3.1 Core Authentication Model</h3>
   <p>
     The application uses Supabase Auth for signup, login, email confirmation, password reset,
-    and session handling. The core public auth routes are:
+    and session handling. Sessions enforce a 15-minute inactivity lockout. The core public auth
+    routes are:
   </p>
   <ul>
     <li><b>/signup</b></li>
+    <li><b>/signup/complete</b> — landing after a successful signup-checkout</li>
+    <li><b>/signup-incomplete</b> — recovery for an interrupted signup</li>
     <li><b>/login</b></li>
     <li><b>/invite-signup</b></li>
     <li><b>/auth/confirm</b></li>
+    <li><b>/auth/confirm-email-change</b> — finalizes an admin-initiated email change</li>
     <li><b>/forgot-password</b></li>
     <li><b>/reset-password</b></li>
   </ul>
 
   <h3>3.2 Standard Signup Flow</h3>
   <p>
-    Signup collects the user identity and organization information required to create a full
-    account. If the signup was initiated from pricing, the selected plan price is carried into
-    the signup and checkout path.
-  </p>
-  <p>
-    New account setup stores pending checkout intent locally so that after email confirmation the
-    app can continue into subscription checkout cleanly.
+    Signup collects user identity, organization information, and a Church Role for the user.
+    If the signup was initiated from pricing, the selected plan price is carried into the
+    signup and checkout path. Pending checkout intent is stored locally so the app can
+    continue into subscription checkout cleanly after email confirmation.
   </p>
 
   <h3>3.3 Email Confirmation and Checkout Continuation</h3>
   <p>
-    New subscription signups must confirm email through <b>/auth/confirm</b>. After confirmation,
-    the app checks whether there is a pending checkout intent and, if so, routes the user into
-    the subscription checkout path.
+    New subscription signups must confirm email through <b>/auth/confirm</b>. After
+    confirmation, the app checks whether there is a pending checkout intent and, if so, routes
+    the user into the subscription checkout path. If the user abandons signup, the
+    <b>abandon-signup</b> edge function and the <b>cleanup-pending-signups</b> scheduled
+    function reconcile the orphaned record.
   </p>
 
   <h3>3.4 Login and Protected Route Behavior</h3>
@@ -240,6 +267,11 @@
       <td>Protected under the same rule as the dashboard</td>
     </tr>
     <tr>
+      <td>Sermon Review</td>
+      <td>Same as creator origin (public or authenticated)</td>
+      <td>Accessible at <b>/create/review/:id</b> or <b>/dashboard/create/review/:id</b></td>
+    </tr>
+    <tr>
       <td>Account page</td>
       <td>Authenticated</td>
       <td>Available even when unsubscribed so billing can be activated or managed</td>
@@ -248,6 +280,11 @@
       <td>Public creator</td>
       <td>No account required</td>
       <td>Supports guest usage and later pay-per-export checkout</td>
+    </tr>
+    <tr>
+      <td>Admin Center</td>
+      <td>Admin user with active status</td>
+      <td>Protected behind <b>AdminProtectedRoute</b> via <b>/admin/login</b></td>
     </tr>
   </table>
 
@@ -258,7 +295,17 @@
     <li>Invited email is prefilled</li>
     <li>User joins the existing account structure</li>
     <li>Team access is then controlled by the account membership model</li>
+    <li>The Account page surfaces pending invites and supports resend</li>
   </ul>
+
+  <h3>3.6 Email Change (Admin-Initiated)</h3>
+  <p>
+    Customer login emails are not user-editable from the Account page. A support admin can
+    request an email change from the Admin Customer Detail page, which creates a pending
+    <b>email_change_requests</b> row, sends a confirmation link to the new address, and
+    finalizes the swap when the user clicks the link. The confirmation page is
+    <b>/auth/confirm-email-change</b>.
+  </p>
 
   <h2>4. Subscription and Billing Execution</h2>
 
@@ -266,7 +313,7 @@
   <p>Subscription checkout can currently start from:</p>
   <ul>
     <li>The landing-page pricing section</li>
-    <li>Signup continuation after email confirmation</li>
+    <li>Signup continuation after email confirmation (via <b>create-signup-checkout</b>)</li>
     <li>The Account page for authenticated users</li>
     <li>The checkout redirect route at <b>/checkout-redirect</b></li>
   </ul>
@@ -275,22 +322,24 @@
   <p>The account subscription flow uses the following execution chain:</p>
   <ol>
     <li>User selects a Pro, Team, or Enterprise price</li>
-    <li>The app invokes the Supabase Edge Function <b>create-checkout</b></li>
+    <li>The app invokes the Supabase Edge Function <b>create-checkout</b> (or <b>create-signup-checkout</b> during signup)</li>
     <li>The function validates the selected Stripe price and the user account</li>
-    <li>Stripe checkout session is created</li>
+    <li>Stripe checkout session is created (promotion codes allowed)</li>
     <li>Success returns to <b>/dashboard?checkout=success</b></li>
     <li>Cancel returns to the Account page</li>
+    <li>The <b>stripe-webhook</b> function processes subscription lifecycle and payment events</li>
   </ol>
 
   <h3>4.3 Subscription State Refresh</h3>
   <p>
-    Subscription state is refreshed through the <b>check-subscription</b> Edge Function and
+    Subscription state is refreshed through the <b>check-subscription</b> Edge Function and the
     frontend auth context. This refresh matters after:
   </p>
   <ul>
     <li>checkout success</li>
     <li>customer-portal return</li>
     <li>initial login/session bootstrap</li>
+    <li>any Stripe-webhook-driven status change</li>
   </ul>
 
   <h3>4.4 Manage Subscription Modal</h3>
@@ -303,14 +352,22 @@
     <li><b>Cancel Subscription</b> on the right</li>
   </ul>
   <p>
-    Changing a plan opens the existing plan-management flow and current-plan picker. Cancellation
-    continues into the current customer-portal cancellation behavior.
+    Changing a plan opens the plan-management flow and current-plan picker. Cancellation routes
+    through the Account Deletion flow (which is guarded by an exit survey) or the customer-portal
+    cancellation behavior, depending on context.
   </p>
 
   <h3>4.5 Customer Portal Usage</h3>
   <p>
     Ongoing subscription management is routed through the <b>customer-portal</b> Edge Function.
     This is used for plan changes, billing management, and cancellation flows for subscribed users.
+  </p>
+
+  <h3>4.6 Beta Program</h3>
+  <p>
+    A subscription can carry an <b>is_beta_user</b> flag. Beta users are surfaced with a Beta
+    badge on the Account profile card. A scheduled <b>process-beta-trial-emails</b> function
+    handles beta-period lifecycle messaging.
   </p>
 
   <div class="note">
@@ -329,7 +386,7 @@
   </ul>
 
   <h3>5.2 Current Form Fields</h3>
-  <p>The sermon creation flow now supports the following structured fields:</p>
+  <p>The sermon creation flow supports the following structured fields:</p>
   <ul>
     <li>Presentation title</li>
     <li>Series</li>
@@ -343,9 +400,10 @@
 
   <h3>5.3 Scripture Lookup Execution</h3>
   <p>
-    Scripture references are looked up asynchronously while the user types. The frontend calls the
-    Supabase Edge Function <b>scripture-lookup</b>, which resolves scripture content and returns it
-    to the creator flow. Lookup errors are shown inline so the user can correct the reference.
+    Scripture references are looked up asynchronously while the user types. The frontend calls
+    the Supabase Edge Function <b>scripture-lookup</b> (with <b>esv-lookup</b> for the ESV
+    translation), which resolves scripture content and returns it to the creator flow. Lookup
+    errors are shown inline so the user can correct the reference.
   </p>
 
   <h3>5.4 Content Block Types</h3>
@@ -368,7 +426,7 @@
   </table>
 
   <h3>5.5 Translation and Breakdown Behavior</h3>
-  <p>The creator currently supports translation-aware scripture lookup and two scripture split modes:</p>
+  <p>The creator supports translation-aware scripture lookup and two scripture split modes:</p>
   <ul>
     <li><b>Verse by verse</b></li>
     <li><b>Full verses</b></li>
@@ -385,8 +443,11 @@
     <li>Non-Enterprise flows do not show campus selection</li>
   </ul>
 
-  <h3>5.7 Save and Continue to the Editor</h3>
-  <p>When the user generates slides, the application saves the presentation state and moves into the editor.</p>
+  <h3>5.7 Save and Continue to Sermon Review</h3>
+  <p>
+    When the user submits the creation form, the application saves the sermon record and routes
+    to the Sermon Review step rather than directly to the slide editor.
+  </p>
   <ul>
     <li>Authenticated account usage saves the presentation to the backend</li>
     <li>Guest usage stores the presentation locally until later unlock/export steps</li>
@@ -394,17 +455,41 @@
     <li>Enterprise presentations also persist campus assignment</li>
   </ul>
 
-  <h2>6. Slide Editor and Save Lifecycle</h2>
+  <h2>6. Sermon Review (Pre-Editor Step)</h2>
 
-  <h3>6.1 Editor Entry</h3>
+  <h3>6.1 Purpose</h3>
+  <p>
+    The Sermon Review page at <b>/create/review/:id</b> (or
+    <b>/dashboard/create/review/:id</b> for authenticated usage) sits between the creator form
+    and the slide editor. It lets the user reorder, re-title, and refine the sermon's points and
+    scripture blocks before slides are generated.
+  </p>
+
+  <h3>6.2 Capabilities</h3>
+  <ul>
+    <li>Drag-to-reorder for points and scripture blocks</li>
+    <li>Inline title and content edits</li>
+    <li>Autosave of changes back to the saved presentation</li>
+    <li>Generate Slides action that builds the slide payload and routes to the editor</li>
+  </ul>
+
+  <h3>6.3 Save Lifecycle</h3>
+  <p>
+    Changes on Sermon Review write back to the same saved presentation record that the creator
+    produced, then carry forward into the slide editor. The user can navigate away and return
+    without losing review-stage edits.
+  </p>
+
+  <h2>7. Slide Editor and Save Lifecycle</h2>
+
+  <h3>7.1 Editor Entry</h3>
   <p>
     The slide editor route is <b>/editor/:id</b>. When it opens, the app loads existing editor
     slides when available. If saved editor slides do not exist yet, it generates a default slide
     deck from the saved sermon form state.
   </p>
 
-  <h3>6.2 Main Editing Capabilities</h3>
-  <p>The editor remains the main daily working surface for the product. Users can currently:</p>
+  <h3>7.2 Main Editing Capabilities</h3>
   <ul>
     <li>Reorder slides</li>
     <li>Add or delete slides</li>
@@ -412,34 +497,36 @@
     <li>Adjust visual styling</li>
     <li>Apply or upload backgrounds</li>
     <li>Preview the presentation</li>
+    <li>Print the deck</li>
     <li>Export when ready</li>
   </ul>
 
-  <h3>6.3 Autosave and Persistence</h3>
+  <h3>7.3 Autosave and Persistence</h3>
   <p>
     The editor autosaves slide changes so users can return later without losing work. For saved
     account presentations, editor changes persist to the backend. This save lifecycle is part of
     the recurring dashboard workflow for subscribed users.
   </p>
 
-  <h3>6.4 Background Media Handling</h3>
+  <h3>7.4 Background Media Handling</h3>
   <p>
     Custom backgrounds are handled through the background asset pipeline. The app stores and
-    resolves background assets, and removes obsolete stored backgrounds where appropriate as editor
-    content changes.
+    resolves background assets, and removes obsolete stored backgrounds where appropriate as
+    editor content changes.
   </p>
 
-  <h3>6.5 Current Save-State Relationship</h3>
-  <p>The saved presentation model now combines:</p>
+  <h3>7.5 Current Save-State Relationship</h3>
+  <p>The saved presentation model combines:</p>
   <ul>
     <li>summary metadata for dashboard display</li>
     <li>structured form data used for generation</li>
+    <li>review-stage block ordering</li>
     <li>editor slide payload used for final editing and export</li>
   </ul>
 
-  <h2>7. Export and Payment Logic</h2>
+  <h2>8. Export and Payment Logic</h2>
 
-  <h3>7.1 Export Decision Logic</h3>
+  <h3>8.1 Export Decision Logic</h3>
   <p>When a user exports from the editor, the platform applies one of two models:</p>
   <table>
     <tr>
@@ -456,18 +543,20 @@
     </tr>
   </table>
 
-  <h3>7.2 Pay-Per-Export Execution</h3>
+  <h3>8.2 Pay-Per-Export Execution</h3>
   <p>
-    The pay-per-export path uses the Supabase Edge Function <b>create-guest-checkout</b>. Before
-    redirecting to Stripe, the app stores pending export context locally so that it can restore the
-    presentation after payment.
+    The pay-per-export path uses <b>create-guest-checkout</b> to start the Stripe session and
+    <b>verify-guest-checkout</b> to validate the completed session and unlock the export. The
+    app stores pending export context locally before redirecting to Stripe so it can restore the
+    presentation after payment. The <b>get-checkout-email</b> function retrieves the email
+    associated with the checkout for guests who proceed without an account.
   </p>
   <p>
-    Success returns to <b>/payment-success</b>, where the app restores the pending presentation and
-    routes the user back into the editor.
+    Success returns to <b>/payment-success</b>, where the app restores the pending presentation
+    and routes the user back into the editor.
   </p>
 
-  <h3>7.3 Export Formats</h3>
+  <h3>8.3 Export Formats</h3>
   <table>
     <tr>
       <th>Format</th>
@@ -484,44 +573,60 @@
       <td>Presentation bundle for ProPresenter workflows</td>
       <td>ProPresenter bundle download with presentation data and media support</td>
     </tr>
+    <tr>
+      <td>Print</td>
+      <td>Browser-based print of the deck</td>
+      <td>Opens a print view for paper or PDF output</td>
+    </tr>
   </table>
 
-  <h3>7.4 Export Validation</h3>
+  <h3>8.4 Export Validation</h3>
   <p>
     Export is validated before file creation. If required data is missing or invalid, export is
-    blocked until the user fixes the issue. The export formatting itself is shared across single
-    export and dashboard bulk export flows.
+    blocked until the user fixes the issue. The export formatting itself is shared across
+    single export and dashboard bulk export flows.
   </p>
 
-  <h3>7.5 Dashboard Bulk Export</h3>
+  <h3>8.5 Dashboard Bulk Export</h3>
   <p>
-    The dashboard now supports multi-select export. Users select multiple presentations, click
+    The dashboard supports multi-select export. Users select multiple presentations, click
     <b>Export Selected</b>, choose one format for the full batch, and receive a single zip file
     containing the selected exports.
   </p>
 
-  <h2>8. Dashboard and Ongoing Use</h2>
+  <h2>9. Dashboard and Ongoing Use</h2>
 
-  <h3>8.1 Dashboard Role</h3>
+  <h3>9.1 Dashboard Role</h3>
   <p>
     The dashboard at <b>/dashboard</b> is the main operational home for subscribed users. It is
-    where users return each week to create, search, filter, reopen, delete, and export
+    where users return each week to create, search, filter, reopen, delete, print, and export
     presentations.
   </p>
 
-  <h3>8.2 Current Dashboard Controls</h3>
-  <p>The dashboard list now supports:</p>
+  <h3>9.2 Time Saved Card</h3>
+  <p>
+    The dashboard surfaces a Time Saved card that quantifies the value the customer is getting
+    from the platform. It shows:
+  </p>
+  <ul>
+    <li>Time saved this week</li>
+    <li>Lifetime total time saved</li>
+    <li>A monthly breakdown the user can step through</li>
+  </ul>
+
+  <h3>9.3 Current Dashboard Controls</h3>
+  <p>The dashboard list supports:</p>
   <ul>
     <li>Search by title or series</li>
     <li>Presentation month filter</li>
     <li>Newest/oldest sorting</li>
     <li>Refresh button for manual reload</li>
     <li>Incremental loading with <b>Load More</b></li>
-    <li>Selection mode for bulk delete and bulk export</li>
+    <li>Selection mode for bulk delete and bulk export (visible even with no presentations so onboarding can highlight it during the product tour)</li>
   </ul>
 
-  <h3>8.3 Presentation Card Behavior</h3>
-  <p>Dashboard cards now surface summary metadata instead of just a title.</p>
+  <h3>9.4 Presentation Card Behavior</h3>
+  <p>Dashboard cards surface summary metadata rather than just a title.</p>
   <ul>
     <li>Series label</li>
     <li>Presentation title</li>
@@ -531,7 +636,7 @@
     <li>Campus and former-campus labeling for Enterprise presentations where applicable</li>
   </ul>
 
-  <h3>8.4 Selection Mode</h3>
+  <h3>9.5 Selection Mode</h3>
   <p>When users click <b>Select</b>, the dashboard enters a selection mode that supports:</p>
   <ul>
     <li>Selecting individual presentations</li>
@@ -540,73 +645,78 @@
     <li>Bulk exporting selected presentations into a zip file</li>
   </ul>
 
-  <h3>8.5 Campus Filtering for Enterprise</h3>
+  <h3>9.6 Campus Filtering for Enterprise</h3>
   <p>
-    Enterprise users now see a campus dropdown on the dashboard. The current default option is
-    <b>All Campuses</b>, but the dashboard can also open to a user-selected default campus based on
-    the Account-page preference.
+    Enterprise users see a campus dropdown on the dashboard. The default option is
+    <b>All Campuses</b>, but the dashboard can also open to a user-selected default campus based
+    on the Account-page preference.
   </p>
-  <p>The campus filter supports:</p>
   <ul>
     <li>All active campuses</li>
     <li>Archived former-campus labels for presentations moved off deleted campuses</li>
-    <li>Normal composition with search, month filtering, sort, reload, and pagination</li>
+    <li>Composes with search, month filtering, sort, reload, and pagination</li>
   </ul>
 
-  <h3>8.6 Ongoing Weekly Workflow</h3>
+  <h3>9.7 Product Tour and Replay</h3>
+  <p>
+    A guided product tour walks new users through the dashboard, creator, review, editor, and
+    account stages. After completion or skip, users can replay the tour from the Account page.
+  </p>
+
+  <h3>9.8 Ongoing Weekly Workflow</h3>
   <ol>
     <li>User logs in and lands on the dashboard</li>
     <li>User reviews the current filtered view of saved presentations</li>
     <li>User creates a new presentation or reopens an existing one</li>
-    <li>User edits and exports the deck</li>
+    <li>User reviews and reorders blocks on Sermon Review</li>
+    <li>User edits the generated deck and exports or prints</li>
     <li>User returns later for the next sermon cycle</li>
   </ol>
 
-  <h2>9. Account Management and Enterprise Campuses</h2>
+  <h2>10. Account Management and Enterprise Campuses</h2>
 
-  <h3>9.1 Account Page Structure</h3>
+  <h3>10.1 Account Page Structure</h3>
   <p>
-    The Account page now uses expandable accordion-style cards. Major sections stay collapsed until
+    The Account page uses expandable accordion-style cards. Major sections stay collapsed until
     the user opens them. The current sections are:
   </p>
   <ul>
     <li>Profile</li>
     <li>Team</li>
-    <li>Campuses for Enterprise only</li>
+    <li>Campuses (Enterprise only)</li>
     <li>Subscription</li>
-    <li>Account</li>
+    <li>Account (includes deletion flow)</li>
   </ul>
 
-  <h3>9.2 Profile Section</h3>
-  <p>The Profile card now contains:</p>
+  <h3>10.2 Profile Section</h3>
+  <p>The Profile card contains:</p>
   <ul>
     <li>Organization</li>
     <li>Full Name</li>
-    <li>Email</li>
+    <li>Email (read-only on this page; admin-initiated change is the supported path)</li>
+    <li>Church Role</li>
     <li>Default Translation</li>
-    <li>Associated Campus for Enterprise accounts</li>
+    <li>Associated Campus (Enterprise only) — controls the default campus the dashboard opens to</li>
+    <li>Beta badge if the subscription is flagged as beta</li>
   </ul>
-  <p>
-    The Associated Campus field controls which campus the dashboard should open to by default. The
-    user can still switch dashboard filters afterward.
-  </p>
 
-  <h3>9.3 Team Management</h3>
+  <h3>10.3 Team Management</h3>
   <p>Team operations remain on the Account page and currently support:</p>
   <ul>
     <li>Viewing team members</li>
     <li>Viewing roles such as owner and member</li>
-    <li>Inviting additional users</li>
+    <li>Viewing each member's Church Role</li>
+    <li>Inviting additional users (subject to plan capacity)</li>
     <li>Tracking and resending pending invites</li>
+    <li>Owner-only removal of a team member, routed through the <b>remove-team-member</b> edge function</li>
   </ul>
 
-  <h3>9.4 Enterprise Campus Model</h3>
+  <h3>10.4 Enterprise Campus Model</h3>
   <p>
-    Enterprise accounts now support up to <b>5 total campuses</b>. A primary
-    <b>Main Campus</b> is ensured for Enterprise accounts and existing Enterprise presentations are
-    backfilled into a campus when needed.
+    Enterprise accounts support up to <b>5 total campuses</b>. A primary <b>Main Campus</b> is
+    ensured for Enterprise accounts and existing Enterprise presentations are backfilled into a
+    campus when needed.
   </p>
-  <p>Current campus rules:</p>
   <ul>
     <li>Campus management is visible only for Enterprise plans</li>
     <li>Only account owners can create, rename, set primary, or delete campuses</li>
@@ -615,7 +725,7 @@
     <li>Moved presentations keep the deleted campus name as a former-campus label for filtering</li>
   </ul>
 
-  <h3>9.5 Subscription Section</h3>
+  <h3>10.5 Subscription Section</h3>
   <p>The Subscription card shows current status, renewal state, and plan actions.</p>
   <ul>
     <li>Subscribed users open the Manage Subscription modal</li>
@@ -623,22 +733,104 @@
     <li>Current plan recognition supports Pro, Team, and Enterprise with monthly or annual billing</li>
   </ul>
 
-  <h3>9.6 Account Deletion</h3>
+  <h3>10.6 Account Deletion</h3>
   <p>
-    Account deletion remains a guarded flow. The current implementation requires an exit survey
-    before final deletion is completed.
+    Account deletion is a guarded, multi-step flow:
+  </p>
+  <ol>
+    <li>The user requests deletion from the Account page</li>
+    <li>The <b>/exit-survey</b> step collects cancellation feedback</li>
+    <li>A pending deletion record is created and an admin notification is queued</li>
+    <li>The user can cancel the request before finalization via <b>cancel-account-deletion</b></li>
+    <li>The scheduled <b>finalize-account-deletions</b> function performs the eventual hard delete; <b>delete-account</b> handles the cleanup mechanics</li>
+  </ol>
+
+  <h3>10.7 Tour Replay</h3>
+  <p>Users can replay the platform tour from the Account page at any time.</p>
+
+  <h2>11. Admin Center</h2>
+
+  <h3>11.1 Access Model</h3>
+  <p>
+    The Admin Center is a separate authenticated area behind <b>/admin/login</b> and
+    <b>AdminProtectedRoute</b>. It is reserved for staff with an active record in the
+    <b>admin_users</b> table. Admin invites are sent through the same edge function path and
+    accepted at <b>/admin/accept-invite</b>.
   </p>
 
-  <h2>10. Operational Notes</h2>
+  <h3>11.2 Layout and Sections</h3>
+  <p>The admin shell exposes these top-level pages:</p>
+  <table>
+    <tr>
+      <th>Route</th>
+      <th>Page</th>
+      <th>Purpose</th>
+    </tr>
+    <tr>
+      <td>/admin</td>
+      <td>Overview</td>
+      <td>Active subscription count, recent activity, notification feed, and key metric charts</td>
+    </tr>
+    <tr>
+      <td>/admin/customers</td>
+      <td>Customers</td>
+      <td>Search, filter, and export the customer list; click into a customer detail</td>
+    </tr>
+    <tr>
+      <td>/admin/customers/:id</td>
+      <td>Customer Detail</td>
+      <td>Account profile, owner contact, Stripe info, presentations, team members, support history, and admin actions including email-change requests</td>
+    </tr>
+    <tr>
+      <td>/admin/support</td>
+      <td>Support</td>
+      <td>Inbox of contact-form submissions and cancellation support tickets</td>
+    </tr>
+    <tr>
+      <td>/admin/billing</td>
+      <td>Billing</td>
+      <td>Stripe-derived billing visibility and reporting</td>
+    </tr>
+    <tr>
+      <td>/admin/messages</td>
+      <td>Messages</td>
+      <td>Broadcast and targeted in-product messages to customers, including beta audience targeting</td>
+    </tr>
+    <tr>
+      <td>/admin/users</td>
+      <td>Admin Users</td>
+      <td>Manage internal staff: invite, activate, deactivate</td>
+    </tr>
+  </table>
 
-  <h3>10.1 Runtime and Platform Dependencies</h3>
+  <h3>11.3 Admin Capabilities Specific to Customer Detail</h3>
+  <ul>
+    <li>View Stripe customer and subscription state for the account</li>
+    <li>Export contacts from the customer list</li>
+    <li>Request an email change for the customer owner (sends a confirmation link to the new address)</li>
+    <li>Audit log of admin actions taken against the account</li>
+    <li>Manage support tickets tied to the customer</li>
+  </ul>
+
+  <h3>11.4 Admin API and Audit</h3>
+  <p>
+    All admin operations are routed through the <b>admin-api</b> edge function, which validates
+    the calling admin, performs the requested action with service-role privileges, and writes to
+    <b>admin_audit_logs</b>. Admin notifications surface inside the Overview and persist in
+    <b>admin_notifications</b>.
+  </p>
+
+  <h2>12. Operational Notes</h2>
+
+  <h3>12.1 Runtime and Platform Dependencies</h3>
   <ul>
     <li>Frontend app is deployed as a Vite application with Cloudflare Wrangler</li>
     <li>Supabase handles Auth, database, storage-related flows, and Edge Functions</li>
-    <li>Stripe handles subscription checkout, one-time export payment, and billing portal actions</li>
+    <li>Stripe handles subscription checkout, one-time export payment, promotion codes, and billing portal actions</li>
+    <li>Resend handles transactional email for custom flows (invites, support replies, email-change confirmations)</li>
   </ul>
 
-  <h3>10.2 Important Edge Functions in Current Use</h3>
+  <h3>12.2 Important Edge Functions in Current Use</h3>
   <table>
     <tr>
       <th>Function</th>
@@ -649,6 +841,10 @@
       <td>Starts account subscription checkout for the selected price</td>
     </tr>
     <tr>
+      <td>create-signup-checkout</td>
+      <td>Starts subscription checkout during the signup flow</td>
+    </tr>
+    <tr>
       <td>customer-portal</td>
       <td>Starts subscription management and plan-change portal flows</td>
     </tr>
@@ -657,57 +853,116 @@
       <td>Refreshes account billing state and plan metadata</td>
     </tr>
     <tr>
+      <td>stripe-webhook</td>
+      <td>Processes Stripe subscription lifecycle and payment events</td>
+    </tr>
+    <tr>
       <td>create-guest-checkout</td>
       <td>Starts one-time export checkout for non-subscribed export usage</td>
+    </tr>
+    <tr>
+      <td>verify-guest-checkout</td>
+      <td>Validates a completed guest checkout and unlocks the export</td>
+    </tr>
+    <tr>
+      <td>get-checkout-email</td>
+      <td>Resolves the email associated with a guest checkout session</td>
     </tr>
     <tr>
       <td>scripture-lookup</td>
       <td>Resolves scripture content during the creator flow</td>
     </tr>
     <tr>
+      <td>esv-lookup</td>
+      <td>ESV-specific scripture lookup path</td>
+    </tr>
+    <tr>
       <td>send-invite</td>
       <td>Sends organization invite emails</td>
+    </tr>
+    <tr>
+      <td>remove-team-member</td>
+      <td>Owner-initiated removal of a team member</td>
+    </tr>
+    <tr>
+      <td>contact-support</td>
+      <td>Handles contact-form submissions and routes them into the support inbox</td>
+    </tr>
+    <tr>
+      <td>confirm-email-change</td>
+      <td>Finalizes an admin-initiated customer email change after the new address is confirmed</td>
+    </tr>
+    <tr>
+      <td>abandon-signup</td>
+      <td>Reconciles an abandoned signup record</td>
+    </tr>
+    <tr>
+      <td>cleanup-pending-signups</td>
+      <td>Scheduled cleanup of stale pending signups</td>
+    </tr>
+    <tr>
+      <td>cancel-account-deletion</td>
+      <td>Reverses a pending account deletion request before finalization</td>
+    </tr>
+    <tr>
+      <td>finalize-account-deletions</td>
+      <td>Scheduled finalization of due account deletions</td>
+    </tr>
+    <tr>
+      <td>delete-account</td>
+      <td>Performs the account-deletion cleanup mechanics</td>
+    </tr>
+    <tr>
+      <td>process-beta-trial-emails</td>
+      <td>Scheduled handling of beta-period customer messaging</td>
+    </tr>
+    <tr>
+      <td>admin-api</td>
+      <td>Central admin operations router with audit logging</td>
     </tr>
     <tr>
       <td>capture-telemetry</td>
       <td>Captures app telemetry and error events</td>
     </tr>
-    <tr>
-      <td>delete-account</td>
-      <td>Supports final account-deletion cleanup flow</td>
-    </tr>
   </table>
 
-  <h3>10.3 Configuration Dependencies to Watch</h3>
+  <h3>12.3 Configuration Dependencies to Watch</h3>
   <ul>
     <li>Supabase URL configuration must match the production domain for auth email links</li>
     <li>Stripe price IDs and billing-portal settings must match the plan catalog used by the app</li>
+    <li>Stripe webhook secret must be configured for <b>stripe-webhook</b> event verification</li>
     <li>Scripture lookup depends on the scripture function being deployed and correctly configured with its secrets</li>
-    <li>Invite delivery depends on the configured email provider and invite function deployment</li>
+    <li>Invite delivery and email-change confirmations depend on the Resend API key and verified from-address</li>
     <li>Enterprise campus behavior depends on the current database migrations being applied</li>
+    <li>Beta lifecycle scheduling depends on <b>process-beta-trial-emails</b> being scheduled</li>
+    <li>Admin Center depends on <b>admin_users</b> records being seeded for staff</li>
   </ul>
 
-  <h3>10.4 Current Route Map for Support and QA</h3>
+  <h3>12.4 Current Route Map for Support and QA</h3>
   <ul>
     <li><b>/</b> landing page</li>
     <li><b>/create</b> public creator</li>
+    <li><b>/create/review/:id</b> public sermon review</li>
     <li><b>/editor/:id</b> slide editor</li>
     <li><b>/payment-success</b> one-time export return</li>
-    <li><b>/login</b>, <b>/signup</b>, <b>/invite-signup</b>, <b>/auth/confirm</b></li>
+    <li><b>/login</b>, <b>/signup</b>, <b>/signup/complete</b>, <b>/signup-incomplete</b>, <b>/invite-signup</b>, <b>/auth/confirm</b></li>
+    <li><b>/auth/confirm-email-change</b></li>
     <li><b>/forgot-password</b>, <b>/reset-password</b></li>
-    <li><b>/dashboard</b>, <b>/dashboard/create</b></li>
+    <li><b>/dashboard</b>, <b>/dashboard/create</b>, <b>/dashboard/create/review/:id</b></li>
     <li><b>/account</b></li>
     <li><b>/checkout-redirect</b></li>
     <li><b>/exit-survey</b></li>
-    <li><b>/contact</b>, <b>/trust-center</b></li>
+    <li><b>/contact</b>, <b>/privacy-policy</b>, <b>/terms-and-conditions</b>, <b>/trust-center</b></li>
+    <li><b>/admin/login</b>, <b>/admin/accept-invite</b></li>
+    <li><b>/admin</b>, <b>/admin/customers</b>, <b>/admin/customers/:id</b>, <b>/admin/support</b>, <b>/admin/billing</b>, <b>/admin/messages</b>, <b>/admin/users</b></li>
   </ul>
 
-  <h2>11. Recommended Internal Uses</h2>
+  <h2>13. Recommended Internal Uses</h2>
   <ul>
     <li>Support-team training on the current customer journey</li>
     <li>Internal onboarding for product, operations, and QA</li>
-    <li>Reference document for billing, campus, and dashboard behavior</li>
-    <li>Handoff baseline when updating flows tied to checkout, dashboard, or account operations</li>
+    <li>Reference document for billing, campus, dashboard, and admin behavior</li>
+    <li>Handoff baseline when updating flows tied to checkout, dashboard, account operations, or admin tooling</li>
     <li>Quick truth source for current route and execution behavior</li>
   </ul>
 </body>
