@@ -33,6 +33,8 @@ import {
   type AccountDeletionRequest,
 } from "@/lib/account-deletion";
 import { clearPendingCheckoutState } from "@/lib/pending-checkout";
+// QUICK BUILD ADDITION — Creation Method settings card
+import QuickBuildSettingsCard from "@/components/quick-build/QuickBuildSettingsCard";
 
 interface TeamMember {
   id: string;
@@ -1126,6 +1128,8 @@ const Account = () => {
                       </div>
                     </div>
                   )}
+                  {/* QUICK BUILD ADDITION — Creation Method lives under Associated Campus inside Personal Preferences */}
+                  <QuickBuildSettingsCard />
                 </div>
               </section>
               )}
@@ -1519,6 +1523,7 @@ const Account = () => {
                 </div>
               </section>
               )}
+
             </div>
           </div>
         </motion.div>

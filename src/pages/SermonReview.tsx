@@ -167,7 +167,9 @@ const SermonReview = () => {
 
       setLoading(true);
       try {
-        const loadedPresentation = await getPresentation(id);
+        const pending = (location.state as { pendingPresentation?: SermonPresentation } | null)?.pendingPresentation;
+        const loadedPresentation =
+          pending && pending.id === id ? pending : await getPresentation(id);
         if (cancelled) return;
 
         if (!loadedPresentation?.data) {
