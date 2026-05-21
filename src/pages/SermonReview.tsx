@@ -6,6 +6,7 @@ import {
   BookOpen,
   GripVertical,
   Loader2,
+  Pencil,
   Sparkles,
   Type,
   Wand2,
@@ -404,20 +405,26 @@ const SermonReview = () => {
           transition={{ duration: 0.5 }}
           className="space-y-8"
         >
-          <div>
-            <div className="mb-3 flex items-center gap-2 text-primary">
-              <Sparkles className="h-4 w-4" />
-              <p className="text-sm font-semibold uppercase tracking-[0.18em]">Review before creating</p>
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <div className="mb-3 flex items-center gap-2 text-primary">
+                <Sparkles className="h-4 w-4" />
+                <p className="text-sm font-semibold uppercase tracking-[0.18em]">Review before creating</p>
+              </div>
+              <h1 className="font-serif text-3xl font-bold text-foreground">
+                Review slide order
+              </h1>
+              <p className="mt-2 max-w-2xl text-muted-foreground">
+                Drag the sermon point and verse slides into the order you want. Your title slide stays first.
+              </p>
+              <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
+                Multi-verse passages stay grouped here so you can move the whole passage at once. They will still become individual verse slides when created.
+              </p>
             </div>
-            <h1 className="font-serif text-3xl font-bold text-foreground">
-              Review slide order
-            </h1>
-            <p className="mt-2 max-w-2xl text-muted-foreground">
-              Drag the sermon point and verse slides into the order you want. Your title slide stays first.
-            </p>
-            <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-              Multi-verse passages stay grouped here so you can move the whole passage at once. They will still become individual verse slides when created.
-            </p>
+            <Button variant="outline" onClick={handleBackToCreator} className="gap-2 sm:flex-shrink-0">
+              <Pencil className="h-4 w-4" />
+              Edit Points &amp; Verses
+            </Button>
           </div>
 
           <section className="rounded-2xl glass-panel p-5 shadow-soft" data-tour-id="review-title-slide">
@@ -505,10 +512,16 @@ const SermonReview = () => {
             <p className="text-sm text-muted-foreground">
               {finalSlideCount} slide{finalSlideCount === 1 ? "" : "s"} will be created from this order.
             </p>
-            <Button variant="hero" size="lg" onClick={handleCreateSlides} disabled={saving || finalSlideCount === 0} data-tour-id="review-create-slides">
-              {saving ? <Loader2 className="h-5 w-5 animate-spin" /> : <Wand2 className="h-5 w-5" />}
-              {saving ? "Creating Slides..." : "Create Slides"}
-            </Button>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Button variant="outline" size="lg" onClick={handleBackToCreator} className="gap-2">
+                <Pencil className="h-4 w-4" />
+                Edit Points &amp; Verses
+              </Button>
+              <Button variant="hero" size="lg" onClick={handleCreateSlides} disabled={saving || finalSlideCount === 0} data-tour-id="review-create-slides">
+                {saving ? <Loader2 className="h-5 w-5 animate-spin" /> : <Wand2 className="h-5 w-5" />}
+                {saving ? "Creating Slides..." : "Create Slides"}
+              </Button>
+            </div>
           </div>
         </motion.div>
       </main>

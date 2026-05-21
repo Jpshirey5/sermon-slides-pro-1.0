@@ -59,7 +59,23 @@ EXTRACTION RULES FOR SERIES:
 EXTRACTION RULES FOR SERMON POINTS:
 - Sermon points are the main structural divisions of the sermon
 - They are typically numbered (1, 2, 3 or I, II, III), bolded, or clearly labeled as "Point 1:", "Main Point:", etc.
-- Extract the heading/title of each point exactly as written
+- Extract the heading/title of each point, but STRIP all leading numbering and labeling so the title contains only the substantive statement.
+- Specifically strip from the start of the title:
+  - Arabic numerals with separators: "1.", "1)", "1:", "1 -", "1 –", "(1)"
+  - Roman numerals with separators: "I.", "II)", "III:", "IV -"
+  - Letter outlines: "A.", "B)", "a.", "b)"
+  - Labels like "Point 1:", "Point One:", "Main Point:", "Big Idea:", "Heading:", "Section 2 —", "Part 3:"
+  - Any combination of the above (e.g., "Point 1. ", "1) Main Point —")
+- Also strip any leading whitespace, dashes, em-dashes, en-dashes, colons, or bullet characters (•, *, -, –, —) left behind after removing the numbering.
+- Preserve the substantive wording exactly as written — only the numbering/labeling prefix is removed.
+- Examples of correct stripping:
+  - "Point 1: God is love" → "God is love"
+  - "1. God is love" → "God is love"
+  - "1) God is love" → "God is love"
+  - "I. God is love" → "God is love"
+  - "Main Point: God is love" → "God is love"
+  - "Point One — God is love" → "God is love"
+  - "(2) God is love" → "God is love"
 - Write a 1 to 2 sentence summary of the content under that point
 - Do NOT extract sub-points as separate points unless they are clearly labeled as main points
 - Do NOT extract the introduction or conclusion as sermon points unless explicitly labeled as such
