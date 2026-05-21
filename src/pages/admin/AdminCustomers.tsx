@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Download, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,7 +24,7 @@ const exportContactsCsv = (items: any[]) => {
     "Beta",
     "Next Invoice Date",
     "Next Invoice Amount",
-    "Support Requests",
+    "Team Members",
     "Created",
     "Stripe Customer ID",
   ];
@@ -47,7 +47,7 @@ const exportContactsCsv = (items: any[]) => {
       item.account?.is_beta_user ? "yes" : "no",
       nextInvoice.nextInvoiceAt ? formatAdminDate(nextInvoice.nextInvoiceAt) : "",
       amount,
-      item.supportRequestCount ?? 0,
+      item.memberCount ?? 0,
       item.account?.created_at ? formatAdminDate(item.account.created_at) : "",
       item.account?.stripe_customer_id || "",
     ];
@@ -120,7 +120,13 @@ const AdminCustomers = () => {
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [status, setStatus] = useState("all");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const status = searchParams.get("status") || "all";
+  const setStatus = (next: string) => {
+    if (next === "all") setSearchParams({});
+    else setSearchParams({ status: next });
+  };
+  const navigate = useNavigate();
 
   const load = async () => {
     setLoading(true);
@@ -180,20 +186,23 @@ const AdminCustomers = () => {
                 <th className="px-4 py-3 font-medium">Plan</th>
                 <th className="px-4 py-3 font-medium">Status</th>
                 <th className="px-4 py-3 font-medium">Next Invoice</th>
-                <th className="px-4 py-3 font-medium">Support</th>
+                <th className="px-4 py-3 font-medium">Team Members</th>
                 <th className="px-4 py-3 font-medium">Created</th>
-                <th className="px-4 py-3 font-medium" />
               </tr>
             </thead>
             <tbody className="divide-y divide-border/70 bg-white/45">
               {loading ? (
-                <tr><td colSpan={9} className="px-4 py-8 text-center text-muted-foreground">Loading customers...</td></tr>
+                <tr><td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">Loading customers...</td></tr>
               ) : items.length === 0 ? (
-                <tr><td colSpan={9} className="px-4 py-8 text-center text-muted-foreground">No customers found.</td></tr>
+                <tr><td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">No customers found.</td></tr>
               ) : items.map((item) => {
                 const location = [item.account.city, item.account.state].filter(Boolean).join(", ");
                 return (
-                <tr key={item.account.id}>
+                <tr
+                  key={item.account.id}
+                  onClick={() => navigate(`/admin/customers/${item.account.id}`)}
+                  className="cursor-pointer transition hover:bg-white/70"
+                >
                   <td className="px-4 py-3">
                     <p className="font-medium text-foreground">{item.owner?.full_name || "No owner profile"}</p>
                     <p className="text-xs text-muted-foreground">{item.owner?.email || item.account.stripe_customer_id || item.account.id}</p>
@@ -212,13 +221,8 @@ const AdminCustomers = () => {
                   <td className="px-4 py-3 capitalize">{item.account.plan_tier || "free"}</td>
                   <td className="px-4 py-3"><SubscriptionSummary item={item} /></td>
                   <td className="px-4 py-3"><NextInvoiceSummary nextInvoice={item.nextInvoice} /></td>
-                  <td className="px-4 py-3">{item.supportRequestCount}</td>
+                  <td className="px-4 py-3">{item.memberCount ?? 0}</td>
                   <td className="px-4 py-3">{formatAdminDate(item.account.created_at)}</td>
-                  <td className="px-4 py-3 text-right">
-                    <Link to={`/admin/customers/${item.account.id}`}>
-                      <Button variant="outline" size="sm">View</Button>
-                    </Link>
-                  </td>
                 </tr>
                 );
               })}
