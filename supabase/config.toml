@@ -62,3 +62,6 @@ verify_jwt = false
 
 [functions.cleanup-pending-signups]
 verify_jwt = false
+
+[functions.parse-sermon-manuscript]
+verify_jwt = false
