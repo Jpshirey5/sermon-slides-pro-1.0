@@ -1126,6 +1126,19 @@ const customers = async (ctx: AdminContext, body: any) => {
     }
   }
 
+  const { data: memberRows } = accountIds.length
+    ? await ctx.supabaseAdmin
+        .from("account_members")
+        .select("account_id")
+        .in("account_id", accountIds)
+        .not("accepted_at", "is", null)
+    : { data: [] as any[] };
+
+  const memberCountByAccount = new Map<string, number>();
+  for (const row of memberRows || []) {
+    memberCountByAccount.set(row.account_id, (memberCountByAccount.get(row.account_id) || 0) + 1);
+  }
+
   let items = (accountRows || []).map((account: any) => {
     const owner = ownerMap.get(account.id);
     const profile = owner?.profiles || null;
@@ -1139,6 +1152,7 @@ const customers = async (ctx: AdminContext, body: any) => {
       supportRequestCount:
         supportByAccount.get(account.id) ||
         (profile?.email ? supportByEmail.get(normalizeEmail(profile.email)) || 0 : 0),
+      memberCount: memberCountByAccount.get(account.id) || 0,
       nextInvoice: nextInvoiceMap.get(account.id) || emptyNextInvoiceSummary("none"),
     };
   });

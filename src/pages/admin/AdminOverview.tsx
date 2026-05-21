@@ -60,10 +60,10 @@ const AdminOverview = () => {
 
   const metrics = data?.metrics || {};
   const cards = [
-    { label: "Total Users", value: metrics.totalUsers, icon: Users },
-    { label: "Active Subscribers", value: metrics.activeSubscribers, icon: CreditCard },
-    { label: "Past Due / Failed", value: metrics.pastDueAccounts, icon: AlertCircle },
-    { label: "Open Support", value: metrics.openSupportRequests, icon: Inbox },
+    { label: "Total Users", value: metrics.totalUsers, icon: Users, to: "/admin/customers" },
+    { label: "Active Subscribers", value: metrics.activeSubscribers, icon: CreditCard, to: "/admin/customers?status=active" },
+    { label: "Past Due / Failed", value: metrics.pastDueAccounts, icon: AlertCircle, to: "/admin/customers?status=past_due" },
+    { label: "Open Support", value: metrics.openSupportRequests, icon: Inbox, to: "/admin/support" },
   ];
   return (
     <div className="space-y-8">
@@ -76,13 +76,17 @@ const AdminOverview = () => {
         {cards.map((card) => {
           const Icon = card.icon;
           return (
-            <div key={card.label} className="rounded-2xl glass-panel p-5">
+            <Link
+              key={card.label}
+              to={card.to}
+              className="rounded-2xl glass-panel p-5 transition hover:bg-white/70 hover:shadow-sm"
+            >
               <div className="flex items-center justify-between">
                 <p className="text-sm text-muted-foreground">{card.label}</p>
                 <Icon className="h-5 w-5 text-primary" />
               </div>
               <p className="mt-3 text-3xl font-semibold text-foreground">{card.value ?? 0}</p>
-            </div>
+            </Link>
           );
         })}
       </div>
