@@ -6,7 +6,7 @@ const sections = [
   {
     title: "Acceptance of Terms",
     body: [
-      "By accessing or using Sermon Slide Pro, you agree to be bound by these Terms and Conditions and any policies referenced in them. If you do not agree, do not use the service.",
+      "By accessing or using Sermon Slide Pro, a product of Boosted Technology Co., LLC (\"we,\" \"us,\" or \"our\"), you agree to be bound by these Terms and Conditions and any policies referenced in them. If you do not agree, do not use the service.",
     ],
   },
   {
@@ -57,7 +57,7 @@ const sections = [
   {
     title: "Intellectual Property",
     body: [
-      "Sermon Slide Pro, including the service design, software, branding, and related materials, is owned by Sermon Slide Pro or its licensors and is protected by applicable intellectual property laws.",
+      "Sermon Slide Pro, including the service design, software, branding, and related materials, is owned by Boosted Technology Co., LLC or its licensors and is protected by applicable intellectual property laws.",
       "These Terms do not grant you ownership of the service itself, only the limited right to use it according to these Terms.",
     ],
   },
@@ -65,7 +65,7 @@ const sections = [
     title: "Disclaimers and Limitation of Liability",
     body: [
       "The service is provided on an “as is” and “as available” basis to the fullest extent permitted by law.",
-      "To the fullest extent permitted by law, Sermon Slide Pro will not be liable for indirect, incidental, special, consequential, or punitive damages, or for lost profits, revenues, goodwill, data, or business interruption arising from or related to the use of the service.",
+      "To the fullest extent permitted by law, Boosted Technology Co., LLC will not be liable for indirect, incidental, special, consequential, or punitive damages, or for lost profits, revenues, goodwill, data, or business interruption arising from or related to the use of the service.",
       "Nothing in these Terms limits liability where such limitation is not permitted by applicable law.",
     ],
   },
@@ -115,11 +115,14 @@ export default function TermsAndConditions() {
                 Terms and Conditions for Sermon Slide Pro
               </h1>
               <p className="mt-4 text-base text-muted-foreground sm:text-lg">
-                Effective date: May 7, 2026
+                Effective date: May 22, 2026
               </p>
               <p className="mt-4 text-base text-muted-foreground sm:text-lg">
-                These Terms and Conditions describe the rules and expectations that apply when you use
-                Sermon Slide Pro’s website, subscriptions, exports, support channels, and related services.
+                These Terms and Conditions are an agreement between you and Boosted Technology Co., LLC, a
+                Florida limited liability company (“Boosted Technology Co., LLC,” “we,” “us,” or “our”).
+                Sermon Slide Pro is a product of Boosted Technology Co., LLC. These Terms describe the
+                rules and expectations that apply when you use Sermon Slide Pro’s website, subscriptions,
+                exports, support channels, and related services.
               </p>
             </div>
 
