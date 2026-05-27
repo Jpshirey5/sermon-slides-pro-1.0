@@ -1,14 +1,10 @@
-import { useState } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Sparkles } from "lucide-react";
 import heroImage from "@/assets/hero-church.jpg";
-import GetStartedModal from "@/components/GetStartedModal";
 
 const Hero = () => {
-  const [modalOpen, setModalOpen] = useState(false);
-
   return (
     <section className="relative min-h-screen flex items-center justify-center overflow-hidden pt-24 pb-16 grid-noise">
       <div className="absolute inset-0 bg-gradient-to-b from-white/30 to-transparent" />
@@ -66,13 +62,10 @@ const Hero = () => {
             transition={{ duration: 0.5, delay: 0.3 }}
             className="flex flex-col sm:flex-row items-center justify-center gap-4"
           >
-            <Button variant="hero" size="xl" onClick={() => setModalOpen(true)}>
-              Get Started
-              <ArrowRight className="w-5 h-5" />
-            </Button>
-            <Link to="/login">
-              <Button variant="outline" size="xl">
-                Log In
+            <Link to="/create">
+              <Button variant="hero" size="xl">
+                Try for Free Now
+                <ArrowRight className="w-5 h-5" />
               </Button>
             </Link>
           </motion.div>
@@ -122,8 +115,6 @@ const Hero = () => {
           </div>
         </motion.div>
       </div>
-
-      <GetStartedModal open={modalOpen} onOpenChange={setModalOpen} />
     </section>
   );
 };
