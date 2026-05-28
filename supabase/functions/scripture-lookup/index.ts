@@ -1,5 +1,43 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "npm:@supabase/supabase-js@2.57.2";
+
+// ESV is license-restricted. Only callers whose organization is entitled
+// (accounts.can_use_esv) may receive ESV text, regardless of what the UI sends.
+async function callerCanUseEsv(req: Request): Promise<boolean> {
+  try {
+    const authHeader = req.headers.get("Authorization") ?? "";
+    const token = authHeader.replace(/^Bearer\s+/i, "").trim();
+    if (!token) return false;
+
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+    if (!supabaseUrl || !serviceRoleKey) return false;
+
+    const admin = createClient(supabaseUrl, serviceRoleKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+
+    const { data: userData, error: userError } = await admin.auth.getUser(token);
+    if (userError || !userData?.user) return false;
+
+    const { data: accountId } = await admin.rpc("get_user_account_id", {
+      _user_id: userData.user.id,
+    });
+    if (!accountId) return false;
+
+    const { data: account } = await admin
+      .from("accounts")
+      .select("can_use_esv")
+      .eq("id", accountId)
+      .maybeSingle();
+
+    return account?.can_use_esv === true;
+  } catch (error) {
+    console.error("scripture_lookup_esv_entitlement_check_failed", { error: String(error) });
+    return false;
+  }
+}
 
 
 type ScriptureResponse = {
@@ -253,6 +291,16 @@ serve(async (req) => {
       : `${parsed.book} ${parsed.chapter}:${parsed.verseStart}`;
 
     if (requestedTranslation === "ESV") {
+      if (!(await callerCanUseEsv(req))) {
+        return jsonResponse({
+          text: "",
+          reference: formattedRef,
+          translation: requestedTranslation,
+          error: true,
+          errorMessage: "The ESV translation isn't available on your account.",
+        }, 403);
+      }
+
       const esvApiKey = Deno.env.get("ESV_API_KEY");
       if (esvApiKey) {
         try {

@@ -11,7 +11,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useSearchParams } from "react-router-dom";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { TRANSLATION_OPTIONS, DEFAULT_TRANSLATION } from "@/lib/translations";
+import { getAvailableTranslations, isTranslationAllowed, DEFAULT_TRANSLATION } from "@/lib/translations";
 import SubscriptionPlanPicker from "@/components/SubscriptionPlanPicker";
 import SubscriptionManagementPicker from "@/components/SubscriptionManagementPicker";
 import { getPlanById, getPlanByPriceId, getPlanCapacityByTier, type SubscriptionPlanId } from "@/lib/subscriptionPlans";
@@ -70,7 +70,7 @@ const getInviteCapacityMessage = (maxAdditionalUsers: number | null) => {
 
 const Account = () => {
   const navigate = useNavigate();
-  const { user, profile, subscription, refreshProfile, signOut, checkSubscription, accountId } = useAuth();
+  const { user, profile, subscription, refreshProfile, signOut, checkSubscription, accountId, canUseEsv } = useAuth();
   const [fullName, setFullName] = useState(profile?.full_name || "");
   const [defaultTranslation, setDefaultTranslation] = useState(profile?.default_translation || DEFAULT_TRANSLATION);
   const [dashboardCampusPreference, setDashboardCampusPreference] = useState(
@@ -667,7 +667,11 @@ const Account = () => {
   const resolvedDefaultTranslation = defaultTranslationInherited
     ? enterpriseOwnerDefaultTranslation || DEFAULT_TRANSLATION
     : defaultTranslation;
-  const defaultTranslationSelectValue = defaultTranslationLoading ? undefined : resolvedDefaultTranslation;
+  const defaultTranslationSelectValue = defaultTranslationLoading
+    ? undefined
+    : isTranslationAllowed(resolvedDefaultTranslation, canUseEsv)
+      ? resolvedDefaultTranslation
+      : DEFAULT_TRANSLATION;
   const savedDefaultTranslation = profile?.default_translation || DEFAULT_TRANSLATION;
 
   useEffect(() => {
@@ -1053,7 +1057,7 @@ const Account = () => {
                             <SelectValue placeholder="Loading translation..." />
                           </SelectTrigger>
                           <SelectContent>
-                            {TRANSLATION_OPTIONS.map((t) => (
+                            {getAvailableTranslations(canUseEsv).map((t) => (
                               <SelectItem key={t.code} value={t.code}>
                                 <span className="font-medium">{t.code}</span>
                                 <span className="ml-2 text-muted-foreground">{t.name}</span>

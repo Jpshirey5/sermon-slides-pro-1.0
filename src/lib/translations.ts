@@ -21,3 +21,20 @@ export const TRANSLATION_OPTIONS: TranslationOption[] = [
 ];
 
 export const DEFAULT_TRANSLATION = "KJV";
+
+// Translations that are license-restricted and only available to entitled
+// organizations (see accounts.can_use_esv). Codes are compared upper-cased.
+export const RESTRICTED_TRANSLATIONS = new Set(["ESV"]);
+
+export const isTranslationAllowed = (code: string | null | undefined, canUseEsv: boolean): boolean => {
+  if (!code) return true;
+  if (canUseEsv) return true;
+  return !RESTRICTED_TRANSLATIONS.has(code.toUpperCase());
+};
+
+// The translation list a given user may pick from. Restricted translations are
+// dropped unless the user's org is entitled to them.
+export const getAvailableTranslations = (canUseEsv: boolean): TranslationOption[] =>
+  canUseEsv
+    ? TRANSLATION_OPTIONS
+    : TRANSLATION_OPTIONS.filter((t) => !RESTRICTED_TRANSLATIONS.has(t.code.toUpperCase()));
