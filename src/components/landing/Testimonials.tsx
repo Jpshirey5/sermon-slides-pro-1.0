@@ -19,9 +19,9 @@ const testimonials = [
   {
     quote:
       "Our volunteer media team loves how easy it is to use. The drag-and-drop editor means anyone can make professional slides.",
-    author: "Nicholas Cook",
-    role: "Media Director, Bell Shoals Church",
-    avatar: "NC",
+    author: "James Cook",
+    role: "Tech Director, First Baptist",
+    avatar: "JC",
   },
 ];
 
