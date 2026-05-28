@@ -7,8 +7,10 @@ import {
   setResolvedAccountAccess,
 } from "@/lib/account-access";
 import {
+  clearSessionInactivityTracking,
   clearStoredLogoutReason,
   getStoredLogoutReason,
+  isInactivityExpired,
   setStoredLogoutReason,
 } from "@/lib/session-security";
 
@@ -191,6 +193,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     if (userInitiated) {
       clearStoredLogoutReason();
     }
+    clearSessionInactivityTracking();
     await supabase.auth.signOut();
     setUser(null);
     setSession(null);
@@ -274,7 +277,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
     );
 
-    supabase.auth.getSession().then(({ data: { session: initialSession } }) => {
+    supabase.auth.getSession().then(async ({ data: { session: initialSession } }) => {
+      // A restored session that has already idled past the timeout must not be
+      // honored, even briefly — force a real sign-out before exposing any state.
+      if (initialSession?.user && isInactivityExpired()) {
+        setStoredLogoutReason("inactive");
+        clearSessionInactivityTracking();
+        await supabase.auth.signOut();
+        setSession(null);
+        setUser(null);
+        lastUserIdRef.current = null;
+        clearResolvedAccountAccess();
+        setSubscriptionChecked(true);
+        setLoading(false);
+        return;
+      }
+
       setSession(initialSession);
       setUser(initialSession?.user ?? null);
       if (initialSession?.user) {

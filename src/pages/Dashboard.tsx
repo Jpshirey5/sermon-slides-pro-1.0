@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -867,8 +868,16 @@ const Dashboard = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4 }}
-            className="mb-10 grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(240px,320px)] md:items-start"
+            className="relative mb-10 grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(240px,320px)] md:items-start"
           >
+            {subscription.is_beta_user && (
+              <div className="flex justify-center md:absolute md:inset-x-0 md:top-1 md:z-10">
+                <Badge className="gap-1.5 border-primary/20 bg-primary/5 text-primary hover:bg-primary/5">
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Beta user
+                </Badge>
+              </div>
+            )}
             <div>
               <h1 className="font-serif text-3xl font-bold text-foreground mb-1">
                 Welcome back
@@ -968,20 +977,6 @@ const Dashboard = () => {
             </div>
           )}
 
-          {subscription.is_beta_user && (
-            <div className="mb-8 rounded-3xl border border-primary/20 bg-primary/5 px-6 py-5 shadow-sm">
-              <div className="flex items-start gap-3">
-                <Sparkles className="mt-0.5 h-5 w-5 text-primary" />
-                <div>
-                  <p className="font-medium text-foreground">Beta user</p>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    Thank you for making Sermon Slide Pro a better platform. We appreciate your feedback and support.
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
-
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -1026,12 +1021,7 @@ const Dashboard = () => {
 
             {/* Sermon Slide Creator Card */}
             {/* QUICK BUILD ADDITION — wrapper conditionally hijacks click/drop for quick_build mode */}
-            <QuickBuildUploadCard
-              mode={userSermonCreationMode}
-              dashboardSelectedCampusId={
-                selectedCampusFilter.type === "active" ? selectedCampusFilter.value ?? null : null
-              }
-            >
+            <QuickBuildUploadCard mode={userSermonCreationMode}>
             <div className="max-w-2xl mx-auto rounded-3xl glass-panel p-8 mb-14" data-tour-id="dashboard-create-button">
               <div className="flex flex-col items-center text-center">
                 <div className="w-12 h-12 rounded-xl gradient-hero flex items-center justify-center mb-5">

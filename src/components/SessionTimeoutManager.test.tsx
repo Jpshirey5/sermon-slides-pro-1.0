@@ -47,6 +47,7 @@ describe("SessionTimeoutManager", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-04-30T12:00:00.000Z"));
     localStorage.clear();
+    sessionStorage.clear();
     mocks.navigate.mockClear();
     mocks.signOut.mockClear();
     mocks.signOut.mockResolvedValue(undefined);
@@ -59,15 +60,29 @@ describe("SessionTimeoutManager", () => {
     vi.useRealTimers();
   });
 
-  it("resets stale stored activity when a user becomes authenticated", () => {
+  it("signs out when a restored session is already past the idle timeout", async () => {
     const now = Date.now();
-    localStorage.setItem(STORAGE_LAST_ACTIVITY_KEY, String(now - IDLE_TIMEOUT_MS - 1));
-    localStorage.setItem(STORAGE_FORCED_LOGOUT_KEY, String(now - IDLE_TIMEOUT_MS - 1));
+    sessionStorage.setItem(STORAGE_LAST_ACTIVITY_KEY, String(now - IDLE_TIMEOUT_MS - 1));
+
+    await act(async () => {
+      render(<SessionTimeoutManager />);
+      await Promise.resolve();
+    });
+
+    expect(mocks.signOut).toHaveBeenCalledWith({ userInitiated: false });
+    expect(mocks.navigate).toHaveBeenCalledWith(
+      "/login?reason=inactive",
+      { replace: true, state: { from: "/dashboard" } },
+    );
+    expect(localStorage.getItem(STORAGE_LOGOUT_REASON_KEY)).toBeNull();
+    expect(sessionStorage.getItem(STORAGE_LOGOUT_REASON_KEY)).toBe("inactive");
+  });
+
+  it("does not sign out when a restored session is still within the idle window", () => {
+    const now = Date.now();
+    sessionStorage.setItem(STORAGE_LAST_ACTIVITY_KEY, String(now - 60 * 1000));
 
     render(<SessionTimeoutManager />);
-
-    expect(localStorage.getItem(STORAGE_LAST_ACTIVITY_KEY)).toBe(String(now));
-    expect(localStorage.getItem(STORAGE_FORCED_LOGOUT_KEY)).toBeNull();
 
     act(() => {
       vi.advanceTimersByTime(1000);
@@ -75,6 +90,7 @@ describe("SessionTimeoutManager", () => {
 
     expect(mocks.signOut).not.toHaveBeenCalled();
     expect(mocks.navigate).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem(STORAGE_LAST_ACTIVITY_KEY)).toBe(String(now));
   });
 
   it("signs out for inactivity after the authenticated session idles past the timeout", async () => {
@@ -91,26 +107,7 @@ describe("SessionTimeoutManager", () => {
       "/login?reason=inactive",
       { replace: true, state: { from: "/dashboard" } },
     );
-    expect(localStorage.getItem(STORAGE_LOGOUT_REASON_KEY)).toBe("inactive");
-    expect(Number(localStorage.getItem(STORAGE_FORCED_LOGOUT_KEY))).toBeGreaterThanOrEqual(startTime + IDLE_TIMEOUT_MS);
-  });
-
-  it("signs out when another tab broadcasts an inactivity logout", async () => {
-    render(<SessionTimeoutManager />);
-
-    await act(async () => {
-      window.dispatchEvent(new StorageEvent("storage", {
-        key: STORAGE_FORCED_LOGOUT_KEY,
-        newValue: String(Date.now()),
-      }));
-      await Promise.resolve();
-    });
-
-    expect(mocks.signOut).toHaveBeenCalledWith({ userInitiated: false });
-    expect(mocks.navigate).toHaveBeenCalledWith(
-      "/login?reason=inactive",
-      { replace: true, state: { from: "/dashboard" } },
-    );
-    expect(localStorage.getItem(STORAGE_LOGOUT_REASON_KEY)).toBe("inactive");
+    expect(sessionStorage.getItem(STORAGE_LOGOUT_REASON_KEY)).toBe("inactive");
+    expect(Number(sessionStorage.getItem(STORAGE_FORCED_LOGOUT_KEY))).toBeGreaterThanOrEqual(startTime + IDLE_TIMEOUT_MS);
   });
 });

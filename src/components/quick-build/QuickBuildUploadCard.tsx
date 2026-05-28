@@ -12,15 +12,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DEFAULT_TRANSLATION } from "@/lib/translations";
 import { useAuth } from "@/contexts/AuthContext";
 import { useQuickBuildUpload } from "@/hooks/useQuickBuildUpload";
 import { ACCEPTED_EXTENSIONS, MAX_FILE_SIZE_BYTES } from "@/lib/quick-build/constants";
 import { validateFile } from "@/lib/quick-build/validateFile";
-import { listAccountCampuses, type Campus } from "@/lib/campuses";
-import { logError } from "@/lib/monitoring";
 import { toast } from "sonner";
 import QuickBuildProgressIndicator from "./QuickBuildProgressIndicator";
 import QuickBuildUploadError from "./QuickBuildUploadError";
@@ -28,56 +24,19 @@ import type { SermonCreationMode } from "@/lib/quick-build/types";
 
 interface QuickBuildUploadCardProps {
   mode: SermonCreationMode | null;
-  dashboardSelectedCampusId: string | null;
   children: ReactNode;
 }
 
-const QuickBuildUploadCard = ({ mode, dashboardSelectedCampusId, children }: QuickBuildUploadCardProps) => {
+const QuickBuildUploadCard = ({ mode, children }: QuickBuildUploadCardProps) => {
   const navigate = useNavigate();
-  const { profile, subscription, accountId } = useAuth();
+  const { profile, subscription } = useAuth();
   const { state, run, reset } = useQuickBuildUpload();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dragActive, setDragActive] = useState(false);
-  const [campusId, setCampusId] = useState<string>("");
-  const [campuses, setCampuses] = useState<Campus[]>([]);
-  const [campusesLoading, setCampusesLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const dragCounter = useRef(0);
 
   const isQuickBuild = mode === "quick_build";
-  const isEnterprise = (subscription?.plan_tier || "").toLowerCase() === "enterprise";
-
-  useEffect(() => {
-    if (!isEnterprise || !accountId) {
-      setCampuses([]);
-      setCampusId("");
-      return;
-    }
-
-    let cancelled = false;
-    setCampusesLoading(true);
-
-    (async () => {
-      try {
-        const loaded = await listAccountCampuses(accountId);
-        if (cancelled) return;
-        setCampuses(loaded);
-        const preferred =
-          dashboardSelectedCampusId || profile?.preferred_dashboard_campus_id || "";
-        const matched = preferred && loaded.some((c) => c.id === preferred) ? preferred : "";
-        setCampusId(matched || loaded.find((c) => c.isPrimary)?.id || loaded[0]?.id || "");
-      } catch (error) {
-        logError(error, { scope: "quick_build_load_campuses" });
-        if (!cancelled) setCampuses([]);
-      } finally {
-        if (!cancelled) setCampusesLoading(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [accountId, dashboardSelectedCampusId, isEnterprise, profile?.preferred_dashboard_campus_id]);
 
   useEffect(() => {
     if (state.phase === "done" && state.result) {
@@ -123,15 +82,11 @@ const QuickBuildUploadCard = ({ mode, dashboardSelectedCampusId, children }: Qui
       toast.error(validation.errorMessage || "That file isn't supported.");
       return;
     }
-    if (isEnterprise && campuses.length > 0 && !campusId) {
-      toast.error("Pick a campus before uploading.");
-      return;
-    }
     setDialogOpen(true);
     void run({
       file,
       translation: profile?.default_translation || DEFAULT_TRANSLATION,
-      campusId: campusId || null,
+      campusId: profile?.preferred_dashboard_campus_id || null,
     });
   };
 
@@ -187,34 +142,10 @@ const QuickBuildUploadCard = ({ mode, dashboardSelectedCampusId, children }: Qui
           <h2 className="font-serif text-xl font-semibold text-foreground mb-2">
             Upload your sermon manuscript
           </h2>
-          <p className="text-muted-foreground text-sm mb-6 max-w-xl">
+          <p className="text-muted-foreground text-sm mb-5 max-w-xl">
             We&apos;ll pull out the title, series, points, and scripture references to build out your sermon for you. Then drop you
             straight into Sermon Review for revisions.
           </p>
-
-          {isEnterprise && (campuses.length > 0 || campusesLoading) && (
-            <div className="w-full max-w-sm text-left mb-5">
-              <Label htmlFor="quick-build-card-campus" className="text-xs uppercase tracking-[0.14em] text-muted-foreground">
-                Campus
-              </Label>
-              <Select
-                value={campusId}
-                onValueChange={setCampusId}
-                disabled={campusesLoading || campuses.length === 0}
-              >
-                <SelectTrigger id="quick-build-card-campus" className="mt-2 h-10">
-                  <SelectValue placeholder={campusesLoading ? "Loading campuses..." : "Select a campus"} />
-                </SelectTrigger>
-                <SelectContent>
-                  {campuses.map((campus) => (
-                    <SelectItem key={campus.id} value={campus.id}>
-                      {campus.isPrimary ? `${campus.name} (Primary)` : campus.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
 
           <button
             type="button"
@@ -224,7 +155,7 @@ const QuickBuildUploadCard = ({ mode, dashboardSelectedCampusId, children }: Qui
             onDragOver={handleDragOver}
             onDrop={handleDrop}
             className={[
-              "w-full rounded-2xl border-2 border-dashed bg-muted/20 px-6 py-10 text-center transition cursor-pointer",
+              "w-full rounded-2xl border-2 border-dashed bg-muted/20 px-6 py-6 text-center transition cursor-pointer",
               dragActive
                 ? "border-primary bg-primary/10"
                 : "border-border hover:border-primary hover:bg-primary/5",
