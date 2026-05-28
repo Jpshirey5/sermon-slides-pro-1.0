@@ -34,7 +34,24 @@ const ResetPassword = () => {
     const handleRecovery = async () => {
       const tokenHash = searchParams.get("token_hash");
       const queryType = searchParams.get("type");
+      const code = searchParams.get("code");
+      const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
       const recoveryState = (location.state as { fromRecoveryEvent?: boolean } | null)?.fromRecoveryEvent;
+
+      // Supabase bounces expired/invalid verify links back with an error code.
+      const errorCode = searchParams.get("error_code") ?? hashParams.get("error_code");
+      if (errorCode) {
+        toast.error(
+          errorCode === "otp_expired"
+            ? "This reset link has expired. Please request a new one."
+            : "This reset link is invalid. Please request a new one.",
+        );
+        if (!cancelled) {
+          setReady(false);
+          setChecking(false);
+        }
+        return;
+      }
 
       if (queryType === "recovery" && tokenHash) {
         const { error } = await supabase.auth.verifyOtp({
@@ -59,12 +76,31 @@ const ResetPassword = () => {
         return;
       }
 
+      // PKCE-flow recovery link arrives as ?code=... and is exchanged for a session.
+      if (code) {
+        const { error } = await supabase.auth.exchangeCodeForSession(code);
+
+        if (error) {
+          console.error("Failed to exchange recovery code:", error);
+          toast.error("Invalid or expired reset link.");
+          if (!cancelled) {
+            setChecking(false);
+          }
+          return;
+        }
+
+        window.history.replaceState(null, "", window.location.pathname);
+        if (!cancelled) {
+          setReady(true);
+          setChecking(false);
+        }
+        return;
+      }
+
       // Parse hash fragment for recovery tokens
-      const hash = window.location.hash.substring(1);
-      const params = new URLSearchParams(hash);
-      const accessToken = params.get("access_token");
-      const refreshToken = params.get("refresh_token");
-      const type = params.get("type");
+      const accessToken = hashParams.get("access_token");
+      const refreshToken = hashParams.get("refresh_token");
+      const type = hashParams.get("type");
 
       if (type === "recovery" && accessToken && refreshToken) {
         // Set the session from the recovery tokens

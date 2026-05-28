@@ -26,9 +26,10 @@ import {
 import { formatScriptureReferenceForDisplay, getFriendlyScriptureError, lookupScripture } from "@/lib/scripture-api";
 import { savePresentation, type SermonPresentation, type SlideStyle, type ThemeStyle } from "@/lib/presentations";
 import { useAuth } from "@/contexts/AuthContext";
-import { TRANSLATION_OPTIONS, DEFAULT_TRANSLATION } from "@/lib/translations";
+import { getAvailableTranslations, isTranslationAllowed, DEFAULT_TRANSLATION } from "@/lib/translations";
 import { logError, trackEvent } from "@/lib/monitoring";
 import ProductTour, { type ProductTourStep } from "@/components/ProductTour";
+import StructuredBuilderInfoModal from "@/components/StructuredBuilderInfoModal";
 import { consumeCreateTourPrompt } from "@/lib/product-tour";
 import { listAccountCampuses, type Campus } from "@/lib/campuses";
 
@@ -51,7 +52,7 @@ interface SermonPoint {
 const CreateSermon = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { profile, user, accountId, subscription } = useAuth();
+  const { profile, user, accountId, subscription, canUseEsv } = useAuth();
   const isFromDashboard = location.pathname.startsWith("/dashboard");
   const editData = (location.state as any)?.editData;
   const editId = (location.state as any)?.editId;
@@ -73,6 +74,7 @@ const CreateSermon = () => {
   const [slideStyle, setSlideStyle] = useState<SlideStyle>(editData?.slideStyle || "balanced");
   const [themeStyle, setThemeStyle] = useState<ThemeStyle>(editData?.themeStyle || "clean");
   const [showTourBuilderPrompt, setShowTourBuilderPrompt] = useState(false);
+  const [showStructuredBuilderInfo, setShowStructuredBuilderInfo] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [points, setPoints] = useState<SermonPoint[]>(
     editData?.points
@@ -120,13 +122,29 @@ const CreateSermon = () => {
     });
   }, [editId, isFromDashboard]);
 
+  // Pay-per-export guests land here from the landing page. Explain that this is
+  // the manual Structured Builder, and that AI Quick Build requires an account.
+  useEffect(() => {
+    if (isFromDashboard || user || editId) return;
+    setShowStructuredBuilderInfo(true);
+  }, [editId, isFromDashboard, user]);
+
   useEffect(() => {
     if (editData?.translation) return;
     if (appliedDefaultRef.current) return;
     if (!profile?.default_translation) return;
+    if (!isTranslationAllowed(profile.default_translation, canUseEsv)) return;
     setGlobalTranslation(profile.default_translation);
     appliedDefaultRef.current = true;
-  }, [profile?.default_translation, editData?.translation]);
+  }, [profile?.default_translation, editData?.translation, canUseEsv]);
+
+  // Never leave a restricted translation selected for users who aren't entitled
+  // (e.g. opening a sermon previously created with ESV).
+  useEffect(() => {
+    if (!isTranslationAllowed(globalTranslation, canUseEsv)) {
+      setGlobalTranslation(DEFAULT_TRANSLATION);
+    }
+  }, [globalTranslation, canUseEsv]);
 
   useEffect(() => {
     if (!user) return;
@@ -765,7 +783,7 @@ const CreateSermon = () => {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {TRANSLATION_OPTIONS.map((t) => (
+                      {getAvailableTranslations(canUseEsv).map((t) => (
                         <SelectItem key={t.code} value={t.code}>
                           <span className="font-medium">{t.code}</span>
                           <span className="text-muted-foreground ml-2">
@@ -999,6 +1017,10 @@ const CreateSermon = () => {
           steps={createTourSteps}
         />
       )}
+      <StructuredBuilderInfoModal
+        open={showStructuredBuilderInfo}
+        onOpenChange={setShowStructuredBuilderInfo}
+      />
     </div>
   );
 };

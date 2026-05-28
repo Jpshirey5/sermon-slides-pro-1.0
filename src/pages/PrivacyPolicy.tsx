@@ -14,7 +14,7 @@ const sections = [
   {
     title: "How We Use Information",
     body: [
-      "We use your information to provide the service, create and manage accounts, save presentations, process billing, support teams, send product-related emails, respond to support requests, and maintain platform security and reliability.",
+      "We use your information to provide the service, create and manage accounts, save presentations, power AI-assisted sermon analysis and slide generation when you choose to use those features, process billing, support teams, send product-related emails, respond to support requests, and maintain platform security and reliability.",
       "We may use limited usage analytics and error reporting to improve features, diagnose issues, monitor performance, and understand how the product is being used. We aim to avoid collecting unnecessary personal data in that process.",
       "We may also use your information to communicate about your account, subscription, product updates, support matters, legal obligations, and operational notices related to the service.",
     ],
@@ -22,7 +22,7 @@ const sections = [
   {
     title: "Third-Party Services",
     body: [
-      "Sermon Slide Pro relies on a small set of service providers to operate core parts of the product. Supabase supports authentication, database, and storage infrastructure. Stripe supports subscription billing and payment flows. Resend supports certain transactional email delivery. API.Bible supports scripture retrieval and translation delivery.",
+      "Sermon Slide Pro relies on a small set of service providers to operate core parts of the product. Supabase supports authentication, database, and storage infrastructure. Stripe supports subscription billing and payment flows. Resend supports certain transactional email delivery. API.Bible supports scripture retrieval and translation delivery. Anthropic (Claude API) supports AI-assisted sermon analysis and slide generation, as described in the “AI-Assisted Sermon Generation” section.",
       "These providers may process data on our behalf only as needed to support their role in delivering the service.",
     ],
   },
@@ -41,9 +41,17 @@ const sections = [
     ],
   },
   {
+    title: "AI-Assisted Sermon Generation",
+    body: [
+      "Sermon Slide Pro includes AI-assisted features that read sermon outlines or manuscripts you upload, identify the main points and scripture references in that content, and use them to help build your slides. To power these features, we use Anthropic’s Claude API as a sub-processor. When you use an AI-assisted feature, the relevant sermon text is sent to Anthropic solely to generate the requested output, and the AI response is returned to Sermon Slide Pro for use in your presentation.",
+      "Anthropic processes this content only to return a result for that request. Under Anthropic’s API terms, content sent through the Claude API is not used to train Anthropic’s models and is not retained beyond what is needed to deliver the response and meet Anthropic’s standard operational and safety requirements.",
+      "Sermon Slide Pro does not sell, share, or repurpose your sermon content outside the platform. Saved sermons, slides, points, and verses remain inside the Sermon Slide Pro infrastructure (hosted on Supabase) and are used only to operate the service for you and your team. You can stop using AI-assisted features at any time without losing access to the rest of the platform.",
+    ],
+  },
+  {
     title: "Data Sharing and Disclosure",
     body: [
-      "We do not sell your personal information. We may share information with service providers that help us operate the platform, process payments, deliver email, provide scripture access, secure infrastructure, or comply with law.",
+      "We do not sell your personal information or your sermon content. We may share information with service providers that help us operate the platform, process payments, deliver email, provide scripture access, provide AI-assisted features, secure infrastructure, or comply with law.",
       "We may also disclose information when required to comply with legal obligations, protect our rights, investigate fraud or abuse, or support a business transfer such as a merger, acquisition, or sale of assets.",
     ],
   },
@@ -113,12 +121,14 @@ export default function PrivacyPolicy() {
                 Privacy Policy for Sermon Slide Pro
               </h1>
               <p className="mt-4 text-base text-muted-foreground sm:text-lg">
-                Effective date: May 7, 2026
+                Effective date: May 22, 2026
               </p>
               <p className="mt-4 text-base text-muted-foreground sm:text-lg">
-                This Privacy Policy explains how Sermon Slide Pro collects, uses, stores, and shares
-                information when you use our website, applications, exports, subscriptions, support
-                flows, and related services.
+                This Privacy Policy explains how Boosted Technology Co., LLC, a Florida limited liability
+                company (“Boosted Technology Co., LLC,” “we,” “us,” or “our”), collects, uses, stores, and
+                shares information when you use Sermon Slide Pro — our website, applications, exports,
+                subscriptions, support flows, and related services. Sermon Slide Pro is a product of
+                Boosted Technology Co., LLC.
               </p>
             </div>
 

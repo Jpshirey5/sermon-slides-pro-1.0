@@ -59,6 +59,12 @@ import { clearPendingCheckoutState } from "@/lib/pending-checkout";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+// QUICK BUILD ADDITION
+import { useSermonCreationMode } from "@/hooks/useSermonCreationMode";
+// QUICK BUILD ADDITION
+import QuickBuildModeSelector from "@/components/quick-build/QuickBuildModeSelector";
+// QUICK BUILD ADDITION
+import QuickBuildUploadCard from "@/components/quick-build/QuickBuildUploadCard";
 
 const DASHBOARD_PAGE_SIZE = 12;
 const DASHBOARD_SORT_OPTIONS = [
@@ -111,6 +117,10 @@ const Dashboard = () => {
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const { user, profile, subscription, signOut, checkSubscription, accountId } = useAuth();
+  // QUICK BUILD ADDITION — read the user's creation-mode preference for card wrapping + onboarding
+  const { mode: userSermonCreationMode } = useSermonCreationMode();
+  // QUICK BUILD ADDITION — onboarding modal state (NULL preference → must choose before the tour)
+  const [quickBuildModeSelectorOpen, setQuickBuildModeSelectorOpen] = useState(false);
   const [presentations, setPresentations] = useState<DashboardPresentation[]>([]);
   const [selectedTimeSavedMonth, setSelectedTimeSavedMonth] = useState(getLocalMonthKey);
   const [timeSavedSummary, setTimeSavedSummary] = useState({ totalSeconds: 0, weekSeconds: 0 });
@@ -281,6 +291,14 @@ const Dashboard = () => {
       cancelled = true;
     };
   }, [accountId]);
+
+  // QUICK BUILD ADDITION — open mode-selector before the tour if the user has not chosen yet
+  useEffect(() => {
+    if (!user || !profile) return;
+    if (userSermonCreationMode === null || userSermonCreationMode === undefined) {
+      setQuickBuildModeSelectorOpen(true);
+    }
+  }, [user, profile, userSermonCreationMode]);
 
   const handleCancelDeletionRequest = async () => {
     setCancelingDeletionRequest(true);
@@ -1007,6 +1025,13 @@ const Dashboard = () => {
             )}
 
             {/* Sermon Slide Creator Card */}
+            {/* QUICK BUILD ADDITION — wrapper conditionally hijacks click/drop for quick_build mode */}
+            <QuickBuildUploadCard
+              mode={userSermonCreationMode}
+              dashboardSelectedCampusId={
+                selectedCampusFilter.type === "active" ? selectedCampusFilter.value ?? null : null
+              }
+            >
             <div className="max-w-2xl mx-auto rounded-3xl glass-panel p-8 mb-14" data-tour-id="dashboard-create-button">
               <div className="flex flex-col items-center text-center">
                 <div className="w-12 h-12 rounded-xl gradient-hero flex items-center justify-center mb-5">
@@ -1045,6 +1070,8 @@ const Dashboard = () => {
                 </div>
               </div>
             </div>
+            {/* QUICK BUILD ADDITION — close wrapper */}
+            </QuickBuildUploadCard>
 
             {/* Presentations List */}
             <section data-tour-id="dashboard-presentations-section">
@@ -1289,6 +1316,12 @@ const Dashboard = () => {
           introStartLabel="Start Guided Tour"
         />
       )}
+      {/* QUICK BUILD ADDITION — onboarding gate fires before the product tour */}
+      <QuickBuildModeSelector
+        open={quickBuildModeSelectorOpen}
+        onOpenChange={setQuickBuildModeSelectorOpen}
+        variant="onboarding"
+      />
       <Dialog open={showSupportDialog} onOpenChange={setShowSupportDialog}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>

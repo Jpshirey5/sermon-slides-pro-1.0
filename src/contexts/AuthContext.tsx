@@ -51,6 +51,7 @@ interface AuthContextType {
   subscription: SubscriptionInfo;
   subscriptionChecked: boolean;
   accountId: string | null;
+  canUseEsv: boolean;
   signOut: (options?: { userInitiated?: boolean }) => Promise<void>;
   refreshProfile: () => Promise<void>;
   checkSubscription: () => Promise<void>;
@@ -71,6 +72,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [accountId, setAccountId] = useState<string | null>(null);
+  const [canUseEsv, setCanUseEsv] = useState(false);
   const [subscriptionChecked, setSubscriptionChecked] = useState(false);
   const [subscription, setSubscription] = useState<SubscriptionInfo>({
     subscribed: false,
@@ -108,7 +110,21 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const nextAccountId = data || null;
     setAccountId(nextAccountId);
     setResolvedAccountAccess({ userId, accountId: nextAccountId });
+    void fetchEsvEntitlement(nextAccountId);
     return nextAccountId;
+  };
+
+  const fetchEsvEntitlement = async (resolvedAccountId: string | null) => {
+    if (!resolvedAccountId) {
+      setCanUseEsv(false);
+      return;
+    }
+    const { data } = await supabase
+      .from("accounts_public")
+      .select("can_use_esv")
+      .eq("id", resolvedAccountId)
+      .maybeSingle();
+    setCanUseEsv(((data as { can_use_esv?: boolean } | null)?.can_use_esv) === true);
   };
 
   const checkSubscription = useCallback(async () => {
@@ -164,6 +180,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const access = await ensureResolvedAccountAccess();
       setAccountId(access.accountId);
       setResolvedAccountAccess({ userId: user.id, accountId: access.accountId });
+      void fetchEsvEntitlement(access.accountId);
       await checkSubscription();
     }
   };
@@ -179,6 +196,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setSession(null);
     setProfile(null);
     setAccountId(null);
+    setCanUseEsv(false);
     clearResolvedAccountAccess();
     setSubscriptionChecked(false);
     setSubscription({
@@ -214,6 +232,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         } else {
           setProfile(null);
           setAccountId(null);
+          setCanUseEsv(false);
           clearResolvedAccountAccess();
           setSubscriptionChecked(false);
           setSubscription({
@@ -288,7 +307,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   return (
     <AuthContext.Provider
-      value={{ user, session, profile, loading, subscription, subscriptionChecked, accountId, signOut, refreshProfile, checkSubscription }}
+      value={{ user, session, profile, loading, subscription, subscriptionChecked, accountId, canUseEsv, signOut, refreshProfile, checkSubscription }}
     >
       {children}
     </AuthContext.Provider>

@@ -1,38 +1,48 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Check, Crown } from "lucide-react";
+import { Check, ChevronsUp, Crown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { PLAN_FAMILIES, type BillingInterval } from "@/lib/subscriptionPlans";
 
-const FEATURES_BY_TIER = {
-  pro: [
-    "1 user",
-    "Unlimited presentation creation",
-    "Unlimited PowerPoint and ProPresenter exports",
-    "Saved presentations and editing history",
-    "Scripture lookup and weekly sermon workflow",
-    "Best for solo pastors and ministry leaders",
-  ],
-  team: [
-    "Up to 3 users",
-    "Shared account for pastors, worship leaders, and staff",
-    "Unlimited presentation creation",
-    "Unlimited PowerPoint and ProPresenter exports",
-    "Saved presentations for recurring team workflows",
-    "Best for small church teams",
-  ],
-  enterprise: [
-    "Up to 10 users",
-    "Built for larger ministries and multi-role teams",
-    "Built to support multi-campus teams",
-    "Unlimited presentation creation",
-    "Unlimited PowerPoint and ProPresenter exports",
-    "Saved presentations across the organization",
-    "Best for growing churches and larger teams",
-  ],
-} as const;
+type TierFeatures = {
+  inheritsFromLabel?: string;
+  items: readonly string[];
+};
+
+const FEATURES_BY_TIER: Record<"pro" | "team" | "enterprise", TierFeatures> = {
+  pro: {
+    items: [
+      "1 user",
+      "AI Quick Builder — 5 builds/month",
+      "Unlimited presentation creation",
+      "Unlimited PowerPoint and ProPresenter exports",
+      "Saved presentations and editing history",
+      "Scripture lookup and weekly sermon workflow",
+      "Best for solo pastors and ministry leaders",
+    ],
+  },
+  team: {
+    inheritsFromLabel: "Everything in Pro, plus:",
+    items: [
+      "Up to 3 users",
+      "AI Quick Builder — 15 builds/month",
+      "Shared account for pastors, worship leaders, and staff",
+      "Best for small church teams",
+    ],
+  },
+  enterprise: {
+    inheritsFromLabel: "Everything in Team, plus:",
+    items: [
+      "Up to 10 users",
+      "AI Quick Builder — Unlimited builds/month",
+      "Built for larger ministries and multi-role teams",
+      "Built to support multi-campus teams",
+      "Best for growing churches and larger teams",
+    ],
+  },
+};
 
 const Pricing = () => {
   const navigate = useNavigate();
@@ -160,8 +170,17 @@ const Pricing = () => {
                     {plan.interval === "annual" ? "Billed annually" : "Billed monthly"}
                   </p>
 
+                  {features.inheritsFromLabel && (
+                    <div className="mb-5 flex items-center gap-2 rounded-2xl bg-primary/10 px-4 py-3">
+                      <ChevronsUp className="h-4 w-4 text-primary" />
+                      <span className="text-sm font-semibold text-primary">
+                        {features.inheritsFromLabel}
+                      </span>
+                    </div>
+                  )}
+
                   <ul className="space-y-4 mb-8">
-                    {features.map((feature, featureIndex) => (
+                    {features.items.map((feature, featureIndex) => (
                       <li key={featureIndex} className="flex items-start gap-3">
                         <div className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
                           <Check className="w-3 h-3 text-primary" />
