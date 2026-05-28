@@ -160,8 +160,10 @@ const ResetPassword = () => {
       if (error) {
         toast.error(error.message);
       } else {
-        toast.success("Password updated successfully!");
-        navigate("/dashboard");
+        // End the recovery session so the user logs in fresh with the new password
+        // instead of landing straight in their account.
+        await supabase.auth.signOut();
+        navigate("/login?passwordReset=1", { replace: true });
       }
     } catch {
       toast.error("An unexpected error occurred.");
