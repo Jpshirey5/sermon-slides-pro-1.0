@@ -65,3 +65,6 @@ verify_jwt = false
 
 [functions.parse-sermon-manuscript]
 verify_jwt = false
+
+[functions.hubspot-sync]
+verify_jwt = false
