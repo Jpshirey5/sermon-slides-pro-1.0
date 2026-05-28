@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { AlertDialog, AlertDialogAction, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { useAuth } from "@/contexts/AuthContext";
@@ -7,6 +7,7 @@ import {
   WARNING_MS,
   STORAGE_LAST_ACTIVITY_KEY,
   STORAGE_FORCED_LOGOUT_KEY,
+  isInactivityExpired,
   resetSessionInactivityTracking,
   setStoredLogoutReason,
 } from "@/lib/session-security";
@@ -24,10 +25,31 @@ const SessionTimeoutManager = () => {
   const locationPathRef = useRef(location.pathname);
 
   useEffect(() => {
+    locationPathRef.current = location.pathname;
+  }, [location.pathname]);
+
+  const signOutForInactivity = useCallback(async () => {
+    if (loggingOutRef.current) return;
+    loggingOutRef.current = true;
+    setWarningOpen(false);
+    setStoredLogoutReason("inactive");
+    sessionStorage.setItem(STORAGE_FORCED_LOGOUT_KEY, String(Date.now()));
+    await signOut({ userInitiated: false });
+    navigate("/login?reason=inactive", { replace: true, state: { from: locationPathRef.current } });
+  }, [navigate, signOut]);
+
+  useEffect(() => {
     if (!userId) {
       setWarningOpen(false);
       setSecondsRemaining(Math.ceil(WARNING_MS / 1000));
       loggingOutRef.current = false;
+      return;
+    }
+
+    // A restored session whose last activity is older than the timeout must be
+    // logged out rather than silently resuming.
+    if (isInactivityExpired()) {
+      void signOutForInactivity();
       return;
     }
 
@@ -37,26 +59,12 @@ const SessionTimeoutManager = () => {
     loggingOutRef.current = false;
     setWarningOpen(false);
     setSecondsRemaining(Math.ceil(WARNING_MS / 1000));
-  }, [userId]);
-
-  useEffect(() => {
-    locationPathRef.current = location.pathname;
-  }, [location.pathname]);
+  }, [signOutForInactivity, userId]);
 
   useEffect(() => {
     if (!userId) return;
 
     const getRemainingMs = () => IDLE_TIMEOUT_MS - (Date.now() - lastActivityRef.current);
-
-    const signOutForInactivity = async () => {
-      if (loggingOutRef.current) return;
-      loggingOutRef.current = true;
-      setWarningOpen(false);
-      setStoredLogoutReason("inactive");
-      localStorage.setItem(STORAGE_FORCED_LOGOUT_KEY, String(Date.now()));
-      await signOut({ userInitiated: false });
-      navigate("/login?reason=inactive", { replace: true, state: { from: locationPathRef.current } });
-    };
 
     const recordActivity = () => {
       if (loggingOutRef.current) return;
@@ -69,7 +77,7 @@ const SessionTimeoutManager = () => {
       if (now - lastRecordedRef.current < 1000) return;
       lastRecordedRef.current = now;
       lastActivityRef.current = now;
-      localStorage.setItem(STORAGE_LAST_ACTIVITY_KEY, String(now));
+      sessionStorage.setItem(STORAGE_LAST_ACTIVITY_KEY, String(now));
       setWarningOpen(false);
     };
 
@@ -79,27 +87,9 @@ const SessionTimeoutManager = () => {
       }
     };
 
-    const handleStorage = async (event: StorageEvent) => {
-      if (event.key === STORAGE_LAST_ACTIVITY_KEY && event.newValue) {
-        const nextValue = Number(event.newValue);
-        if (Number.isFinite(nextValue)) {
-          lastActivityRef.current = nextValue;
-          setWarningOpen(false);
-        }
-      }
-
-      if (event.key === STORAGE_FORCED_LOGOUT_KEY && event.newValue && !loggingOutRef.current) {
-        loggingOutRef.current = true;
-        setStoredLogoutReason("inactive");
-        await signOut({ userInitiated: false });
-        navigate("/login?reason=inactive", { replace: true, state: { from: locationPathRef.current } });
-      }
-    };
-
     const events: Array<keyof WindowEventMap> = ["mousedown", "mousemove", "keydown", "scroll", "touchstart", "focus"];
     events.forEach((eventName) => window.addEventListener(eventName, recordActivity, { passive: true }));
     document.addEventListener("visibilitychange", handleVisibility);
-    window.addEventListener("storage", handleStorage);
 
     const interval = window.setInterval(async () => {
       const remainingMs = getRemainingMs();
@@ -118,15 +108,14 @@ const SessionTimeoutManager = () => {
       window.clearInterval(interval);
       events.forEach((eventName) => window.removeEventListener(eventName, recordActivity));
       document.removeEventListener("visibilitychange", handleVisibility);
-      window.removeEventListener("storage", handleStorage);
     };
-  }, [navigate, signOut, userId]);
+  }, [signOutForInactivity, userId]);
 
   const handleStaySignedIn = () => {
     const now = Date.now();
     lastRecordedRef.current = now;
     lastActivityRef.current = now;
-    localStorage.setItem(STORAGE_LAST_ACTIVITY_KEY, String(now));
+    sessionStorage.setItem(STORAGE_LAST_ACTIVITY_KEY, String(now));
     setWarningOpen(false);
   };
 

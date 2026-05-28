@@ -14,7 +14,10 @@ if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
 
 export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: {
-    storage: localStorage,
+    // Tab-scoped session: sessionStorage is cleared on tab/browser close, so the
+    // user must re-authenticate. Survives a same-tab reload; the 15-minute idle
+    // timeout (see session-security.ts / SessionTimeoutManager) is enforced on top.
+    storage: sessionStorage,
     persistSession: true,
     autoRefreshToken: true,
   }
