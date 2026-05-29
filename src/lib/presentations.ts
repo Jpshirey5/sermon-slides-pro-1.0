@@ -8,6 +8,7 @@ import { calculateValueMetrics, type PresentationValueMetrics } from "@/lib/valu
 
 export type SlideStyle = "minimal" | "balanced" | "speaker-friendly";
 export type ThemeStyle = "clean" | "bold" | "scripture-focused";
+export type CreationMode = "structured_builder" | "quick_build";
 
 export interface SermonPresentation {
   id: string;
@@ -17,6 +18,7 @@ export interface SermonPresentation {
   campusId?: string | null;
   campusName?: string | null;
   formerCampusName?: string | null;
+  creationMode?: CreationMode | null;
   date: string;
   slides: number;
   lastModified: string;
@@ -542,10 +544,11 @@ export async function savePresentation(presentation: SermonPresentation): Promis
         former_campus_name: presentation.formerCampusName || null,
         slides: wrapper as any,
         scripture_reference: presentation.scripture_reference || null,
+        creation_mode: presentation.creationMode || 'structured_builder',
       })
       .select('id')
       .single();
-    
+
     if (error) {
       console.error('Failed to save sermon:', error);
       return null;
@@ -626,6 +629,7 @@ export async function savePresentationWithSlides(
       former_campus_name: presentation.formerCampusName || null,
       slides: wrapper as any,
       scripture_reference: presentation.scripture_reference || null,
+      creation_mode: presentation.creationMode || 'structured_builder',
     })
     .select("id")
     .single();

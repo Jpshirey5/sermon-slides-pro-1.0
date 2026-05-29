@@ -790,6 +790,7 @@ export type Database = {
           campus_id: string | null
           created_at: string
           created_by_user_id: string
+          creation_mode: string | null
           former_campus_name: string | null
           font_settings: Json | null
           id: string
@@ -806,6 +807,7 @@ export type Database = {
           campus_id?: string | null
           created_at?: string
           created_by_user_id: string
+          creation_mode?: string | null
           former_campus_name?: string | null
           font_settings?: Json | null
           id?: string
@@ -822,6 +824,7 @@ export type Database = {
           campus_id?: string | null
           created_at?: string
           created_by_user_id?: string
+          creation_mode?: string | null
           former_campus_name?: string | null
           font_settings?: Json | null
           id?: string
