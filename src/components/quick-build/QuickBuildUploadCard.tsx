@@ -49,6 +49,7 @@ const QuickBuildUploadCard = ({ mode, children }: QuickBuildUploadCardProps) => 
         date: r.presentation_date,
         campusId: r.campus_id,
         formerCampusName: null,
+        creationMode: "quick_build" as const,
         slides: 0,
         lastModified: "Just now",
         scripture_reference: undefined,

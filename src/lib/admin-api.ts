@@ -30,6 +30,7 @@ export type AdminApiAction =
   | "billing_list"
   | "refund_invoice_charge"
   | "overview_activity"
+  | "overview_usage"
   | "customer_remove_member"
   | "customer_transfer_owner"
   | "customer_schedule_org_deletion"
