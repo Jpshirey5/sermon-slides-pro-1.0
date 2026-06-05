@@ -12,6 +12,7 @@ import { exportAsProBundle, validateSlidesForExport } from "@/services/proPresen
 import { ExportOptionsModal } from "@/components/ExportOptionsModal";
 import { PaymentPromptModal } from "@/components/PaymentPromptModal";
 import { SubscriptionUpsellModal } from "@/components/SubscriptionUpsellModal";
+import { SlideWatermark } from "@/components/SlideWatermark";
 import { toast } from "sonner";
 import { getEditorPresentationState, SermonPresentation, saveEditorSlides as saveEditorSlidesToDb } from "@/lib/presentations";
 import { useAuth } from "@/contexts/AuthContext";
@@ -167,6 +168,16 @@ const SlideEditor = () => {
   );
   const editorBackPath = subscription.subscribed ? "/dashboard" : "/";
   const editorBackLabel = subscription.subscribed ? "Dashboard" : "Home";
+
+  // Watermark shown on slide previews:
+  // - Pro and higher subscribers: no watermark (removed entirely).
+  // - One-time export unlocked: small subtle brand mark in the corner.
+  // - Otherwise (before payment): large diagonal "Preview" mark across the slide.
+  const watermarkVariant: "preview" | "brand" | null = subscription.subscribed
+    ? null
+    : isExportUnlocked
+      ? "brand"
+      : "preview";
 
   useEffect(() => {
     setIsExportUnlocked(Boolean(id && id !== "new" && getVerifiedExportUnlockSession(id)));
@@ -1072,6 +1083,7 @@ const SlideEditor = () => {
               </p>
             </div>}
         </div>
+        {watermarkVariant && <SlideWatermark variant={watermarkVariant} />}
       </div>;
   }
   if (isPresentationLoading) {
@@ -1340,6 +1352,7 @@ const SlideEditor = () => {
                       >
                         {slide.content.title || slide.content.scripture}
                       </p>
+                      {watermarkVariant && <SlideWatermark variant={watermarkVariant} size="thumb" />}
                     </div>
                   </div>
                 </Reorder.Item>
@@ -1439,6 +1452,8 @@ const SlideEditor = () => {
                   </>}
                 {currentSlide.type === "blank" && <p className="text-muted-foreground text-sm">Blank Slide</p>}
               </div>
+
+              {watermarkVariant && <SlideWatermark variant={watermarkVariant} />}
             </motion.div>
               );
             })()}

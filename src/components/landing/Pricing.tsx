@@ -18,6 +18,7 @@ const FEATURES_BY_TIER: Record<"pro" | "team" | "enterprise", TierFeatures> = {
       "AI Quick Builder — 5 builds/month",
       "Unlimited presentation creation",
       "Unlimited PowerPoint and ProPresenter exports",
+      "No watermark — clean, unbranded slides on every export",
       "Saved presentations and editing history",
       "Scripture lookup and weekly sermon workflow",
       "Best for solo pastors and ministry leaders",
@@ -77,6 +78,7 @@ const Pricing = () => {
           </h2>
           <p className="text-lg text-muted-foreground">
             Subscribe to unlock unlimited exports, saved presentations, and the right collaboration access for your team.
+            Pro and higher remove the watermark for clean, unbranded slides on every export.
           </p>
         </motion.div>
 

@@ -14,9 +14,9 @@ export function SubscriptionUpsellModal({
   onSelectPlan,
 }: SubscriptionUpsellModalProps) {
   const featureHighlights: Record<string, string> = {
-    pro: "1 user • Weekly sermon workflow",
-    team: "Up to 3 users • Shared team workflow",
-    enterprise: "Up to 10 users • Larger ministry teams",
+    pro: "1 user • No watermark • Weekly sermon workflow",
+    team: "Up to 3 users • No watermark • Shared team workflow",
+    enterprise: "Up to 10 users • No watermark • Larger ministry teams",
   };
 
   return (
@@ -25,7 +25,7 @@ export function SubscriptionUpsellModal({
         <DialogHeader>
           <DialogTitle>Unlock unlimited presentation creation</DialogTitle>
           <DialogDescription>
-            You just unlocked this presentation for export. Subscribe to Sermon Slide Pro for unlimited exports, saved presentations, and more flexibility each week.
+            Your preview still carries a small Sermon Slide Pro mark in the corner of each slide. Upgrade to Pro or higher to remove the watermark entirely, plus unlimited exports, saved presentations, and more flexibility each week.
           </DialogDescription>
         </DialogHeader>
 
