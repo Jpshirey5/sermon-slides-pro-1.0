@@ -23,9 +23,9 @@ const SubscriptionPlanPicker = ({
   const [billingInterval, setBillingInterval] = useState<BillingInterval>("monthly");
 
   const featureHighlights: Record<string, string> = {
-    pro: "1 user • Saved presentations • Weekly sermon workflow",
-    team: "Up to 3 users • Shared team workflow • Recurring collaboration",
-    enterprise: "Up to 10 users • Multi-role teams • Organization-wide workflow",
+    pro: "1 user • No watermark • Saved presentations • Weekly sermon workflow",
+    team: "Up to 3 users • No watermark • Shared team workflow • Recurring collaboration",
+    enterprise: "Up to 10 users • No watermark • Multi-role teams • Organization-wide workflow",
   };
 
   return (

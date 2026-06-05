@@ -102,7 +102,17 @@ export function PaymentPromptModal({
               <Check className="w-4 h-4 text-primary" />
               Unlimited downloads for this presentation
             </li>
+            <li className="flex items-center gap-2">
+              <Check className="w-4 h-4 text-primary" />
+              Clears the large preview watermark
+            </li>
           </ul>
+
+          <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-xs text-muted-foreground">
+            After checkout the preview keeps a small <span className="font-medium text-foreground">Sermon Slide Pro</span> mark
+            in the corner. Upgrade to <span className="font-medium text-foreground">Pro</span> or higher
+            to remove the watermark entirely.
+          </div>
         </div>
         
         <div className="flex gap-3">
