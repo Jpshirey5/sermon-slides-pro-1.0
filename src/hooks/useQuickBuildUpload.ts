@@ -1,9 +1,10 @@
 // QUICK BUILD ADDITION — orchestrates file validation, extraction, parse request, progress state.
 
 import { useCallback, useRef, useState } from "react";
+import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { validateFile } from "@/lib/quick-build/validateFile";
-import { extractText } from "@/lib/quick-build/extractText";
+import { extractDocument, type DocumentPayload } from "@/lib/quick-build/extractText";
 import type {
   QuickBuildErrorCode,
   QuickBuildResponse,
@@ -92,11 +93,12 @@ export function useQuickBuildUpload() {
       }
       setPhase("uploading");
 
-      // Phase 2 — extract text
+      // Phase 2 — prepare the document for the AI parser
+      // (PDFs go up as the actual file; .docx as structure-preserving HTML)
       setPhase("reading");
-      let manuscriptText = "";
+      let document: DocumentPayload;
       try {
-        manuscriptText = await extractText(file);
+        document = await extractDocument(file);
       } catch (err) {
         failWith(
           "EXTRACTION_FAILED",
@@ -119,11 +121,16 @@ export function useQuickBuildUpload() {
       // Simulated sub-step transitions so the user sees progress while we wait on the edge fn.
       fakeTimerRef.current = window.setTimeout(() => setPhase("validating"), 1200);
 
+      const documentBody =
+        document.kind === "pdf"
+          ? { file_base64: document.base64, media_type: "application/pdf" }
+          : { manuscript_html: document.html };
+
       const { data, error } = await supabase.functions.invoke<QuickBuildResponse>(
         "parse-sermon-manuscript",
         {
           body: {
-            manuscript_text: manuscriptText,
+            ...documentBody,
             file_name: file.name,
             file_size_bytes: file.size,
             translation,
@@ -157,6 +164,14 @@ export function useQuickBuildUpload() {
           Boolean((payload as any).upgrade_required),
         );
         return payload;
+      }
+
+      const successPayload = payload as QuickBuildSuccessResponse;
+      if (successPayload.warnings?.length) {
+        toast.warning(
+          `${successPayload.warnings.length} scripture reference${successPayload.warnings.length === 1 ? "" : "s"} couldn't be validated and may be missing — please double-check in Sermon Review.`,
+          { duration: 8000 },
+        );
       }
 
       setPhase("building");
