@@ -1,12 +1,13 @@
-// QUICK BUILD ADDITION — AWS Bedrock API call + schema validation of the returned JSON.
-// Rerouted from direct Anthropic API to AWS Bedrock (Claude Sonnet 4.6).
-// Exported function signature is identical — index.ts requires no changes.
+// QUICK BUILD ADDITION — AWS Bedrock API call + schema validation of the returned data.
+// The model now reviews the actual document (native PDF input, or structure-preserving
+// HTML for .docx) and returns its result through a forced tool call, so the output is
+// schema-shaped by the API rather than free-form JSON text.
 
 // ── Bedrock config ─────────────────────────────────────────────────────────────
 const BEDROCK_MODEL_ID = "us.anthropic.claude-sonnet-4-6";
-const MAX_TOKENS = 4096;
+const MAX_TOKENS = 8192;
 
-// ── Types (unchanged) ──────────────────────────────────────────────────────────
+// ── Types ──────────────────────────────────────────────────────────────────────
 
 export interface ParsedScriptureRef {
   raw_text: string;
@@ -15,11 +16,17 @@ export interface ParsedScriptureRef {
   start_verse: number;
   end_verse: number | null;
   point_index: number | null;
+  subpoint_index: number | null;
+}
+
+export interface ParsedSubpoint {
+  title: string;
 }
 
 export interface ParsedPoint {
   title: string;
   summary: string;
+  subpoints: ParsedSubpoint[];
 }
 
 export interface ParsedManuscript {
@@ -29,22 +36,27 @@ export interface ParsedManuscript {
   scripture_references: ParsedScriptureRef[];
 }
 
+export type ParserInput =
+  | { kind: "pdf"; base64: string }
+  | { kind: "html"; html: string }
+  | { kind: "text"; text: string };
+
 export interface ClaudeParseResult {
   data: ParsedManuscript;
   tokens_used: number;
 }
 
-// ── Prompt (unchanged) ─────────────────────────────────────────────────────────
+// ── Prompt ─────────────────────────────────────────────────────────────────────
 
-const PROMPT = `You are a sermon manuscript parser for a church presentation software platform. Your job is to extract structured data from a sermon manuscript or outline document.
+const PROMPT = `You are a sermon manuscript parser for a church presentation software platform. Your job is to read through and review the sermon document provided ({DOCUMENT_NOTE}) and extract structured data from it, whether it is a full manuscript or an outline.
 
-STRICT OUTPUT RULES:
-1. Return ONLY a valid JSON object. No markdown formatting, no code fences, no explanations before or after the JSON.
-2. Your response must begin with { and end with }. Nothing else.
-3. If you cannot parse the manuscript, return: {"title":"Untitled Sermon","series":null,"points":[],"scripture_references":[]}
-4. Never fabricate sermon points or scripture references that do not appear in the manuscript.
-5. Never guess at scripture references. If a passage is implied but not cited, skip it.
-6. If a scripture reference is ambiguous or clearly malformed in a way you cannot resolve, skip it entirely.
+Use the document's actual structure — heading levels, bold text, numbering, indentation, and list nesting — to identify the title, series, main points, subpoints, and scripture references.
+
+STRICT RULES:
+1. Never fabricate sermon points, subpoints, or scripture references that do not appear in the document.
+2. Never guess at scripture references. If a passage is implied but not cited, skip it.
+3. If a scripture reference is ambiguous or clearly malformed in a way you cannot resolve, skip it entirely.
+4. If you cannot parse the document at all, call the tool with {"title":"Untitled Sermon","series":null,"points":[],"scripture_references":[]}.
 
 EXTRACTION RULES FOR TITLE:
 - Look for the first major heading, bolded title, or clearly labeled sermon title
@@ -58,7 +70,7 @@ EXTRACTION RULES FOR SERIES:
 
 EXTRACTION RULES FOR SERMON POINTS:
 - Sermon points are the main structural divisions of the sermon
-- They are typically numbered (1, 2, 3 or I, II, III), bolded, or clearly labeled as "Point 1:", "Main Point:", etc.
+- They are typically numbered (1, 2, 3 or I, II, III), bolded, given heading styles, or clearly labeled as "Point 1:", "Main Point:", etc.
 - Extract the heading/title of each point, but STRIP all leading numbering and labeling so the title contains only the substantive statement.
 - Specifically strip from the start of the title:
   - Arabic numerals with separators: "1.", "1)", "1:", "1 -", "1 –", "(1)"
@@ -77,8 +89,14 @@ EXTRACTION RULES FOR SERMON POINTS:
   - "Point One — God is love" → "God is love"
   - "(2) God is love" → "God is love"
 - Write a 1 to 2 sentence summary of the content under that point
-- Do NOT extract sub-points as separate points unless they are clearly labeled as main points
 - Do NOT extract the introduction or conclusion as sermon points unless explicitly labeled as such
+
+EXTRACTION RULES FOR SUBPOINTS:
+- Subpoints are clearly subordinate divisions nested under a main point: letter outlines ("a.", "b)", "A.", "B."), roman numerals at a deeper level ("i.", "ii."), nested/indented bullets, or deeper heading levels under a main point's heading
+- Record each subpoint in its parent point's "subpoints" array, in document order
+- Strip leading numbering/labeling from subpoint titles using the same stripping rules as main points
+- Do NOT promote subpoints to main points, and do NOT extract ordinary body sentences or paragraph text as subpoints — only clearly marked subordinate headings/outline items
+- If a point has no subpoints, use an empty array
 
 EXTRACTION RULES FOR SCRIPTURE REFERENCES:
 - Extract ONLY explicit Bible citations that follow recognizable patterns:
@@ -90,40 +108,83 @@ EXTRACTION RULES FOR SCRIPTURE REFERENCES:
   - "1 Corinthians 13:4-7" — numbered book with chapter and verse
 - Accept all standard book name formats: full name, common abbreviation (Gen, Ex, Lev, Num, Deut, Josh, Judg, Ruth, 1 Sam, 2 Sam, 1 Kgs, 2 Kgs, 1 Chr, 2 Chr, Ezra, Neh, Esth, Job, Ps, Prov, Eccl, Song, Isa, Jer, Lam, Ezek, Dan, Hos, Joel, Amos, Obad, Jonah, Mic, Nah, Hab, Zeph, Hag, Zech, Mal, Matt, Mark, Luke, John, Acts, Rom, 1 Cor, 2 Cor, Gal, Eph, Phil, Col, 1 Thess, 2 Thess, 1 Tim, 2 Tim, Titus, Phlm, Heb, Jas, 1 Pet, 2 Pet, 1 John, 2 John, 3 John, Jude, Rev)
 - Accept spelled-out ordinals: "First Corinthians", "Second Peter", "Third John"
+- CROSS-CHAPTER RANGES: a citation may span chapters, written as "book chapter:verse-chapter:verse" (e.g., "1 John 1:5-2:2" means 1 John chapter 1 verse 5 through chapter 2 verse 2). Always extract these — never skip them. Because each reference entry covers a single chapter, split a cross-chapter citation into consecutive single-chapter references that together cover the full passage:
+  - "1 John 1:5-2:2" → one reference for 1 John chapter 1, start_verse 5, end_verse 10 (the last verse of 1 John 1), AND one reference for 1 John chapter 2, start_verse 1, end_verse 2
+  - Use your knowledge of the canonical verse counts to end the first chapter's reference at that chapter's final verse. If the span covers three or more chapters, emit one reference per chapter, with the middle chapters running from verse 1 through their final verse.
+  - Every reference produced from the same cross-chapter citation keeps the same raw_text (the citation exactly as it appeared, e.g. "1 John 1:5-2:2") and the same point_index and subpoint_index.
+- end_verse must always be a verse within the same chapter as start_verse (cross-chapter spans are represented by the split rule above, never by an end_verse in a different chapter)
 - Do NOT extract general references like "the Psalms", "the Gospels", or "Paul's letter to the Romans" without a specific chapter and verse
-- For each valid reference, record: the raw text as it appeared, the normalized book name, the chapter number, the start verse, the end verse (null if single verse), and which sermon point it belongs to
-- For point_index: identify which sermon point this scripture reference falls under based on its position in the manuscript. Use 0 for the first point, 1 for the second point, 2 for the third point, and so on. If a reference appears before any sermon point (e.g., in the introduction or as a sermon-wide opening passage), use null. References must be associated with the point they appear under in the manuscript — not the point that quotes them earliest or shares a theme. Preserve the original document order.
+- For each valid reference, record: the raw text as it appeared, the normalized book name, the chapter number, the start verse, the end verse (null if single verse), which sermon point it belongs to, and which subpoint (if any) it falls under
+- For point_index: identify which sermon point this scripture reference falls under based on its position in the document. Use 0 for the first point, 1 for the second point, 2 for the third point, and so on. If a reference appears before any sermon point (e.g., in the introduction or as a sermon-wide opening passage), use null. References must be associated with the point they appear under in the document — not the point that quotes them earliest or shares a theme. Preserve the original document order.
+- For subpoint_index: if the reference appears under a specific subpoint of its point, use that subpoint's index within the point (0 for the first subpoint, 1 for the second, and so on). If the reference sits directly under the main point (not under any subpoint), use null. If point_index is null, subpoint_index must also be null.
 
 CANONICAL BOOK NAMES — always normalize extracted book names to one of these exact strings:
 Genesis, Exodus, Leviticus, Numbers, Deuteronomy, Joshua, Judges, Ruth, 1 Samuel, 2 Samuel, 1 Kings, 2 Kings, 1 Chronicles, 2 Chronicles, Ezra, Nehemiah, Esther, Job, Psalms, Proverbs, Ecclesiastes, Song of Solomon, Isaiah, Jeremiah, Lamentations, Ezekiel, Daniel, Hosea, Joel, Amos, Obadiah, Jonah, Micah, Nahum, Habakkuk, Zephaniah, Haggai, Zechariah, Malachi, Matthew, Mark, Luke, John, Acts, Romans, 1 Corinthians, 2 Corinthians, Galatians, Ephesians, Philippians, Colossians, 1 Thessalonians, 2 Thessalonians, 1 Timothy, 2 Timothy, Titus, Philemon, Hebrews, James, 1 Peter, 2 Peter, 1 John, 2 John, 3 John, Jude, Revelation
 
-RETURN THIS EXACT JSON STRUCTURE:
-{
-  "title": "string",
-  "series": "string or null",
-  "points": [
-    {
-      "title": "string — the heading of this sermon point exactly as written",
-      "summary": "string — 1 to 2 sentence summary of the content under this point"
-    }
-  ],
-  "scripture_references": [
-    {
-      "raw_text": "string — exactly as it appeared in the manuscript",
-      "book": "string — canonical book name from the list above",
-      "chapter": integer,
-      "start_verse": integer,
-      "end_verse": integer or null,
-      "point_index": integer or null
-    }
-  ]
-}
+Report your result by calling the save_sermon_structure tool exactly once with the extracted data.`;
 
-NOW PARSE THE FOLLOWING MANUSCRIPT AND RETURN ONLY THE JSON OBJECT:
+const PDF_DOCUMENT_NOTE = "attached as a PDF file — review the actual document, including its layout and formatting";
+const HTML_DOCUMENT_NOTE = "provided below as the HTML rendering of the original Word document — heading tags, <strong>/<b>, and list nesting reflect the document's real formatting";
+const TEXT_DOCUMENT_NOTE = "provided below as plain text";
 
----
-{MANUSCRIPT_TEXT}
----`;
+// ── Tool schema (forced tool_choice guarantees schema-shaped output) ───────────
+
+const SERMON_TOOL = {
+  name: "save_sermon_structure",
+  description:
+    "Save the structured sermon data extracted from the document. Must be called exactly once with the complete extraction result.",
+  input_schema: {
+    type: "object",
+    properties: {
+      title: { type: "string" },
+      series: { type: ["string", "null"] },
+      points: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            title: { type: "string" },
+            summary: { type: "string" },
+            subpoints: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: { title: { type: "string" } },
+                required: ["title"],
+              },
+            },
+          },
+          required: ["title", "summary", "subpoints"],
+        },
+      },
+      scripture_references: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            raw_text: { type: "string" },
+            book: { type: "string" },
+            chapter: { type: "integer" },
+            start_verse: { type: "integer" },
+            end_verse: { type: ["integer", "null"] },
+            point_index: { type: ["integer", "null"] },
+            subpoint_index: { type: ["integer", "null"] },
+          },
+          required: [
+            "raw_text",
+            "book",
+            "chapter",
+            "start_verse",
+            "end_verse",
+            "point_index",
+            "subpoint_index",
+          ],
+        },
+      },
+    },
+    required: ["title", "series", "points", "scripture_references"],
+  },
+};
 
 // ── AWS Signature V4 signing ───────────────────────────────────────────────────
 
@@ -215,25 +276,14 @@ async function buildBedrockHeaders(
   };
 }
 
-// ── JSON helpers (unchanged) ───────────────────────────────────────────────────
-
-function extractFirstJsonObject(text: string): string | null {
-  const trimmed = text.trim();
-  if (trimmed.startsWith("{")) return trimmed;
-  const firstBrace = trimmed.indexOf("{");
-  const lastBrace = trimmed.lastIndexOf("}");
-  if (firstBrace >= 0 && lastBrace > firstBrace) {
-    return trimmed.slice(firstBrace, lastBrace + 1);
-  }
-  return null;
-}
+// ── Shape validation (backstop behind the tool schema) ────────────────────────
 
 function validateShape(value: unknown): ParsedManuscript {
   if (!value || typeof value !== "object")
     throw new Error("Parser returned non-object");
   const v = value as any;
   if (typeof v.title !== "string") throw new Error("Parser returned no title");
-  if (!(v.series === null || typeof v.series === "string"))
+  if (!(v.series === null || v.series === undefined || typeof v.series === "string"))
     throw new Error("Parser series invalid");
   if (!Array.isArray(v.points)) throw new Error("Parser points invalid");
   if (!Array.isArray(v.scripture_references))
@@ -244,6 +294,12 @@ function validateShape(value: unknown): ParsedManuscript {
     .map((p: any) => ({
       title: String(p.title || "").trim(),
       summary: typeof p.summary === "string" ? p.summary.trim() : "",
+      subpoints: Array.isArray(p.subpoints)
+        ? p.subpoints
+            .filter((s: any) => s && typeof s.title === "string")
+            .map((s: any) => ({ title: String(s.title).trim() }))
+            .filter((s: ParsedSubpoint) => s.title.length > 0)
+        : [],
     }))
     .filter((p: ParsedPoint) => p.title.length > 0);
 
@@ -271,6 +327,10 @@ function validateShape(value: unknown): ParsedManuscript {
         Number.isInteger(r.point_index) && r.point_index >= 0
           ? Number(r.point_index)
           : null,
+      subpoint_index:
+        Number.isInteger(r.subpoint_index) && r.subpoint_index >= 0
+          ? Number(r.subpoint_index)
+          : null,
     }));
 
   return {
@@ -281,10 +341,46 @@ function validateShape(value: unknown): ParsedManuscript {
   };
 }
 
-// ── Main exported function (signature unchanged — index.ts needs no changes) ───
+// ── Message construction ───────────────────────────────────────────────────────
+
+function buildMessageContent(input: ParserInput): unknown[] {
+  if (input.kind === "pdf") {
+    return [
+      {
+        type: "document",
+        source: {
+          type: "base64",
+          media_type: "application/pdf",
+          data: input.base64,
+        },
+      },
+      { type: "text", text: PROMPT.replace("{DOCUMENT_NOTE}", PDF_DOCUMENT_NOTE) },
+    ];
+  }
+  if (input.kind === "html") {
+    return [
+      {
+        type: "text",
+        text:
+          PROMPT.replace("{DOCUMENT_NOTE}", HTML_DOCUMENT_NOTE) +
+          `\n\nDOCUMENT (HTML rendering):\n---\n${input.html}\n---`,
+      },
+    ];
+  }
+  return [
+    {
+      type: "text",
+      text:
+        PROMPT.replace("{DOCUMENT_NOTE}", TEXT_DOCUMENT_NOTE) +
+        `\n\nDOCUMENT (plain text):\n---\n${input.text}\n---`,
+    },
+  ];
+}
+
+// ── Main exported function ─────────────────────────────────────────────────────
 
 export async function parseManuscriptWithClaude(
-  manuscriptText: string,
+  input: ParserInput,
 ): Promise<ClaudeParseResult> {
   // Read AWS credentials from Supabase Edge Function secrets
   const accessKeyId = Deno.env.get("AWS_ACCESS_KEY_ID") ?? "";
@@ -295,8 +391,6 @@ export async function parseManuscriptWithClaude(
     throw new Error("AWS_ACCESS_KEY_ID or AWS_SECRET_ACCESS_KEY is not configured");
   }
 
-  const filledPrompt = PROMPT.replace("{MANUSCRIPT_TEXT}", manuscriptText);
-
   const encodedModelId = encodeURIComponent(BEDROCK_MODEL_ID);
   const path = `/model/${encodedModelId}/invoke`;
   const endpoint = `https://bedrock-runtime.${region}.amazonaws.com${path}`;
@@ -305,7 +399,9 @@ export async function parseManuscriptWithClaude(
     anthropic_version: "bedrock-2023-05-31",
     max_tokens: MAX_TOKENS,
     temperature: 0,
-    messages: [{ role: "user", content: filledPrompt }],
+    tools: [SERMON_TOOL],
+    tool_choice: { type: "tool", name: "save_sermon_structure" },
+    messages: [{ role: "user", content: buildMessageContent(input) }],
   });
 
   const headers = await buildBedrockHeaders(
@@ -334,23 +430,18 @@ export async function parseManuscriptWithClaude(
   const outputTokens = payload?.usage?.output_tokens || 0;
   const tokens_used = inputTokens + outputTokens;
 
-  const contentBlock = Array.isArray(payload?.content)
-    ? payload.content[0]
-    : null;
-  const rawText: string =
-    typeof contentBlock?.text === "string" ? contentBlock.text : "";
-
-  const jsonSlice = extractFirstJsonObject(rawText);
-  if (!jsonSlice) throw new Error("Parser returned no JSON");
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(jsonSlice);
-  } catch (err) {
+  if (payload?.stop_reason === "max_tokens") {
     throw new Error(
-      `Parser returned invalid JSON: ${(err as Error).message}`,
+      "Parser output truncated: the document produced more structured data than fits in one response",
     );
   }
 
-  return { data: validateShape(parsed), tokens_used };
+  const toolBlock = Array.isArray(payload?.content)
+    ? payload.content.find((block: any) => block?.type === "tool_use")
+    : null;
+  if (!toolBlock || typeof toolBlock.input !== "object") {
+    throw new Error("Parser returned no tool call result");
+  }
+
+  return { data: validateShape(toolBlock.input), tokens_used };
 }

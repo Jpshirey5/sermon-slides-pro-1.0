@@ -1,14 +1,18 @@
-// QUICK BUILD ADDITION — Edge Function that parses a sermon manuscript, validates references,
-// and inserts a sermon row whose slides.formData is byte-compatible with the structured creator.
+// QUICK BUILD ADDITION — Edge Function that parses a sermon document (native PDF or
+// structure-preserving HTML from .docx), validates references, and returns slides.formData
+// byte-compatible with the structured creator.
 
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { checkMonthlyLimit } from "./usageLimiter.ts";
-import { parseManuscriptWithClaude } from "./claudeParser.ts";
+import { parseManuscriptWithClaude, type ParserInput } from "./claudeParser.ts";
 import { validateReferences } from "./scriptureValidator.ts";
 import { buildSermon } from "./sermonBuilder.ts";
+import { extractRefsFromText, mergeRefs, stripHtml } from "./refExtractor.ts";
 
 const MAX_MANUSCRIPT_CHARS = 200_000;
+const MAX_HTML_CHARS = 400_000;
+const MAX_PDF_BYTES = 10 * 1024 * 1024;
 
 interface ResolvedAccount {
   accountId: string;
@@ -104,29 +108,65 @@ serve(async (req) => {
     logContext.userId = userId;
 
     const body = await req.json().catch(() => ({}));
-    const manuscriptText: string = typeof body?.manuscript_text === "string" ? body.manuscript_text : "";
     const fileName: string = typeof body?.file_name === "string" ? body.file_name : "manuscript";
     const fileSizeBytes: number = Number.isFinite(body?.file_size_bytes) ? Number(body.file_size_bytes) : 0;
     const translation: string = typeof body?.translation === "string" && body.translation.trim() ? body.translation.trim() : "KJV";
     const requestedCampusId: string | null = typeof body?.campus_id === "string" && body.campus_id ? body.campus_id : null;
     logContext = { ...logContext, fileName, fileSizeBytes, translation };
 
-    if (!manuscriptText.trim()) {
+    // Three accepted document payloads: native PDF (base64), HTML rendering of a
+    // .docx (structure-preserving), or plain text (legacy clients).
+    const fileBase64: string = typeof body?.file_base64 === "string" ? body.file_base64 : "";
+    const manuscriptHtml: string = typeof body?.manuscript_html === "string" ? body.manuscript_html : "";
+    const manuscriptText: string = typeof body?.manuscript_text === "string" ? body.manuscript_text : "";
+
+    let parserInput: ParserInput;
+    let backstopText: string | null = null;
+    if (fileBase64) {
+      const approxBytes = Math.floor(fileBase64.length * 0.75);
+      if (approxBytes > MAX_PDF_BYTES) {
+        return json(
+          {
+            success: false,
+            error_code: "FILE_TOO_LARGE",
+            error_message: "Your file is too large. Please upload a file under 10MB.",
+          },
+          400,
+        );
+      }
+      parserInput = { kind: "pdf", base64: fileBase64 };
+    } else if (manuscriptHtml.trim()) {
+      if (manuscriptHtml.length > MAX_HTML_CHARS) {
+        return json(
+          {
+            success: false,
+            error_code: "FILE_TOO_LARGE",
+            error_message: "Your manuscript is too long. Please trim it and upload again.",
+          },
+          400,
+        );
+      }
+      parserInput = { kind: "html", html: manuscriptHtml };
+      backstopText = stripHtml(manuscriptHtml);
+    } else if (manuscriptText.trim()) {
+      if (manuscriptText.length > MAX_MANUSCRIPT_CHARS) {
+        return json(
+          {
+            success: false,
+            error_code: "FILE_TOO_LARGE",
+            error_message: "Your manuscript is too long. Please trim it to under 200,000 characters.",
+          },
+          400,
+        );
+      }
+      parserInput = { kind: "text", text: manuscriptText };
+      backstopText = manuscriptText;
+    } else {
       return json(
         {
           success: false,
           error_code: "INVALID_FILE",
           error_message: "We couldn't read your file. Try saving it in a different format and uploading again.",
-        },
-        400,
-      );
-    }
-    if (manuscriptText.length > MAX_MANUSCRIPT_CHARS) {
-      return json(
-        {
-          success: false,
-          error_code: "FILE_TOO_LARGE",
-          error_message: "Your manuscript is too long. Please trim it to under 200,000 characters.",
         },
         400,
       );
@@ -152,12 +192,21 @@ serve(async (req) => {
       );
     }
 
-    const parsedResult = await parseManuscriptWithClaude(manuscriptText);
+    const parsedResult = await parseManuscriptWithClaude(parserInput);
+
+    // Deterministic backstop: regex-extract references from the document text and
+    // union them with the model's refs so a citation is never silently absent.
+    // (PDF inputs have no client-extracted text layer, so the model is authoritative there.)
+    const refs = backstopText
+      ? mergeRefs(parsedResult.data.scripture_references, extractRefsFromText(backstopText))
+      : parsedResult.data.scripture_references;
+
     const validation = await validateReferences({
-      refs: parsedResult.data.scripture_references,
+      refs,
       translation,
       supabaseUrl,
       anonKey,
+      authHeader,
     });
 
     const built = buildSermon({
@@ -193,7 +242,7 @@ serve(async (req) => {
       tokens_used: parsedResult.tokens_used,
       parsing_duration_ms: parsingDurationMs,
       status: partial ? "partial" : "success",
-      error_message: null,
+      error_message: partial ? validation.warnings.join("; ").slice(0, 500) : null,
       translation,
       points_detected: built.pointsCount,
       verses_detected: built.versesCount,
@@ -234,7 +283,7 @@ serve(async (req) => {
     } catch {
       // ignore log failure
     }
-    const looksLikeParseError = /Parser|Claude|JSON/i.test(message);
+    const looksLikeParseError = /Parser|Claude|JSON|Bedrock/i.test(message);
     return json(
       {
         success: false,
