@@ -16,7 +16,7 @@ export const TIER_LIMITS: Record<string, number> = {
 };
 
 export const QUICK_BUILD_STEPS = [
-  "Uploading your manuscript...",
+  "Uploading your outline...",
   "Reading your document...",
   "Parsing sermon structure...",
   "Validating scripture references...",

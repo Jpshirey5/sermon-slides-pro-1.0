@@ -236,7 +236,7 @@ serve(async (req) => {
     });
 
     const currentSubscription = subscriptions.data.find((sub) =>
-      sub.status === "active" || sub.status === "trialing"
+      sub.status === "active" || sub.status === "trialing" || sub.status === "past_due"
     );
     const hasActiveSub = Boolean(currentSubscription);
     let productId = null;

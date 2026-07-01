@@ -141,7 +141,7 @@ const QuickBuildUploadCard = ({ mode, children }: QuickBuildUploadCardProps) => 
             <UploadCloud className="w-6 h-6 text-primary-foreground" />
           </div>
           <h2 className="font-serif text-xl font-semibold text-foreground mb-2">
-            Upload your sermon manuscript
+            Upload your sermon outline
           </h2>
           <p className="text-muted-foreground text-sm mb-5 max-w-xl">
             We&apos;ll pull out the title, series, points, and scripture references to build out your sermon for you. Then drop you
@@ -161,11 +161,11 @@ const QuickBuildUploadCard = ({ mode, children }: QuickBuildUploadCardProps) => 
                 ? "border-primary bg-primary/10"
                 : "border-border hover:border-primary hover:bg-primary/5",
             ].join(" ")}
-            aria-label="Upload sermon manuscript"
+            aria-label="Upload sermon outline"
           >
             <UploadCloud className={`mx-auto h-10 w-10 ${dragActive ? "text-primary" : "text-muted-foreground"}`} />
             <p className="mt-3 text-sm font-medium text-foreground">
-              {dragActive ? "Drop to upload" : "Drag a manuscript here, or click to choose"}
+              {dragActive ? "Drop to upload" : "Drag an outline here, or click to choose"}
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
               .docx or .pdf · up to {Math.floor(MAX_FILE_SIZE_BYTES / 1024 / 1024)}MB
