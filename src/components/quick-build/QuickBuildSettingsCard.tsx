@@ -15,7 +15,7 @@ const QuickBuildSettingsCard = () => {
   const Icon = isQuickBuild ? Sparkles : FileText;
   const label = isQuickBuild ? "Quick Build" : "Structured Builder";
   const description = isQuickBuild
-    ? "Upload your sermon manuscript or outline. We extract your points and scripture automatically."
+    ? "Upload your sermon outline. We extract your points and scripture automatically."
     : "Build your sermon point by point, entering each section manually. Full control over structure.";
 
   return (
@@ -38,7 +38,7 @@ const QuickBuildSettingsCard = () => {
             section by hand.
           </p>
           <p>
-            <span className="font-medium text-foreground">Quick Build</span> — upload a manuscript
+            <span className="font-medium text-foreground">Quick Build</span> — upload an outline
             and let us extract the structure.
           </p>
         </div>

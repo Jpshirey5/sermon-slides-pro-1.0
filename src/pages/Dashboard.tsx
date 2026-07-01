@@ -17,6 +17,7 @@ import {
   Clock,
   User,
   Sparkles,
+  FileText,
   Search,
   X,
   Download,
@@ -122,6 +123,8 @@ const Dashboard = () => {
   const { mode: userSermonCreationMode } = useSermonCreationMode();
   // QUICK BUILD ADDITION — onboarding modal state (NULL preference → must choose before the tour)
   const [quickBuildModeSelectorOpen, setQuickBuildModeSelectorOpen] = useState(false);
+  // QUICK BUILD ADDITION — separate state for the user-triggered "change mode" modal
+  const [changeModeSelectorOpen, setChangeModeSelectorOpen] = useState(false);
   const [presentations, setPresentations] = useState<DashboardPresentation[]>([]);
   const [selectedTimeSavedMonth, setSelectedTimeSavedMonth] = useState(getLocalMonthKey);
   const [timeSavedSummary, setTimeSavedSummary] = useState({ totalSeconds: 0, weekSeconds: 0 });
@@ -1063,6 +1066,18 @@ const Dashboard = () => {
             {/* QUICK BUILD ADDITION — close wrapper */}
             </QuickBuildUploadCard>
 
+            {/* QUICK BUILD ADDITION — inline trigger to switch creation method without leaving the dashboard */}
+            <div className="max-w-2xl mx-auto -mt-8 mb-14 text-center">
+              <Button variant="ghost" size="sm" onClick={() => setChangeModeSelectorOpen(true)}>
+                {userSermonCreationMode === "quick_build" ? (
+                  <FileText className="w-4 h-4" />
+                ) : (
+                  <Sparkles className="w-4 h-4" />
+                )}
+                Switch to {userSermonCreationMode === "quick_build" ? "Structured Builder" : "Quick Build"}
+              </Button>
+            </div>
+
             {/* Presentations List */}
             <section data-tour-id="dashboard-presentations-section">
               <div className="flex flex-col gap-4 mb-6">
@@ -1311,6 +1326,12 @@ const Dashboard = () => {
         open={quickBuildModeSelectorOpen}
         onOpenChange={setQuickBuildModeSelectorOpen}
         variant="onboarding"
+      />
+      {/* QUICK BUILD ADDITION — user-triggered "change mode" modal from the inline dashboard toggle */}
+      <QuickBuildModeSelector
+        open={changeModeSelectorOpen}
+        onOpenChange={setChangeModeSelectorOpen}
+        variant="change"
       />
       <Dialog open={showSupportDialog} onOpenChange={setShowSupportDialog}>
         <DialogContent className="sm:max-w-lg">

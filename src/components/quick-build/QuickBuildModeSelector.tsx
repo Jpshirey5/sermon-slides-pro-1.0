@@ -103,7 +103,7 @@ const QuickBuildModeSelector = ({
             </div>
             <h3 className="font-serif text-lg font-semibold text-foreground">Quick Build</h3>
             <p className="mt-1 text-sm text-muted-foreground">
-              Upload your sermon manuscript or outline. We&apos;ll extract your points and scripture automatically.
+              Upload your sermon outline. We&apos;ll extract your points and scripture automatically.
             </p>
             {saving === "quick_build" && (
               <p className="mt-3 inline-flex items-center text-xs text-primary">
