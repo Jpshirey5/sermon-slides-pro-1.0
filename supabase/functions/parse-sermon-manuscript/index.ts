@@ -5,7 +5,12 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { checkMonthlyLimit } from "./usageLimiter.ts";
-import { parseManuscriptWithClaude, type ParserInput } from "./claudeParser.ts";
+import {
+  BEDROCK_MODEL_ID,
+  PROMPT_VERSION,
+  parseManuscriptWithClaude,
+  type ParserInput,
+} from "./claudeParser.ts";
 import { validateReferences } from "./scriptureValidator.ts";
 import { buildSermon } from "./sermonBuilder.ts";
 import { extractRefsFromText, mergeRefs, stripHtml } from "./refExtractor.ts";
@@ -192,7 +197,21 @@ serve(async (req) => {
       );
     }
 
-    const parsedResult = await parseManuscriptWithClaude(parserInput);
+    // Learning loop: per-user format hints distilled from this pastor's previous
+    // uploads and corrections. The prompt subordinates hints to the document itself.
+    let userFormatHints = "";
+    try {
+      const { data: profileRow } = await supabaseAdmin
+        .from("quick_build_user_profiles")
+        .select("profile_text")
+        .eq("user_id", userId)
+        .maybeSingle();
+      userFormatHints = profileRow?.profile_text || "";
+    } catch {
+      // hints are an optimization — never block a parse on them
+    }
+
+    const parsedResult = await parseManuscriptWithClaude(parserInput, { userFormatHints });
 
     // Deterministic backstop: regex-extract references from the document text and
     // union them with the model's refs so a citation is never silently absent.
@@ -233,22 +252,57 @@ serve(async (req) => {
 
     const parsingDurationMs = Date.now() - startedAt;
     const partial = validation.warnings.length > 0;
-    await supabaseAdmin.from("quick_build_usage").insert({
-      user_id: userId,
-      account_id: accountId,
-      sermon_id: null,
-      file_name: fileName,
-      file_size_bytes: fileSizeBytes,
-      tokens_used: parsedResult.tokens_used,
-      parsing_duration_ms: parsingDurationMs,
-      status: partial ? "partial" : "success",
-      error_message: partial ? validation.warnings.join("; ").slice(0, 500) : null,
-      translation,
-      points_detected: built.pointsCount,
-      verses_detected: built.versesCount,
-    });
+    const { data: usageRow } = await supabaseAdmin
+      .from("quick_build_usage")
+      .insert({
+        user_id: userId,
+        account_id: accountId,
+        sermon_id: null,
+        file_name: fileName,
+        file_size_bytes: fileSizeBytes,
+        tokens_used: parsedResult.tokens_used,
+        parsing_duration_ms: parsingDurationMs,
+        status: partial ? "partial" : "success",
+        error_message: partial ? validation.warnings.join("; ").slice(0, 500) : null,
+        translation,
+        points_detected: built.pointsCount,
+        verses_detected: built.versesCount,
+        prompt_version: parsedResult.prompt_version,
+        model_id: parsedResult.model_id,
+      })
+      .select("id")
+      .single();
+
+    // Learning loop: persist the extracted structure (never the manuscript itself)
+    // so the eventual saved sermon can be diffed against what the parser produced.
+    // Non-fatal — a successful parse must reach the user even if this insert fails.
+    let parseId: string | null = null;
+    try {
+      const { data: parseRow } = await supabaseAdmin
+        .from("quick_build_parses")
+        .insert({
+          usage_id: usageRow?.id ?? null,
+          user_id: userId,
+          account_id: accountId,
+          prompt_version: parsedResult.prompt_version,
+          model_id: parsedResult.model_id,
+          document_analysis: parsedResult.analysis,
+          parsed_structure: {
+            title: built.title,
+            series: built.series,
+            points: parsedResult.data.points,
+            scripture_references: refs,
+          },
+        })
+        .select("id")
+        .single();
+      parseId = parseRow?.id ?? null;
+    } catch {
+      // ignore — learning loop only
+    }
 
     return json({
+      parse_id: parseId,
       success: true,
       sermon_id: built.sermonId,
       title: built.title,
@@ -278,6 +332,8 @@ serve(async (req) => {
           translation: logContext.translation || null,
           points_detected: null,
           verses_detected: null,
+          prompt_version: PROMPT_VERSION,
+          model_id: BEDROCK_MODEL_ID,
         });
       }
     } catch {

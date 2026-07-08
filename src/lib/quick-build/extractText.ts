@@ -34,7 +34,13 @@ function fileToBase64(file: File): Promise<string> {
 async function extractDocxHtml(file: File): Promise<string> {
   const mammoth = await import("mammoth/mammoth.browser");
   const buffer = await file.arrayBuffer();
-  const result = await (mammoth as any).convertToHtml({ arrayBuffer: buffer });
+  // styleMap: mammoth drops underline by default, but pastors often mark sermon
+  // points by underlining. Text color is never emitted by mammoth and cannot be
+  // recovered — color-based conventions only survive on the PDF path.
+  const result = await (mammoth as any).convertToHtml(
+    { arrayBuffer: buffer },
+    { styleMap: ["u => u"] },
+  );
   const html = String(result?.value || "").trim();
   if (!html) throw new Error("No content could be read from the document.");
   return html;
