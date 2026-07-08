@@ -13,6 +13,8 @@ export type QuickBuildErrorCode =
 
 export interface QuickBuildSuccessResponse {
   success: true;
+  /** quick_build_parses row id — threaded to the save step to close the learning loop. */
+  parse_id?: string | null;
   sermon_id: string;
   title: string;
   series: string | null;

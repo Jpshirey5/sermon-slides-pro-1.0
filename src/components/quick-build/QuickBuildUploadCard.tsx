@@ -56,7 +56,7 @@ const QuickBuildUploadCard = ({ mode, children }: QuickBuildUploadCardProps) => 
         data: r.form_data,
       };
       navigate(`/dashboard/create/review/${r.sermon_id}`, {
-        state: { pendingPresentation },
+        state: { pendingPresentation, quickBuildParseId: r.parse_id ?? null },
       });
       setDialogOpen(false);
       reset();

@@ -16,6 +16,7 @@ import { getPresentation, savePresentationWithSlides, type SermonPresentation } 
 import { generateSlidesFromPresentation } from "@/lib/slide-generation";
 import type { SlideData } from "@/lib/export-pptx";
 import { logError, trackEvent } from "@/lib/monitoring";
+import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { readProductTourState, setProductTourStage } from "@/lib/product-tour";
 import { toast } from "sonner";
@@ -135,6 +136,9 @@ const SermonReview = () => {
   const draggedBlockIdRef = useRef<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  // Learning loop: quick_build_parses row id carried from the upload, so the saved
+  // sermon can be linked back to the original parse for accuracy diffing.
+  const quickBuildParseIdRef = useRef<string | null>(null);
 
   const backToCreatorPath = isDashboardFlow ? "/dashboard/create" : "/create";
   const reviewTourSteps = useMemo<ProductTourStep[]>(() => [
@@ -168,7 +172,12 @@ const SermonReview = () => {
 
       setLoading(true);
       try {
-        const pending = (location.state as { pendingPresentation?: SermonPresentation } | null)?.pendingPresentation;
+        const navState = location.state as {
+          pendingPresentation?: SermonPresentation;
+          quickBuildParseId?: string | null;
+        } | null;
+        const pending = navState?.pendingPresentation;
+        quickBuildParseIdRef.current = navState?.quickBuildParseId ?? null;
         const loadedPresentation =
           pending && pending.id === id ? pending : await getPresentation(id);
         if (cancelled) return;
@@ -303,6 +312,41 @@ const SermonReview = () => {
 
       if (!savedId) {
         throw new Error("Final slide save returned no id");
+      }
+
+      // Learning loop: link the saved sermon back to its Quick Build parse and send
+      // the final reviewed structure for accuracy diffing. Fire-and-forget — this
+      // must never delay or block navigation to the editor.
+      if (quickBuildParseIdRef.current) {
+        const finalStructure = {
+          title: presentation.title,
+          series: presentation.series ?? null,
+          blocks: contentBlocks.map((block) =>
+            block.type === "scripture"
+              ? {
+                  type: "scripture" as const,
+                  references: [
+                    ...new Set(
+                      block.slides.map((slide) =>
+                        stripTranslation(slide.content.reference || "").trim(),
+                      ),
+                    ),
+                  ].filter(Boolean),
+                }
+              : { type: "point" as const, title: block.title },
+          ),
+        };
+        void supabase.functions
+          .invoke("finalize-quick-build-parse", {
+            body: {
+              parse_id: quickBuildParseIdRef.current,
+              sermon_id: savedId,
+              final_structure: finalStructure,
+            },
+          })
+          .catch((error) => {
+            logError(error, { scope: "quick_build_finalize", sermonId: savedId });
+          });
       }
 
       if (user) {

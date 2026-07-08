@@ -9,6 +9,16 @@ const clean = (value: unknown) => String(value ?? "").trim();
 const normalizeEmail = (value: unknown) => clean(value).toLowerCase();
 const dateKey = (date: Date) => date.toISOString().slice(0, 10);
 
+export type QuickBuildAccuracyRow = {
+  promptVersion: string;
+  uploads: { success: number; partial: number; failed: number };
+  parses: number;
+  finalized: number;
+  avgPointsAdded: number;
+  avgPointsRemoved: number;
+  avgVerseMoves: number;
+};
+
 export type UsageMetrics = {
   totalPresentations: number;
   presentationsInWindow: number;
@@ -16,6 +26,7 @@ export type UsageMetrics = {
   activeOrgs: number;
   exports: { started: number; succeeded: number };
   quickBuildUploads: { success: number; partial: number; failed: number };
+  quickBuildAccuracy: QuickBuildAccuracyRow[];
   dailyPresentations: { date: string; presentations: number }[];
   notes: { exports: string };
 };
@@ -94,13 +105,26 @@ export const computeUsageMetrics = async (options: {
   const quickBuildQuery = applyExcluded(
     supabaseAdmin
       .from("quick_build_usage")
-      .select("status")
+      .select("status, prompt_version")
       .gte("uploaded_at", startIso)
       .lte("uploaded_at", endIso),
   );
+  // Learning-loop parse rows: how much users corrected each parse, by prompt version.
+  const parsesQuery = applyExcluded(
+    supabaseAdmin
+      .from("quick_build_parses")
+      .select("prompt_version, structure_diff, finalized_at")
+      .gte("created_at", startIso)
+      .lte("created_at", endIso),
+  );
 
-  const [{ count: totalPresentations }, { data: windowRows }, { data: exportRows }, { data: quickBuildRows }] =
-    await Promise.all([totalQuery, windowQuery, exportsQuery, quickBuildQuery]);
+  const [
+    { count: totalPresentations },
+    { data: windowRows },
+    { data: exportRows },
+    { data: quickBuildRows },
+    { data: parseRows },
+  ] = await Promise.all([totalQuery, windowQuery, exportsQuery, quickBuildQuery, parsesQuery]);
 
   const buildModeSplit = { quickBuild: 0, structuredBuilder: 0, unknown: 0 };
   const activeOrgIds = new Set<string>();
@@ -122,11 +146,75 @@ export const computeUsageMetrics = async (options: {
   }
 
   const quickBuildUploads = { success: 0, partial: 0, failed: 0 };
-  for (const row of quickBuildRows || []) {
-    if (row.status === "success") quickBuildUploads.success += 1;
-    else if (row.status === "partial") quickBuildUploads.partial += 1;
-    else if (row.status === "failed") quickBuildUploads.failed += 1;
+  const versionKey = (value: unknown) => clean(value) || "v1 (pre-tracking)";
+  const accuracyByVersion = new Map<
+    string,
+    {
+      uploads: { success: number; partial: number; failed: number };
+      parses: number;
+      finalized: number;
+      pointsAdded: number;
+      pointsRemoved: number;
+      verseMoves: number;
+    }
+  >();
+  const accuracyRow = (version: string) => {
+    let row = accuracyByVersion.get(version);
+    if (!row) {
+      row = {
+        uploads: { success: 0, partial: 0, failed: 0 },
+        parses: 0,
+        finalized: 0,
+        pointsAdded: 0,
+        pointsRemoved: 0,
+        verseMoves: 0,
+      };
+      accuracyByVersion.set(version, row);
+    }
+    return row;
+  };
+
+  for (const row of (quickBuildRows || []) as any[]) {
+    const uploads = accuracyRow(versionKey(row.prompt_version)).uploads;
+    if (row.status === "success") {
+      quickBuildUploads.success += 1;
+      uploads.success += 1;
+    } else if (row.status === "partial") {
+      quickBuildUploads.partial += 1;
+      uploads.partial += 1;
+    } else if (row.status === "failed") {
+      quickBuildUploads.failed += 1;
+      uploads.failed += 1;
+    }
   }
+
+  for (const row of (parseRows || []) as any[]) {
+    const acc = accuracyRow(versionKey(row.prompt_version));
+    acc.parses += 1;
+    if (!row.finalized_at) continue;
+    acc.finalized += 1;
+    const diff = (row.structure_diff || {}) as {
+      points_added?: unknown[];
+      points_removed?: unknown[];
+      verses_moved?: unknown[];
+    };
+    acc.pointsAdded += Array.isArray(diff.points_added) ? diff.points_added.length : 0;
+    acc.pointsRemoved += Array.isArray(diff.points_removed) ? diff.points_removed.length : 0;
+    acc.verseMoves += Array.isArray(diff.verses_moved) ? diff.verses_moved.length : 0;
+  }
+
+  const round2 = (value: number) => Math.round(value * 100) / 100;
+  const quickBuildAccuracy: QuickBuildAccuracyRow[] = Array.from(accuracyByVersion.entries())
+    .map(([promptVersion, acc]) => ({
+      promptVersion,
+      uploads: acc.uploads,
+      parses: acc.parses,
+      finalized: acc.finalized,
+      avgPointsAdded: acc.finalized ? round2(acc.pointsAdded / acc.finalized) : 0,
+      avgPointsRemoved: acc.finalized ? round2(acc.pointsRemoved / acc.finalized) : 0,
+      avgVerseMoves: acc.finalized ? round2(acc.verseMoves / acc.finalized) : 0,
+    }))
+    .sort((a, b) => a.promptVersion.localeCompare(b.promptVersion));
 
   const dailyPresentations = Array.from(dailyMap.entries())
     .map(([date, presentations]) => ({ date, presentations }))
@@ -139,6 +227,7 @@ export const computeUsageMetrics = async (options: {
     activeOrgs: activeOrgIds.size,
     exports,
     quickBuildUploads,
+    quickBuildAccuracy,
     dailyPresentations,
     notes: {
       exports:

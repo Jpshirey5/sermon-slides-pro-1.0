@@ -192,6 +192,40 @@ const AdminReports = () => {
                 </div>
               </div>
             </div>
+            {(usage?.quickBuildAccuracy?.length ?? 0) > 0 && (
+              <div className="rounded-2xl glass-panel p-5">
+                <h3 className="font-medium mb-1">Quick Build accuracy by prompt version</h3>
+                <p className="text-xs text-muted-foreground mb-3">
+                  Avg corrections are per finalized parse — points the user added/removed and verses they moved in Sermon Review. Lower is better.
+                </p>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-muted-foreground">
+                        <th className="py-1.5 pr-4 font-normal">Prompt version</th>
+                        <th className="py-1.5 pr-4 font-normal">Uploads (S/P/F)</th>
+                        <th className="py-1.5 pr-4 font-normal">Finalized</th>
+                        <th className="py-1.5 pr-4 font-normal">Avg points added</th>
+                        <th className="py-1.5 pr-4 font-normal">Avg points removed</th>
+                        <th className="py-1.5 font-normal">Avg verse moves</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {usage.quickBuildAccuracy.map((row: any) => (
+                        <tr key={row.promptVersion} className="border-t border-border/60">
+                          <td className="py-1.5 pr-4 font-medium">{row.promptVersion}</td>
+                          <td className="py-1.5 pr-4">{row.uploads.success} / {row.uploads.partial} / {row.uploads.failed}</td>
+                          <td className="py-1.5 pr-4">{row.finalized} of {row.parses}</td>
+                          <td className="py-1.5 pr-4">{row.avgPointsAdded}</td>
+                          <td className="py-1.5 pr-4">{row.avgPointsRemoved}</td>
+                          <td className="py-1.5">{row.avgVerseMoves}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
             {usage?.notes?.exports && <p className="text-xs text-muted-foreground">{usage.notes.exports}</p>}
           </section>
         </>

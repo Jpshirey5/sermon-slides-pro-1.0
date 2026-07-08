@@ -3,9 +3,17 @@
 // HTML for .docx) and returns its result through a forced tool call, so the output is
 // schema-shaped by the API rather than free-form JSON text.
 
+import { invokeBedrockForcedTool } from "../_shared/bedrock.ts";
+
 // ── Bedrock config ─────────────────────────────────────────────────────────────
-const BEDROCK_MODEL_ID = "us.anthropic.claude-sonnet-4-6";
-const MAX_TOKENS = 8192;
+// QUICK_BUILD_MODEL_ID lets prod A/B a different model without a code deploy;
+// model_id is recorded on every quick_build_usage row so drift stays visible.
+export const BEDROCK_MODEL_ID = Deno.env.get("QUICK_BUILD_MODEL_ID") ?? "us.anthropic.claude-sonnet-4-6";
+// Analysis scratchpad fields consume output budget on top of the extraction.
+const MAX_TOKENS = 12288;
+
+// Bump on every prompt/schema iteration so accuracy is comparable across versions.
+export const PROMPT_VERSION = "v2-2026-07";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -44,24 +52,47 @@ export type ParserInput =
 export interface ClaudeParseResult {
   data: ParsedManuscript;
   tokens_used: number;
+  /** Model's own read of the document's formatting convention (scratchpad fields). */
+  analysis: Record<string, unknown> | null;
+  prompt_version: string;
+  model_id: string;
+}
+
+export interface ParseOptions {
+  /** Per-user format hints from quick_build_user_profiles (Phase 2 learning loop). */
+  userFormatHints?: string;
 }
 
 // ── Prompt ─────────────────────────────────────────────────────────────────────
 
-const PROMPT = `You are a sermon manuscript parser for a church presentation software platform. Your job is to read through and review the sermon document provided ({DOCUMENT_NOTE}) and extract structured data from it, whether it is a full manuscript or an outline.
+const PROMPT = `You are a sermon manuscript parser for a church presentation software platform. Your job is to read through and review the sermon document provided ({DOCUMENT_NOTE}) and extract structured data from it, whether it is a full manuscript, an outline, or a sermon handout.
 
-Use the document's actual structure — heading levels, bold text, numbering, indentation, and list nesting — to identify the title, series, main points, subpoints, and scripture references.
+Pastors format their sermons in many different ways. Do NOT assume one fixed format. First infer how THIS document marks its structure, then extract using the convention you identified.
+{USER_FORMAT_HINTS}
+WORK IN TWO STEPS, IN THIS ORDER:
+
+STEP 1 — ANALYZE THE DOCUMENT. Fill in the document_analysis fields FIRST, before any extraction fields:
+- point_marker_convention: how this document marks its main points (e.g., "bold numbered headings", "standalone ALL-CAPS lines", "'Big Idea:' labels", "underlined sentences", "fill-in-the-blank lines")
+- subpoint_marker_convention: how subpoints are marked, or "none"
+- verse_placement_convention: where scripture citations sit relative to points (e.g., "inline in body text", "in parentheses on the point line", "'Scripture:' labeled lines", "listed in a block at the end of each point section")
+- non_sermon_sections: any sections that are NOT sermon content (announcements, welcome, worship order, offering, prayer, speaker/stage notes, etc.); empty array if none
+- expected_point_count: how many main points the document appears to contain
+
+Within one document, main points almost always share a single marking convention. Sermons typically have 2 to 7 main points. If a candidate line does not match the convention the other points use, it is probably not a main point.
+
+STEP 2 — EXTRACT the structured data below, applying the convention you identified in STEP 1.
 
 STRICT RULES:
 1. Never fabricate sermon points, subpoints, or scripture references that do not appear in the document.
 2. Never guess at scripture references. If a passage is implied but not cited, skip it.
 3. If a scripture reference is ambiguous or clearly malformed in a way you cannot resolve, skip it entirely.
-4. If you cannot parse the document at all, call the tool with {"title":"Untitled Sermon","series":null,"points":[],"scripture_references":[]}.
+4. If you cannot parse the document at all, still fill document_analysis with your best reading, and use {"title":"Untitled Sermon","series":null,"points":[],"scripture_references":[]} for the extraction fields.
 
 EXTRACTION RULES FOR TITLE:
 - Look for the first major heading, bolded title, or clearly labeled sermon title
 - If the document starts with "Title:", "Sermon:", or "Message:" followed by text, use that text
 - If no title is found, use "Untitled Sermon"
+- The sermon title must never also appear as a sermon point
 
 EXTRACTION RULES FOR SERIES:
 - Look for "Series:", "Part of:", "Week", "Part" followed by a series name
@@ -69,8 +100,20 @@ EXTRACTION RULES FOR SERIES:
 - If no series is mentioned, return null
 
 EXTRACTION RULES FOR SERMON POINTS:
-- Sermon points are the main structural divisions of the sermon
-- They are typically numbered (1, 2, 3 or I, II, III), bolded, given heading styles, or clearly labeled as "Point 1:", "Main Point:", etc.
+- Sermon points are the main structural divisions of the sermon's teaching content
+- Recognize whatever marking convention this document actually uses, including:
+  - Numbered or lettered outlines (1, 2, 3 / I, II, III / A, B, C), heading styles, or bolded headings
+  - Standalone ALL-CAPS lines used as section headers
+  - Standalone bold or underlined sentences that function as headers
+  - Labels such as "Point 1:", "Main Point:", "Big Idea:", "Truth:", "Move 1:", "Takeaway:"
+  - Fill-in-the-blank handout lines containing blanks like "______" — extract the line as the point title and keep the blank as written; if the document also provides the filled-in answer, use the completed text instead
+- NEVER extract the following as sermon points (or as the title):
+  - Announcements, welcome/greeting, worship order or song titles, prayer, offering, benediction
+  - Illustration or story headers, block quotes, and quoted material
+  - Application/"So what?"/challenge paragraphs, unless the document labels them as a point
+  - Speaker or stage notes, dates, times, venue names, speaker names
+  - The introduction or conclusion, unless explicitly labeled as a point
+  - A scripture citation on its own line is a verse, never a point title
 - Extract the heading/title of each point, but STRIP all leading numbering and labeling so the title contains only the substantive statement.
 - Specifically strip from the start of the title:
   - Arabic numerals with separators: "1.", "1)", "1:", "1 -", "1 –", "(1)"
@@ -89,7 +132,6 @@ EXTRACTION RULES FOR SERMON POINTS:
   - "Point One — God is love" → "God is love"
   - "(2) God is love" → "God is love"
 - Write a 1 to 2 sentence summary of the content under that point
-- Do NOT extract the introduction or conclusion as sermon points unless explicitly labeled as such
 
 EXTRACTION RULES FOR SUBPOINTS:
 - Subpoints are clearly subordinate divisions nested under a main point: letter outlines ("a.", "b)", "A.", "B."), roman numerals at a deeper level ("i.", "ii."), nested/indented bullets, or deeper heading levels under a main point's heading
@@ -115,16 +157,19 @@ EXTRACTION RULES FOR SCRIPTURE REFERENCES:
 - end_verse must always be a verse within the same chapter as start_verse (cross-chapter spans are represented by the split rule above, never by an end_verse in a different chapter)
 - Do NOT extract general references like "the Psalms", "the Gospels", or "Paul's letter to the Romans" without a specific chapter and verse
 - For each valid reference, record: the raw text as it appeared, the normalized book name, the chapter number, the start verse, the end verse (null if single verse), which sermon point it belongs to, and which subpoint (if any) it falls under
-- For point_index: identify which sermon point this scripture reference falls under based on its position in the document. Use 0 for the first point, 1 for the second point, 2 for the third point, and so on. If a reference appears before any sermon point (e.g., in the introduction or as a sermon-wide opening passage), use null. References must be associated with the point they appear under in the document — not the point that quotes them earliest or shares a theme. Preserve the original document order.
+- For point_index: identify which sermon point this scripture reference falls under based on its position in the document. Use 0 for the first point, 1 for the second point, 2 for the third point, and so on. If a reference appears before any sermon point (e.g., in the introduction or as a sermon-wide opening passage), use null. References must be associated with the point they appear under in the document — not the point that quotes them earliest or shares a theme. Preserve the original document order. Apply these placement rules:
+  - References listed in a block or list at the END of a point's section belong to THAT point, not the next one
+  - References in parentheses on a point's own heading line (e.g., "God keeps His promises (Hebrews 6:13-18)") get that point's index
+  - References on labeled lines like "Scripture:", "Text:", "Passage:", or "Read:" attach to the nearest preceding point; use null if no point precedes them
 - For subpoint_index: if the reference appears under a specific subpoint of its point, use that subpoint's index within the point (0 for the first subpoint, 1 for the second, and so on). If the reference sits directly under the main point (not under any subpoint), use null. If point_index is null, subpoint_index must also be null.
 
 CANONICAL BOOK NAMES — always normalize extracted book names to one of these exact strings:
 Genesis, Exodus, Leviticus, Numbers, Deuteronomy, Joshua, Judges, Ruth, 1 Samuel, 2 Samuel, 1 Kings, 2 Kings, 1 Chronicles, 2 Chronicles, Ezra, Nehemiah, Esther, Job, Psalms, Proverbs, Ecclesiastes, Song of Solomon, Isaiah, Jeremiah, Lamentations, Ezekiel, Daniel, Hosea, Joel, Amos, Obadiah, Jonah, Micah, Nahum, Habakkuk, Zephaniah, Haggai, Zechariah, Malachi, Matthew, Mark, Luke, John, Acts, Romans, 1 Corinthians, 2 Corinthians, Galatians, Ephesians, Philippians, Colossians, 1 Thessalonians, 2 Thessalonians, 1 Timothy, 2 Timothy, Titus, Philemon, Hebrews, James, 1 Peter, 2 Peter, 1 John, 2 John, 3 John, Jude, Revelation
 
-Report your result by calling the save_sermon_structure tool exactly once with the extracted data.`;
+Report your result by calling the save_sermon_structure tool exactly once. Fill the document_analysis fields first, then the extracted data.`;
 
 const PDF_DOCUMENT_NOTE = "attached as a PDF file — review the actual document, including its layout and formatting";
-const HTML_DOCUMENT_NOTE = "provided below as the HTML rendering of the original Word document — heading tags, <strong>/<b>, and list nesting reflect the document's real formatting";
+const HTML_DOCUMENT_NOTE = "provided below as the HTML rendering of the original Word document — heading tags, <strong>/<b>, <u>, and list nesting reflect the document's real formatting";
 const TEXT_DOCUMENT_NOTE = "provided below as plain text";
 
 // ── Tool schema (forced tool_choice guarantees schema-shaped output) ───────────
@@ -136,6 +181,25 @@ const SERMON_TOOL = {
   input_schema: {
     type: "object",
     properties: {
+      // Scratchpad: listed first (and required) so the model commits to a read of
+      // the document's convention before emitting the extraction fields.
+      document_analysis: {
+        type: "object",
+        properties: {
+          point_marker_convention: { type: "string" },
+          subpoint_marker_convention: { type: "string" },
+          verse_placement_convention: { type: "string" },
+          non_sermon_sections: { type: "array", items: { type: "string" } },
+          expected_point_count: { type: "integer" },
+        },
+        required: [
+          "point_marker_convention",
+          "subpoint_marker_convention",
+          "verse_placement_convention",
+          "non_sermon_sections",
+          "expected_point_count",
+        ],
+      },
       title: { type: "string" },
       series: { type: ["string", "null"] },
       points: {
@@ -182,99 +246,9 @@ const SERMON_TOOL = {
         },
       },
     },
-    required: ["title", "series", "points", "scripture_references"],
+    required: ["document_analysis", "title", "series", "points", "scripture_references"],
   },
 };
-
-// ── AWS Signature V4 signing ───────────────────────────────────────────────────
-
-async function hmacSHA256(
-  key: ArrayBuffer | string,
-  data: string,
-): Promise<ArrayBuffer> {
-  const keyBuffer =
-    typeof key === "string" ? new TextEncoder().encode(key) : key;
-  const cryptoKey = await crypto.subtle.importKey(
-    "raw",
-    keyBuffer,
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"],
-  );
-  return crypto.subtle.sign("HMAC", cryptoKey, new TextEncoder().encode(data));
-}
-
-async function sha256Hex(data: string): Promise<string> {
-  const hashBuffer = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(data),
-  );
-  return Array.from(new Uint8Array(hashBuffer))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-}
-
-function bufToHex(buffer: ArrayBuffer): string {
-  return Array.from(new Uint8Array(buffer))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-}
-
-async function buildBedrockHeaders(
-  region: string,
-  accessKeyId: string,
-  secretAccessKey: string,
-  path: string,
-  body: string,
-): Promise<Record<string, string>> {
-  const service = "bedrock";
-  const now = new Date();
-  const amzDate =
-    now.toISOString().replace(/[:-]|\.\d{3}/g, "").slice(0, 15) + "Z";
-  const dateStamp = amzDate.slice(0, 8);
-  const host = `bedrock-runtime.${region}.amazonaws.com`;
-  const payloadHash = await sha256Hex(body);
-
-  const canonicalHeaders =
-    `content-type:application/json\n` +
-    `host:${host}\n` +
-    `x-amz-date:${amzDate}\n`;
-  const signedHeaders = "content-type;host;x-amz-date";
-
-  const canonicalRequest = [
-    "POST",
-    path,
-    "",
-    canonicalHeaders,
-    signedHeaders,
-    payloadHash,
-  ].join("\n");
-
-  const credentialScope = `${dateStamp}/${region}/${service}/aws4_request`;
-  const canonicalRequestHash = await sha256Hex(canonicalRequest);
-  const stringToSign = [
-    "AWS4-HMAC-SHA256",
-    amzDate,
-    credentialScope,
-    canonicalRequestHash,
-  ].join("\n");
-
-  const kDate = await hmacSHA256(`AWS4${secretAccessKey}`, dateStamp);
-  const kRegion = await hmacSHA256(kDate, region);
-  const kService = await hmacSHA256(kRegion, service);
-  const kSigning = await hmacSHA256(kService, "aws4_request");
-  const signature = bufToHex(await hmacSHA256(kSigning, stringToSign));
-
-  const authorizationHeader =
-    `AWS4-HMAC-SHA256 Credential=${accessKeyId}/${credentialScope}, ` +
-    `SignedHeaders=${signedHeaders}, Signature=${signature}`;
-
-  return {
-    "Content-Type": "application/json",
-    "X-Amz-Date": amzDate,
-    Authorization: authorizationHeader,
-  };
-}
 
 // ── Shape validation (backstop behind the tool schema) ────────────────────────
 
@@ -343,7 +317,22 @@ function validateShape(value: unknown): ParsedManuscript {
 
 // ── Message construction ───────────────────────────────────────────────────────
 
-function buildMessageContent(input: ParserInput): unknown[] {
+// The document is always authoritative over past hints — a stale or wrong hint
+// must never override what the model observes in the file itself.
+function formatUserHints(userFormatHints?: string): string {
+  const hints = (userFormatHints ?? "").trim();
+  if (!hints) return "";
+  return `\nPAST FORMAT HINTS for this user, learned from their previous uploads. The document itself is always authoritative — ignore any hint that contradicts what you observe in this document:\n${hints}\n`;
+}
+
+function buildPrompt(documentNote: string, userFormatHints?: string): string {
+  return PROMPT.replace("{DOCUMENT_NOTE}", documentNote).replace(
+    "{USER_FORMAT_HINTS}",
+    formatUserHints(userFormatHints),
+  );
+}
+
+function buildMessageContent(input: ParserInput, userFormatHints?: string): unknown[] {
   if (input.kind === "pdf") {
     return [
       {
@@ -354,7 +343,7 @@ function buildMessageContent(input: ParserInput): unknown[] {
           data: input.base64,
         },
       },
-      { type: "text", text: PROMPT.replace("{DOCUMENT_NOTE}", PDF_DOCUMENT_NOTE) },
+      { type: "text", text: buildPrompt(PDF_DOCUMENT_NOTE, userFormatHints) },
     ];
   }
   if (input.kind === "html") {
@@ -362,7 +351,7 @@ function buildMessageContent(input: ParserInput): unknown[] {
       {
         type: "text",
         text:
-          PROMPT.replace("{DOCUMENT_NOTE}", HTML_DOCUMENT_NOTE) +
+          buildPrompt(HTML_DOCUMENT_NOTE, userFormatHints) +
           `\n\nDOCUMENT (HTML rendering):\n---\n${input.html}\n---`,
       },
     ];
@@ -371,7 +360,7 @@ function buildMessageContent(input: ParserInput): unknown[] {
     {
       type: "text",
       text:
-        PROMPT.replace("{DOCUMENT_NOTE}", TEXT_DOCUMENT_NOTE) +
+        buildPrompt(TEXT_DOCUMENT_NOTE, userFormatHints) +
         `\n\nDOCUMENT (plain text):\n---\n${input.text}\n---`,
     },
   ];
@@ -381,67 +370,27 @@ function buildMessageContent(input: ParserInput): unknown[] {
 
 export async function parseManuscriptWithClaude(
   input: ParserInput,
+  options: ParseOptions = {},
 ): Promise<ClaudeParseResult> {
-  // Read AWS credentials from Supabase Edge Function secrets
-  const accessKeyId = Deno.env.get("AWS_ACCESS_KEY_ID") ?? "";
-  const secretAccessKey = Deno.env.get("AWS_SECRET_ACCESS_KEY") ?? "";
-  const region = Deno.env.get("AWS_REGION") ?? "us-east-1";
-
-  if (!accessKeyId || !secretAccessKey) {
-    throw new Error("AWS_ACCESS_KEY_ID or AWS_SECRET_ACCESS_KEY is not configured");
-  }
-
-  const encodedModelId = encodeURIComponent(BEDROCK_MODEL_ID);
-  const path = `/model/${encodedModelId}/invoke`;
-  const endpoint = `https://bedrock-runtime.${region}.amazonaws.com${path}`;
-
-  const requestBody = JSON.stringify({
-    anthropic_version: "bedrock-2023-05-31",
-    max_tokens: MAX_TOKENS,
-    temperature: 0,
+  const { input: toolInput, tokens_used } = await invokeBedrockForcedTool({
+    modelId: BEDROCK_MODEL_ID,
+    maxTokens: MAX_TOKENS,
     tools: [SERMON_TOOL],
-    tool_choice: { type: "tool", name: "save_sermon_structure" },
-    messages: [{ role: "user", content: buildMessageContent(input) }],
+    toolName: "save_sermon_structure",
+    messages: [{ role: "user", content: buildMessageContent(input, options.userFormatHints) }],
   });
 
-  const headers = await buildBedrockHeaders(
-    region,
-    accessKeyId,
-    secretAccessKey,
-    path,
-    requestBody,
-  );
+  const rawAnalysis = toolInput.document_analysis;
+  const analysis =
+    rawAnalysis && typeof rawAnalysis === "object" && !Array.isArray(rawAnalysis)
+      ? (rawAnalysis as Record<string, unknown>)
+      : null;
 
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers,
-    body: requestBody,
-  });
-
-  if (!response.ok) {
-    const errBody = await response.text();
-    throw new Error(
-      `Bedrock API error ${response.status}: ${errBody.slice(0, 400)}`,
-    );
-  }
-
-  const payload = await response.json();
-  const inputTokens = payload?.usage?.input_tokens || 0;
-  const outputTokens = payload?.usage?.output_tokens || 0;
-  const tokens_used = inputTokens + outputTokens;
-
-  if (payload?.stop_reason === "max_tokens") {
-    throw new Error(
-      "Parser output truncated: the document produced more structured data than fits in one response",
-    );
-  }
-
-  const toolBlock = Array.isArray(payload?.content)
-    ? payload.content.find((block: any) => block?.type === "tool_use")
-    : null;
-  if (!toolBlock || typeof toolBlock.input !== "object") {
-    throw new Error("Parser returned no tool call result");
-  }
-
-  return { data: validateShape(toolBlock.input), tokens_used };
+  return {
+    data: validateShape(toolInput),
+    tokens_used,
+    analysis,
+    prompt_version: PROMPT_VERSION,
+    model_id: BEDROCK_MODEL_ID,
+  };
 }
