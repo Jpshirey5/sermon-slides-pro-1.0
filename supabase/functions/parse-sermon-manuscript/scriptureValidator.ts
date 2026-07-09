@@ -10,6 +10,8 @@ export interface ValidatedVerseBlock {
   verses?: { text: string; verse: number }[];
   point_index: number | null;
   subpoint_index: number | null;
+  /** Only meaningful when point_index is null: where an unplaced ref renders. */
+  placement?: "intro" | "conclusion";
 }
 
 export interface ValidationOutcome {
@@ -61,6 +63,7 @@ async function lookupWithRetry(
           verses: Array.isArray(result.payload.verses) ? result.payload.verses : undefined,
           point_index: ref.point_index,
           subpoint_index: ref.subpoint_index,
+          ...(ref.placement ? { placement: ref.placement } : {}),
         };
       }
     } catch (_err) {

@@ -169,8 +169,8 @@ export function useQuickBuildUpload() {
       const successPayload = payload as QuickBuildSuccessResponse;
       if (successPayload.warnings?.length) {
         toast.warning(
-          `${successPayload.warnings.length} scripture reference${successPayload.warnings.length === 1 ? "" : "s"} couldn't be validated and may be missing — please double-check in Sermon Review.`,
-          { duration: 8000 },
+          `${successPayload.warnings.length} thing${successPayload.warnings.length === 1 ? "" : "s"} to double-check in Sermon Review: ${successPayload.warnings.join(" · ")}`,
+          { duration: 10000 },
         );
       }
 

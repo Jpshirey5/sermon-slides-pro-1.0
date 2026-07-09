@@ -1,9 +1,13 @@
-// QUICK BUILD ADDITION — AWS Bedrock API call + schema validation of the returned data.
-// The model now reviews the actual document (native PDF input, or structure-preserving
-// HTML for .docx) and returns its result through a forced tool call, so the output is
-// schema-shaped by the API rather than free-form JSON text.
+// QUICK BUILD ADDITION — AWS Bedrock API call + conversion of the returned data.
+// The model reviews the actual document (native PDF input, or structure-preserving
+// HTML for .docx) and reports an ORDERED outline through a forced tool call: one
+// items[] entry per point/subpoint, with scripture citations as RAW STRINGS only.
+// Chapter/verse integers are never model-emitted — raw strings are parsed
+// deterministically here (parseRawReference), so a verse number that isn't in the
+// document text can't reach a slide.
 
 import { invokeBedrockForcedTool } from "../_shared/bedrock.ts";
+import { dedupeContainedRefs, parseRawReference } from "./refExtractor.ts";
 
 // ── Bedrock config ─────────────────────────────────────────────────────────────
 // QUICK_BUILD_MODEL_ID lets prod A/B a different model without a code deploy;
@@ -13,7 +17,7 @@ export const BEDROCK_MODEL_ID = Deno.env.get("QUICK_BUILD_MODEL_ID") ?? "us.anth
 const MAX_TOKENS = 12288;
 
 // Bump on every prompt/schema iteration so accuracy is comparable across versions.
-export const PROMPT_VERSION = "v2-2026-07";
+export const PROMPT_VERSION = "v3-2026-07";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -25,6 +29,8 @@ export interface ParsedScriptureRef {
   end_verse: number | null;
   point_index: number | null;
   subpoint_index: number | null;
+  /** Only meaningful when point_index is null: where an unplaced ref renders. */
+  placement?: "intro" | "conclusion";
 }
 
 export interface ParsedSubpoint {
@@ -54,6 +60,8 @@ export interface ClaudeParseResult {
   tokens_used: number;
   /** Model's own read of the document's formatting convention (scratchpad fields). */
   analysis: Record<string, unknown> | null;
+  /** User-facing extraction warnings (unparseable citations, point-count mismatch). */
+  warnings: string[];
   prompt_version: string;
   model_id: string;
 }
@@ -65,7 +73,7 @@ export interface ParseOptions {
 
 // ── Prompt ─────────────────────────────────────────────────────────────────────
 
-const PROMPT = `You are a sermon manuscript parser for a church presentation software platform. Your job is to read through and review the sermon document provided ({DOCUMENT_NOTE}) and extract structured data from it, whether it is a full manuscript, an outline, or a sermon handout.
+const PROMPT = `You are a sermon manuscript parser for a church presentation software platform. Read the sermon document provided ({DOCUMENT_NOTE}) and extract its structure for slide generation: the ordered outline of points and subpoints, and the scripture citations attached to each, exactly as they appear in the document.
 
 Pastors format their sermons in many different ways. Do NOT assume one fixed format. First infer how THIS document marks its structure, then extract using the convention you identified.
 {USER_FORMAT_HINTS}
@@ -74,97 +82,62 @@ WORK IN TWO STEPS, IN THIS ORDER:
 STEP 1 — ANALYZE THE DOCUMENT. Fill in the document_analysis fields FIRST, before any extraction fields:
 - point_marker_convention: how this document marks its main points (e.g., "bold numbered headings", "standalone ALL-CAPS lines", "'Big Idea:' labels", "underlined sentences", "fill-in-the-blank lines")
 - subpoint_marker_convention: how subpoints are marked, or "none"
-- verse_placement_convention: where scripture citations sit relative to points (e.g., "inline in body text", "in parentheses on the point line", "'Scripture:' labeled lines", "listed in a block at the end of each point section")
+- verse_placement_convention: where scripture citations sit relative to points (e.g., "inline in body text", "in parentheses on the point line", "'Scripture:' labeled lines", "listed in a block at the end of each point section", "passage quoted with bare verse numbers")
 - non_sermon_sections: any sections that are NOT sermon content (announcements, welcome, worship order, offering, prayer, speaker/stage notes, etc.); empty array if none
 - expected_point_count: how many main points the document appears to contain
 
 Within one document, main points almost always share a single marking convention. Sermons typically have 2 to 7 main points. If a candidate line does not match the convention the other points use, it is probably not a main point.
 
-STEP 2 — EXTRACT the structured data below, applying the convention you identified in STEP 1.
+STEP 2 — EXTRACT, walking the document strictly TOP TO BOTTOM.
 
-STRICT RULES:
-1. Never fabricate sermon points, subpoints, or scripture references that do not appear in the document.
-2. Never guess at scripture references. If a passage is implied but not cited, skip it.
-3. If a scripture reference is ambiguous or clearly malformed in a way you cannot resolve, skip it entirely.
-4. If you cannot parse the document at all, still fill document_analysis with your best reading, and use {"title":"Untitled Sermon","series":null,"points":[],"scripture_references":[]} for the extraction fields.
+CORE RULES:
+1. Preserve document order exactly. The items array must list points and subpoints in the order they appear in the document; sequence_index starts at 0 and increases by 1 for each item.
+2. Never skip, merge, or summarize an outline heading. Every main point and every explicitly marked subpoint becomes its own item.
+3. Never fabricate points, subpoints, or scripture references that do not appear in the document.
+4. If you cannot parse the document at all, still fill document_analysis with your best reading, use "Untitled Sermon" as the title, and return empty items and reference arrays.
 
-EXTRACTION RULES FOR TITLE:
-- Look for the first major heading, bolded title, or clearly labeled sermon title
-- If the document starts with "Title:", "Sermon:", or "Message:" followed by text, use that text
+TITLE:
+- Look for the first major heading, bolded title, or clearly labeled sermon title ("Title:", "Sermon:", "Message:")
 - If no title is found, use "Untitled Sermon"
-- The sermon title must never also appear as a sermon point
+- The sermon title must never also appear as a point item
 
-EXTRACTION RULES FOR SERIES:
-- Look for "Series:", "Part of:", "Week", "Part" followed by a series name
-- Common patterns: "Series: Walking by Faith", "Part 3 of: The Beatitudes"
+SERIES:
+- Look for "Series:", "Part of:", "Week", "Part" followed by a series name (e.g., "Series: Walking by Faith", "Part 3 of: The Beatitudes")
 - If no series is mentioned, return null
 
-EXTRACTION RULES FOR SERMON POINTS:
-- Sermon points are the main structural divisions of the sermon's teaching content
-- Recognize whatever marking convention this document actually uses, including:
-  - Numbered or lettered outlines (1, 2, 3 / I, II, III / A, B, C), heading styles, or bolded headings
-  - Standalone ALL-CAPS lines used as section headers
-  - Standalone bold or underlined sentences that function as headers
-  - Labels such as "Point 1:", "Main Point:", "Big Idea:", "Truth:", "Move 1:", "Takeaway:"
-  - Fill-in-the-blank handout lines containing blanks like "______" — extract the line as the point title and keep the blank as written; if the document also provides the filled-in answer, use the completed text instead
-- NEVER extract the following as sermon points (or as the title):
+ITEMS with kind "point" — the main structural divisions of the sermon's teaching content:
+- Recognize whatever marking convention this document actually uses: numbered/lettered/roman outlines, heading styles, bolded or ALL-CAPS or underlined header lines, labels such as "Point 1:", "Main Point:", "Big Idea:", "Truth:", "Move 1:", "Takeaway:", or fill-in-the-blank handout lines (keep blanks as written; use the filled-in answer if the document provides one)
+- NEVER extract as a point (or as the title):
   - Announcements, welcome/greeting, worship order or song titles, prayer, offering, benediction
   - Illustration or story headers, block quotes, and quoted material
   - Application/"So what?"/challenge paragraphs, unless the document labels them as a point
   - Speaker or stage notes, dates, times, venue names, speaker names
   - The introduction or conclusion, unless explicitly labeled as a point
-  - A scripture citation on its own line is a verse, never a point title
-- Extract the heading/title of each point, but STRIP all leading numbering and labeling so the title contains only the substantive statement.
-- Specifically strip from the start of the title:
-  - Arabic numerals with separators: "1.", "1)", "1:", "1 -", "1 –", "(1)"
-  - Roman numerals with separators: "I.", "II)", "III:", "IV -"
-  - Letter outlines: "A.", "B)", "a.", "b)"
-  - Labels like "Point 1:", "Point One:", "Main Point:", "Big Idea:", "Heading:", "Section 2 —", "Part 3:"
-  - Any combination of the above (e.g., "Point 1. ", "1) Main Point —")
-- Also strip any leading whitespace, dashes, em-dashes, en-dashes, colons, or bullet characters (•, *, -, –, —) left behind after removing the numbering.
-- Preserve the substantive wording exactly as written — only the numbering/labeling prefix is removed.
-- Examples of correct stripping:
-  - "Point 1: God is love" → "God is love"
-  - "1. God is love" → "God is love"
-  - "1) God is love" → "God is love"
-  - "I. God is love" → "God is love"
-  - "Main Point: God is love" → "God is love"
-  - "Point One — God is love" → "God is love"
-  - "(2) God is love" → "God is love"
-- Write a 1 to 2 sentence summary of the content under that point
+  - A scripture citation on its own line is a verse, never a point
+- text: the heading with ALL leading numbering and labeling stripped — arabic/roman/letter outlines with their separators ("1.", "1)", "(2)", "II:", "A."), label prefixes ("Point 1:", "Main Point —", "Big Idea:"), qualifier markers like "(Optional)", and any leftover bullets, dashes, or colons. Preserve the substantive wording exactly as written. Examples: "Point 1: God is love" → "God is love"; "(2) God is love" → "God is love"; "(Optional) Rooted in Grace" → "Rooted in Grace"
+- summary: a 1 to 2 sentence summary of the content under that point
 
-EXTRACTION RULES FOR SUBPOINTS:
-- Subpoints are clearly subordinate divisions nested under a main point: letter outlines ("a.", "b)", "A.", "B."), roman numerals at a deeper level ("i.", "ii."), nested/indented bullets, or deeper heading levels under a main point's heading
-- Record each subpoint in its parent point's "subpoints" array, in document order
-- Strip leading numbering/labeling from subpoint titles using the same stripping rules as main points
-- Do NOT promote subpoints to main points, and do NOT extract ordinary body sentences or paragraph text as subpoints — only clearly marked subordinate headings/outline items
-- If a point has no subpoints, use an empty array
+ITEMS with kind "subpoint" — ONLY explicitly outline-marked subordinate items under a main point:
+- Letter or roman outlines at a deeper level ("a.", "b)", "i.", "ii."), nested/indented bullets, deeper heading levels, or short bold lead-in labels ("1 - RELIGIOUS -", "Riches —")
+- text: the label or heading portion ONLY (e.g., "Religious", "The belt of truth") — never the full sentence that follows a label
+- An ordinary body sentence, application line, or quote is NOT a subpoint, even when it sits in a bullet list. If a bullet is a full prose sentence with no label or heading formatting, it is body text — do not create an item for it.
+- A subpoint item comes right after its parent point item, in document order. Do not promote subpoints to points. leave summary as an empty string for subpoints.
 
-EXTRACTION RULES FOR SCRIPTURE REFERENCES:
-- Extract ONLY explicit Bible citations that follow recognizable patterns:
-  - "John 3:16" — book chapter:verse
-  - "Romans 3:23-25" — book chapter:startVerse-endVerse
-  - "Matthew 5:3-12" — range
-  - "(see Psalm 23)" — parenthetical citation
-  - "[Hebrews 11:1]" — bracketed citation
-  - "1 Corinthians 13:4-7" — numbered book with chapter and verse
-- Accept all standard book name formats: full name, common abbreviation (Gen, Ex, Lev, Num, Deut, Josh, Judg, Ruth, 1 Sam, 2 Sam, 1 Kgs, 2 Kgs, 1 Chr, 2 Chr, Ezra, Neh, Esth, Job, Ps, Prov, Eccl, Song, Isa, Jer, Lam, Ezek, Dan, Hos, Joel, Amos, Obad, Jonah, Mic, Nah, Hab, Zeph, Hag, Zech, Mal, Matt, Mark, Luke, John, Acts, Rom, 1 Cor, 2 Cor, Gal, Eph, Phil, Col, 1 Thess, 2 Thess, 1 Tim, 2 Tim, Titus, Phlm, Heb, Jas, 1 Pet, 2 Pet, 1 John, 2 John, 3 John, Jude, Rev)
-- Accept spelled-out ordinals: "First Corinthians", "Second Peter", "Third John"
-- CROSS-CHAPTER RANGES: a citation may span chapters, written as "book chapter:verse-chapter:verse" (e.g., "1 John 1:5-2:2" means 1 John chapter 1 verse 5 through chapter 2 verse 2). Always extract these — never skip them. Because each reference entry covers a single chapter, split a cross-chapter citation into consecutive single-chapter references that together cover the full passage:
-  - "1 John 1:5-2:2" → one reference for 1 John chapter 1, start_verse 5, end_verse 10 (the last verse of 1 John 1), AND one reference for 1 John chapter 2, start_verse 1, end_verse 2
-  - Use your knowledge of the canonical verse counts to end the first chapter's reference at that chapter's final verse. If the span covers three or more chapters, emit one reference per chapter, with the middle chapters running from verse 1 through their final verse.
-  - Every reference produced from the same cross-chapter citation keeps the same raw_text (the citation exactly as it appeared, e.g. "1 John 1:5-2:2") and the same point_index and subpoint_index.
-- end_verse must always be a verse within the same chapter as start_verse (cross-chapter spans are represented by the split rule above, never by an end_verse in a different chapter)
-- Do NOT extract general references like "the Psalms", "the Gospels", or "Paul's letter to the Romans" without a specific chapter and verse
-- For each valid reference, record: the raw text as it appeared, the normalized book name, the chapter number, the start verse, the end verse (null if single verse), which sermon point it belongs to, and which subpoint (if any) it falls under
-- For point_index: identify which sermon point this scripture reference falls under based on its position in the document. Use 0 for the first point, 1 for the second point, 2 for the third point, and so on. If a reference appears before any sermon point (e.g., in the introduction or as a sermon-wide opening passage), use null. References must be associated with the point they appear under in the document — not the point that quotes them earliest or shares a theme. Preserve the original document order. Apply these placement rules:
-  - References listed in a block or list at the END of a point's section belong to THAT point, not the next one
-  - References in parentheses on a point's own heading line (e.g., "God keeps His promises (Hebrews 6:13-18)") get that point's index
-  - References on labeled lines like "Scripture:", "Text:", "Passage:", or "Read:" attach to the nearest preceding point; use null if no point precedes them
-- For subpoint_index: if the reference appears under a specific subpoint of its point, use that subpoint's index within the point (0 for the first subpoint, 1 for the second, and so on). If the reference sits directly under the main point (not under any subpoint), use null. If point_index is null, subpoint_index must also be null.
+SCRIPTURE REFERENCES — raw citation strings, attached where they appear:
+- scripture_references_raw on each item: every scripture citation appearing in that item's section of the document, in order. Copy each citation exactly as written (e.g., "John 3:16", "Rom. 8:28-30", "1 Corinthians 13:4-7", "Galatians 5:16-17, 22-25", "1 John 1:5-2:2", "(see Psalm 23:1)" → "Psalm 23:1").
+- References cited BEFORE the first point (opening passage, introduction) go in intro_references_raw. References cited AFTER the last point's content (conclusion, call to response, closing prayer) go in conclusion_references_raw.
+- A citation is allowed from EXACTLY TWO sources, nothing else:
+  (a) a citation literally written in the document text; or
+  (b) scripture QUOTED with its own verse numbers, where the book and chapter are unambiguous from the immediate context — e.g., the sermon is teaching John chapter 3 and quotes "13 No one has ascended into heaven... 14 And as Moses lifted up the serpent...": report "John 3:13-15" in standard Book Chapter:Verse form, covering exactly the verse numbers present in the quote. If the book or chapter is not certain, omit it.
+- NEVER report a reference from a theme, allusion, story retelling, or paraphrase.
+- NEVER report a book-and-chapter mention that has no verse number ("Numbers 21", "the promise in Ezekiel 36", "Paul's letter to the Romans") — skip these entirely; never invent a verse number for them.
+- If the same passage is cited or quoted more than once under the same point, report it once, at its first occurrence.
 
-CANONICAL BOOK NAMES — always normalize extracted book names to one of these exact strings:
-Genesis, Exodus, Leviticus, Numbers, Deuteronomy, Joshua, Judges, Ruth, 1 Samuel, 2 Samuel, 1 Kings, 2 Kings, 1 Chronicles, 2 Chronicles, Ezra, Nehemiah, Esther, Job, Psalms, Proverbs, Ecclesiastes, Song of Solomon, Isaiah, Jeremiah, Lamentations, Ezekiel, Daniel, Hosea, Joel, Amos, Obadiah, Jonah, Micah, Nahum, Habakkuk, Zephaniah, Haggai, Zechariah, Malachi, Matthew, Mark, Luke, John, Acts, Romans, 1 Corinthians, 2 Corinthians, Galatians, Ephesians, Philippians, Colossians, 1 Thessalonians, 2 Thessalonians, 1 Timothy, 2 Timothy, Titus, Philemon, Hebrews, James, 1 Peter, 2 Peter, 1 John, 2 John, 3 John, Jude, Revelation
+SELF-CHECK — before calling the tool, verify all of the following, and fix the extraction if any check fails:
+1. The number of kind "point" items equals expected_point_count (the main-point headings you counted in STEP 1)
+2. extracted_item_count equals the total length of the items array
+3. Items appear in document order with sequence_index running 0, 1, 2, ... with no gaps
+4. Every reference string satisfies the two-source rule and has an explicit verse number
 
 Report your result by calling the save_sermon_structure tool exactly once. Fill the document_analysis fields first, then the extracted data.`;
 
@@ -191,6 +164,7 @@ const SERMON_TOOL = {
           verse_placement_convention: { type: "string" },
           non_sermon_sections: { type: "array", items: { type: "string" } },
           expected_point_count: { type: "integer" },
+          extracted_item_count: { type: "integer" },
         },
         required: [
           "point_marker_convention",
@@ -198,120 +172,158 @@ const SERMON_TOOL = {
           "verse_placement_convention",
           "non_sermon_sections",
           "expected_point_count",
+          "extracted_item_count",
         ],
       },
       title: { type: "string" },
       series: { type: ["string", "null"] },
-      points: {
+      items: {
         type: "array",
         items: {
           type: "object",
           properties: {
-            title: { type: "string" },
+            sequence_index: { type: "integer" },
+            kind: { type: "string", enum: ["point", "subpoint"] },
+            text: { type: "string" },
             summary: { type: "string" },
-            subpoints: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: { title: { type: "string" } },
-                required: ["title"],
-              },
-            },
+            scripture_references_raw: { type: "array", items: { type: "string" } },
           },
-          required: ["title", "summary", "subpoints"],
+          required: ["sequence_index", "kind", "text", "summary", "scripture_references_raw"],
         },
       },
-      scripture_references: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            raw_text: { type: "string" },
-            book: { type: "string" },
-            chapter: { type: "integer" },
-            start_verse: { type: "integer" },
-            end_verse: { type: ["integer", "null"] },
-            point_index: { type: ["integer", "null"] },
-            subpoint_index: { type: ["integer", "null"] },
-          },
-          required: [
-            "raw_text",
-            "book",
-            "chapter",
-            "start_verse",
-            "end_verse",
-            "point_index",
-            "subpoint_index",
-          ],
-        },
-      },
+      intro_references_raw: { type: "array", items: { type: "string" } },
+      conclusion_references_raw: { type: "array", items: { type: "string" } },
     },
-    required: ["document_analysis", "title", "series", "points", "scripture_references"],
+    required: [
+      "document_analysis",
+      "title",
+      "series",
+      "items",
+      "intro_references_raw",
+      "conclusion_references_raw",
+    ],
   },
 };
 
-// ── Shape validation (backstop behind the tool schema) ────────────────────────
+// ── Conversion (tool payload → ParsedManuscript) ───────────────────────────────
 
-function validateShape(value: unknown): ParsedManuscript {
+// Deterministic backstop behind the prompt's stripping instructions: leading
+// bullets/dashes, "(Optional)"-style qualifiers, label words, and outline
+// numbering with a separator. Applied repeatedly until stable.
+const STRIP_PATTERNS = [
+  /^[\s•*·]+/,
+  /^[-–—:]+\s+/,
+  /^\(\s*optional\s*\)\s*[:.\-–—]?\s*/i,
+  /^\(?(?:point|main point|big idea|truth|move|takeaway|part|section|heading)\s*(?:one|two|three|four|five|six|seven|\d{1,2})?\)?\s*[:.\-–—]\s*/i,
+  /^\((?:\d{1,2}|[IVXLC]+|[A-Za-z])\)\s*/, // "(2) God is love"
+  /^(?:\d{1,2}|[IVXLC]+|[A-Za-z])\s*(?:[.):]|[-–—])+\s*/, // "1.", "II:", "a)", "1 - "
+];
+
+export function stripOutlinePrefix(text: string): string {
+  let current = text.trim();
+  for (let pass = 0; pass < 4; pass++) {
+    let next = current;
+    for (const pattern of STRIP_PATTERNS) next = next.replace(pattern, "");
+    next = next.trim();
+    if (next === current || next.length === 0) break;
+    current = next;
+  }
+  return current.length > 0 ? current : text.trim();
+}
+
+export interface ConvertedPayload {
+  data: ParsedManuscript;
+  warnings: string[];
+}
+
+function asStringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((v): v is string => typeof v === "string" && v.trim().length > 0)
+    : [];
+}
+
+export function convertToolPayload(value: unknown): ConvertedPayload {
   if (!value || typeof value !== "object")
     throw new Error("Parser returned non-object");
   const v = value as any;
   if (typeof v.title !== "string") throw new Error("Parser returned no title");
-  if (!(v.series === null || v.series === undefined || typeof v.series === "string"))
-    throw new Error("Parser series invalid");
-  if (!Array.isArray(v.points)) throw new Error("Parser points invalid");
-  if (!Array.isArray(v.scripture_references))
-    throw new Error("Parser scripture_references invalid");
+  if (!Array.isArray(v.items)) throw new Error("Parser items invalid");
 
-  const points: ParsedPoint[] = v.points
-    .filter((p: any) => p && typeof p.title === "string")
-    .map((p: any) => ({
-      title: String(p.title || "").trim(),
-      summary: typeof p.summary === "string" ? p.summary.trim() : "",
-      subpoints: Array.isArray(p.subpoints)
-        ? p.subpoints
-            .filter((s: any) => s && typeof s.title === "string")
-            .map((s: any) => ({ title: String(s.title).trim() }))
-            .filter((s: ParsedSubpoint) => s.title.length > 0)
-        : [],
-    }))
-    .filter((p: ParsedPoint) => p.title.length > 0);
+  const warnings: string[] = [];
+  const unparsedRefs: string[] = [];
+  const points: ParsedPoint[] = [];
+  const refs: ParsedScriptureRef[] = [];
 
-  const refs: ParsedScriptureRef[] = v.scripture_references
-    .filter(
-      (r: any) =>
-        r &&
-        typeof r.book === "string" &&
-        Number.isInteger(r.chapter) &&
-        Number.isInteger(r.start_verse),
-    )
-    .map((r: any) => ({
-      raw_text:
-        typeof r.raw_text === "string"
-          ? r.raw_text
-          : `${r.book} ${r.chapter}:${r.start_verse}`,
-      book: String(r.book).trim(),
-      chapter: Number(r.chapter),
-      start_verse: Number(r.start_verse),
-      end_verse:
-        r.end_verse === null || r.end_verse === undefined
-          ? null
-          : Number(r.end_verse),
-      point_index:
-        Number.isInteger(r.point_index) && r.point_index >= 0
-          ? Number(r.point_index)
-          : null,
-      subpoint_index:
-        Number.isInteger(r.subpoint_index) && r.subpoint_index >= 0
-          ? Number(r.subpoint_index)
-          : null,
-    }));
+  const addRawRefs = (
+    raws: string[],
+    pointIndex: number | null,
+    subpointIndex: number | null,
+    placement?: "intro" | "conclusion",
+  ) => {
+    for (const raw of raws) {
+      const parsed = parseRawReference(raw);
+      if (parsed.length === 0) {
+        unparsedRefs.push(raw.trim());
+        continue;
+      }
+      for (const ref of parsed) {
+        refs.push({
+          ...ref,
+          point_index: pointIndex,
+          subpoint_index: subpointIndex,
+          ...(placement ? { placement } : {}),
+        });
+      }
+    }
+  };
+
+  addRawRefs(asStringArray(v.intro_references_raw), null, null, "intro");
+
+  for (const item of v.items) {
+    if (!item || typeof item.text !== "string") continue;
+    const title = stripOutlinePrefix(item.text);
+    if (title.length === 0) continue;
+    const raws = asStringArray(item.scripture_references_raw);
+
+    // A subpoint arriving before any point can't nest — treat it as a point so
+    // its content isn't dropped.
+    if (item.kind === "subpoint" && points.length > 0) {
+      const parent = points[points.length - 1];
+      parent.subpoints.push({ title });
+      addRawRefs(raws, points.length - 1, parent.subpoints.length - 1);
+    } else {
+      points.push({
+        title,
+        summary: typeof item.summary === "string" ? item.summary.trim() : "",
+        subpoints: [],
+      });
+      addRawRefs(raws, points.length - 1, null);
+    }
+  }
+
+  addRawRefs(asStringArray(v.conclusion_references_raw), null, null, "conclusion");
+
+  if (unparsedRefs.length > 0) {
+    warnings.push(
+      `Some references couldn't be added as verses: ${[...new Set(unparsedRefs)].join(", ")} — add them manually in Sermon Review if needed`,
+    );
+  }
+
+  const expectedPoints = v.document_analysis?.expected_point_count;
+  if (Number.isInteger(expectedPoints) && expectedPoints !== points.length) {
+    warnings.push(
+      `The parser found ${points.length} point${points.length === 1 ? "" : "s"} but expected ${expectedPoints} — double-check the point list in Sermon Review`,
+    );
+  }
 
   return {
-    title: v.title.trim() || "Untitled Sermon",
-    series: v.series ? String(v.series).trim() || null : null,
-    points,
-    scripture_references: refs,
+    data: {
+      title: v.title.trim() || "Untitled Sermon",
+      series: v.series ? String(v.series).trim() || null : null,
+      points,
+      scripture_references: dedupeContainedRefs(refs),
+    },
+    warnings,
   };
 }
 
@@ -386,10 +398,13 @@ export async function parseManuscriptWithClaude(
       ? (rawAnalysis as Record<string, unknown>)
       : null;
 
+  const { data, warnings } = convertToolPayload(toolInput);
+
   return {
-    data: validateShape(toolInput),
+    data,
     tokens_used,
     analysis,
+    warnings,
     prompt_version: PROMPT_VERSION,
     model_id: BEDROCK_MODEL_ID,
   };

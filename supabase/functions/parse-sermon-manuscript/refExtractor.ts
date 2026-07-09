@@ -103,53 +103,133 @@ export function stripHtml(html: string): string {
     .replace(/\s+/g, " ");
 }
 
-export function extractRefsFromText(text: string): ParsedScriptureRef[] {
-  const refs: ParsedScriptureRef[] = [];
-  for (const match of text.matchAll(REF_REGEX)) {
-    const aliasKey = match[1].toLowerCase().replace(/\s+/g, " ").trim();
-    const book = BOOK_ALIASES[aliasKey];
-    if (!book) continue;
-    const chapter = parseInt(match[2], 10);
-    const startVerse = parseInt(match[3], 10);
-    const endChapter = match[4] ? parseInt(match[4], 10) : null;
-    let endVerse = match[5] ? parseInt(match[5], 10) : null;
-    if (!chapter || !startVerse) continue;
+// Turns one regex match into 1-2 refs (cross-chapter citations split into an
+// anchor per chapter — no guessing where the first chapter ends).
+function refsFromMatch(
+  match: RegExpMatchArray,
+  rawText: string,
+): ParsedScriptureRef[] {
+  const aliasKey = match[1].toLowerCase().replace(/\s+/g, " ").trim();
+  const book = BOOK_ALIASES[aliasKey];
+  if (!book) return [];
+  const chapter = parseInt(match[2], 10);
+  const startVerse = parseInt(match[3], 10);
+  const endChapter = match[4] ? parseInt(match[4], 10) : null;
+  let endVerse = match[5] ? parseInt(match[5], 10) : null;
+  if (!chapter || !startVerse) return [];
 
-    const rawText = match[0].trim();
-    const baseRef = {
-      raw_text: rawText,
-      book,
-      point_index: null,
-      subpoint_index: null,
-    };
+  const baseRef = {
+    raw_text: rawText,
+    book,
+    point_index: null,
+    subpoint_index: null,
+  };
 
-    if (endChapter !== null && endChapter > chapter && endVerse !== null) {
-      // Cross-chapter citation (e.g. "1 John 1:5-2:2"). The backstop can't know
-      // where the first chapter ends, so it anchors both ends of the span:
-      // the start verse, and the closing chapter's range. If the model already
-      // extracted the citation (the normal case), these dedupe away in mergeRefs.
-      refs.push({ ...baseRef, chapter, start_verse: startVerse, end_verse: null });
-      refs.push({
+  if (endChapter !== null && endChapter > chapter && endVerse !== null) {
+    return [
+      { ...baseRef, chapter, start_verse: startVerse, end_verse: null },
+      {
         ...baseRef,
         chapter: endChapter,
         start_verse: 1,
         end_verse: endVerse > 1 ? endVerse : null,
-      });
-      continue;
-    }
+      },
+    ];
+  }
 
-    if (endVerse !== null && endVerse <= startVerse) endVerse = null;
-    refs.push({ ...baseRef, chapter, start_verse: startVerse, end_verse: endVerse });
+  if (endVerse !== null && endVerse <= startVerse) endVerse = null;
+  return [{ ...baseRef, chapter, start_verse: startVerse, end_verse: endVerse }];
+}
+
+export function extractRefsFromText(text: string): ParsedScriptureRef[] {
+  const refs: ParsedScriptureRef[] = [];
+  for (const match of text.matchAll(REF_REGEX)) {
+    refs.push(...refsFromMatch(match, match[0].trim()));
   }
   return refs;
+}
+
+// Comma/semicolon continuations after a citation: "22", "22-25", "6:1", "6:1-4".
+// Only used when parsing a model-reported citation string, where the whole string
+// is known to be a citation — running this over document prose would over-capture.
+const CONTINUATION_REGEX =
+  /^\s*[,;]\s*(\d{1,3})(?:\s*:\s*(\d{1,3}))?(?:\s*[-–—]\s*(\d{1,3}))?/;
+
+/**
+ * Deterministically parses a citation string the model reported (e.g.
+ * "Galatians 5:16-17, 22-25", "1 John 1:5-2:2", "Rom. 8:28"). Returns [] for
+ * anything without an explicit chapter:verse — a chapter-only mention like
+ * "Numbers 21" can never gain an invented verse number here.
+ */
+export function parseRawReference(raw: string): ParsedScriptureRef[] {
+  const refs: ParsedScriptureRef[] = [];
+  const rawText = raw.trim();
+  const regex = new RegExp(REF_REGEX.source, "gi");
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(rawText)) !== null) {
+    const base = refsFromMatch(match, rawText);
+    refs.push(...base);
+    if (base.length === 0) continue;
+
+    // Consume "…, 22-25" / "…, 6:1" continuations following this match.
+    let currentChapter = base[base.length - 1].chapter;
+    let cursor = regex.lastIndex;
+    let cont: RegExpExecArray | null;
+    while ((cont = CONTINUATION_REGEX.exec(rawText.slice(cursor))) !== null) {
+      const hasChapter = cont[2] !== undefined;
+      const chapter = hasChapter ? parseInt(cont[1], 10) : currentChapter;
+      const startVerse = hasChapter ? parseInt(cont[2], 10) : parseInt(cont[1], 10);
+      let endVerse = cont[3] ? parseInt(cont[3], 10) : null;
+      if (endVerse !== null && endVerse <= startVerse) endVerse = null;
+      if (chapter && startVerse) {
+        refs.push({
+          raw_text: rawText,
+          book: base[base.length - 1].book,
+          chapter,
+          start_verse: startVerse,
+          end_verse: endVerse,
+          point_index: null,
+          subpoint_index: null,
+        });
+        currentChapter = chapter;
+      }
+      cursor += cont[0].length;
+    }
+    regex.lastIndex = cursor;
+  }
+  return refs;
+}
+
+const rangeEnd = (r: ParsedScriptureRef) => r.end_verse ?? r.start_verse;
+
+// a's verse range fully covers b's (same book/chapter assumed checked by caller)
+function covers(a: ParsedScriptureRef, b: ParsedScriptureRef): boolean {
+  return a.start_verse <= b.start_verse && rangeEnd(a) >= rangeEnd(b);
+}
+
+/**
+ * Drops refs whose verse range is contained in another ref of the same book,
+ * chapter, and point — a repeated quote ("John 3:13-15" then "John 3:14-15")
+ * must not become two near-identical verse blocks. Equal ranges keep the first.
+ */
+export function dedupeContainedRefs(refs: ParsedScriptureRef[]): ParsedScriptureRef[] {
+  return refs.filter((ref, i) =>
+    !refs.some((other, j) => {
+      if (j === i) return false;
+      if (other.book !== ref.book || other.chapter !== ref.chapter) return false;
+      if (other.point_index !== ref.point_index) return false;
+      if (!covers(other, ref)) return false;
+      return covers(ref, other) ? j < i : true;
+    })
+  );
 }
 
 const refKey = (r: ParsedScriptureRef) =>
   `${r.book.toLowerCase()}|${r.chapter}|${r.start_verse}`;
 
 // Union of model refs and regex refs, model refs winning (they carry point placement).
-// Dedupe on book/chapter/start_verse so a range variant ("3:16" vs "3:16-17") of an
-// already-captured passage doesn't create a near-duplicate verse block.
+// A regex ref is dropped when a model ref already covers it — same start verse, or a
+// range that contains it ("John 3:10" inside a model-captured "John 3:9-12").
 export function mergeRefs(
   modelRefs: ParsedScriptureRef[],
   regexRefs: ParsedScriptureRef[],
@@ -159,6 +239,10 @@ export function mergeRefs(
   for (const ref of regexRefs) {
     const key = refKey(ref);
     if (seen.has(key)) continue;
+    const containedInModelRef = modelRefs.some(
+      (m) => m.book === ref.book && m.chapter === ref.chapter && covers(m, ref),
+    );
+    if (containedInModelRef) continue;
     seen.add(key);
     merged.push(ref);
   }

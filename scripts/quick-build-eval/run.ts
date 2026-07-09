@@ -34,6 +34,8 @@ interface FixtureScore {
   refRecall: number;
   refPlacementAccuracy: number;
   missedRefs: string[];
+  /** Refs the parser produced that the fixture does not expect — hallucinations. */
+  falseRefs: string[];
   analysis: unknown;
   error?: string;
 }
@@ -91,6 +93,7 @@ function scoreFixture(fixture: Fixture, data: {
   let refsFound = 0;
   let placementsRight = 0;
   const missedRefs: string[] = [];
+  const expectedKeys = new Set(expected.refs.map(refKey));
   for (const expRef of expected.refs) {
     const got = gotRefs.get(refKey(expRef));
     if (!got) {
@@ -100,6 +103,9 @@ function scoreFixture(fixture: Fixture, data: {
     refsFound += 1;
     if ((got.point_index ?? null) === expRef.point_index) placementsRight += 1;
   }
+  const falseRefs = data.scripture_references
+    .filter((r) => !expectedKeys.has(refKey(r)))
+    .map((r) => `${r.book} ${r.chapter}:${r.start_verse}`);
 
   return {
     name: fixture.name,
@@ -112,6 +118,7 @@ function scoreFixture(fixture: Fixture, data: {
     refRecall: expected.refs.length ? refsFound / expected.refs.length : 1,
     refPlacementAccuracy: refsFound ? placementsRight / refsFound : 1,
     missedRefs,
+    falseRefs,
     analysis,
   };
 }
@@ -137,7 +144,7 @@ for (const fixture of fixtures) {
     const score = scoreFixture(fixture, result.data, result.analysis ?? null);
     scores.push(score);
     console.log(
-      `${score.pointRecall === 1 && score.falsePoints.length === 0 && score.refRecall === 1 ? "✓" : "•"} ${fixture.name}` +
+      `${score.pointRecall === 1 && score.falsePoints.length === 0 && score.refRecall === 1 && score.falseRefs.length === 0 ? "✓" : "•"} ${fixture.name}` +
         ` — points ${Math.round(score.pointRecall * 100)}%R/${Math.round(score.pointPrecision * 100)}%P,` +
         ` refs ${Math.round(score.refRecall * 100)}%R, placement ${Math.round(score.refPlacementAccuracy * 100)}%` +
         ` (${((Date.now() - started) / 1000).toFixed(1)}s)`,
@@ -145,6 +152,7 @@ for (const fixture of fixtures) {
     if (score.missedPoints.length) console.log(`    missed points: ${score.missedPoints.join(" | ")}`);
     if (score.falsePoints.length) console.log(`    false points:  ${score.falsePoints.join(" | ")}`);
     if (score.missedRefs.length) console.log(`    missed refs:   ${score.missedRefs.join(", ")}`);
+    if (score.falseRefs.length) console.log(`    FALSE refs:    ${score.falseRefs.join(", ")}`);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.log(`✗ ${fixture.name} — ERROR: ${message}`);
@@ -159,6 +167,7 @@ for (const fixture of fixtures) {
       refRecall: 0,
       refPlacementAccuracy: 0,
       missedRefs: [],
+      falseRefs: [],
       analysis: null,
       error: message,
     });
@@ -176,6 +185,7 @@ const summary = {
   avg_point_recall: avg(scores.map((s) => s.pointRecall)),
   avg_point_precision: avg(scores.map((s) => s.pointPrecision)),
   total_false_points: scores.reduce((a, s) => a + s.falsePoints.length, 0),
+  total_false_refs: scores.reduce((a, s) => a + s.falseRefs.length, 0),
   avg_ref_recall: avg(scores.map((s) => s.refRecall)),
   avg_ref_placement: avg(scores.map((s) => s.refPlacementAccuracy)),
   titles_ok: scores.filter((s) => s.titleOk).length,
@@ -187,7 +197,7 @@ console.log("\n=== SUMMARY ===");
 console.log(`prompt ${summary.prompt_version} · model ${summary.model_id}`);
 console.log(
   `point recall ${(summary.avg_point_recall * 100).toFixed(1)}% · precision ${(summary.avg_point_precision * 100).toFixed(1)}%` +
-    ` · false points ${summary.total_false_points}`,
+    ` · false points ${summary.total_false_points} · false refs ${summary.total_false_refs}`,
 );
 console.log(
   `ref recall ${(summary.avg_ref_recall * 100).toFixed(1)}% · placement ${(summary.avg_ref_placement * 100).toFixed(1)}%` +

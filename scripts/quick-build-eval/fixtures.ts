@@ -422,4 +422,162 @@ Ephesians 6:18 — with all kinds of prayers and requests.`,
       ],
     },
   },
+  {
+    // Real-world failure (2026-07): full manuscript that QUOTES the preaching
+    // passage with bare verse numbers instead of citing "John 3:x". Also baits:
+    // chapter-only mentions ("Numbers 21", "Ezekiel 36") that must NOT gain an
+    // invented verse, a repeated quote that must not duplicate, and a closing
+    // prayer that must not become a point.
+    name: "john3-quoted-passage-manuscript",
+    input: {
+      kind: "text",
+      text: `Sermon For July Series – That's Not in the Bible
+
+You Must Be Born Again
+
+There are a lot of things people think are in the Bible, but they're not. Today we're looking at one that may be the most dangerous of all: "I've always been a Christian." In John chapter 3, one of the most religious men in Israel comes to Jesus. Let's read John 3, starting in verse 2.
+
+2 This man came to Jesus by night and said to him, "Rabbi, we know that you are a teacher come from God." 3 Jesus answered him, "Truly, truly, I say to you, unless one is born again he cannot see the kingdom of God." 4 Nicodemus said to him, "How can a man be born when he is old?" 5 Jesus answered, "Truly, truly, I say to you, unless one is born of water and the Spirit, he cannot enter the kingdom of God. 6 That which is born of the flesh is flesh. 7 Do not marvel that I said to you, 'You must be born again.' 8 The wind blows where it wishes."
+
+Here's the BIG IDEA – You don't need a better version of yourself – you need to be born again.
+
+So let's answer three questions from this passage.
+
+1. Why must you be born again?
+
+Because to be born again implies that there is something wrong with our first birth. There were some clues in the text. Let me give you four.
+1 - RELIGIOUS - This text just told us he was one of the Pharisees, a rarefied club of only 6,000 members.
+2 - RELATIONSHIPS - He was a ruler of the Jews, part of the Sanhedrin, their Supreme Court.
+3 - RICHES - According to tradition he was one of the three wealthiest citizens in Jerusalem.
+4 - RESPECT - Notice what Jesus says in verse 10.
+JOHN 3:10 – Jesus answered him, "ARE YOU THE TEACHER OF ISRAEL and yet you do not understand these things?"
+Religion, riches, relationships, and respect are not the answer. The problem is that we're spiritually dead.
+Ephesians 2:3b ….and were by nature children of wrath, like the rest of mankind.
+A dead heart doesn't need education; it needs a resurrection. This would have reminded Nicodemus of the promise in Ezekiel 36, where God promised to cleanse His people with water and give them a new heart by His Spirit.
+
+2 – How can I be born again?
+
+Let's keep reading, down a little further.
+13 No one has ascended into heaven except he who descended from heaven, the Son of Man. 14 And as Moses lifted up the serpent in the wilderness, so must the Son of Man be lifted up, 15 that whoever believes in him may have eternal life.
+He's going back to an OT story from the book of Numbers. As the people of Israel doubted God, He sent fiery serpents into the camp. God told Moses to make a bronze serpent and put it on a pole, and those who looked at it in faith were healed. Don't miss it…
+14 And as Moses lifted up the serpent in the wilderness, so must the Son of Man be lifted up, 15 that whoever believes in him may have eternal life.
+Jesus summarizes it for us..
+16 "For God so loved the world, that he gave his only Son, that whoever believes in him should not perish but have eternal life."
+Now when Jesus says believe in me what does he mean? It means placing the full weight of your life on Him.
+James 2:19 You believe that God is one; you do well. Even the demons believe—and shudder!
+Saving faith isn't just believing the right facts about Jesus; it's entrusting your life to Jesus.
+
+3 – Are you Born Again?
+
+Maybe you've been in church your entire life. But let me ask you... Have you ever looked to Christ? Have you trusted Him?
+Look away from yourself and look to JESUS! Just like those Israelites looked to the bronze serpent, look to Christ.
+Put the full weight of your life on Him.
+
+Let's PRAY… Right where you're sitting, if today you're ready to stop trusting yourself and start trusting Christ, tell Him. Jesus... I know I cannot save myself. I believe You died in my place. Today I turn from trusting myself. Amen.`,
+    },
+    expected: {
+      title: "You Must Be Born Again",
+      series: "That's Not in the Bible",
+      points: [
+        "Why must you be born again?",
+        "RELIGIOUS",
+        "RELATIONSHIPS",
+        "RICHES",
+        "RESPECT",
+        "How can I be born again?",
+        "Are you Born Again?",
+      ],
+      refs: [
+        { book: "John", chapter: 3, start_verse: 2, point_index: null },
+        { book: "John", chapter: 3, start_verse: 10, point_index: 0 },
+        { book: "Ephesians", chapter: 2, start_verse: 3, point_index: 0 },
+        { book: "John", chapter: 3, start_verse: 13, point_index: 1 },
+        { book: "John", chapter: 3, start_verse: 16, point_index: 1 },
+        { book: "James", chapter: 2, start_verse: 19, point_index: 1 },
+      ],
+    },
+  },
+  {
+    // Real-world failure (2026-07): Quick Build .docx template as mammoth HTML.
+    // Baits: bold-label list items whose subpoint titles must be the LABEL only
+    // (not the whole sentence), plain-prose bullets under point 3 that must NOT
+    // become subpoints, and a chapter-only "(Numbers 21)" mention.
+    name: "quickbuild-template-list-items",
+    input: {
+      kind: "html",
+      html: `<h1>You Must Be Born Again</h1>
+<p>Series: That's Not in the Bible</p>
+<p><strong>John 3:1-2</strong> — Nicodemus, a ruler of the Jews, comes to Jesus by night.</p>
+<p>Introduction — There are a lot of things people think are in the Bible, but aren't. Jesus looks at Nicodemus — a morally upright, religious leader — and tells him something shocking.</p>
+<p>BIG IDEA: You don't need a better version of yourself — you need to be born again.</p>
+<h2>1. Why must you be born again?</h2>
+<p>To be born again implies something is wrong with our first birth. There were four clues in the text to who Nicodemus was:</p>
+<ol>
+<li><strong>Religious</strong> — he was one of only 6,000 Pharisees on the face of the earth.</li>
+<li><strong>Relationships</strong> — he was a ruler of the Jews, one of only 71 members of the Sanhedrin.</li>
+<li><strong>Riches</strong> — according to tradition, one of the three wealthiest citizens in Jerusalem.</li>
+<li><strong>Respect</strong> — Jesus called him "the teacher of Israel" (John 3:10).</li>
+</ol>
+<p>The problem is that we're spiritually dead. Ephesians 2:3 says we were by nature children of wrath. A dead heart doesn't need education; it needs a resurrection.</p>
+<p><strong>John 3:5</strong> — Jesus answered, "unless one is born of water and the Spirit, he cannot enter the kingdom of God." This echoes God's promise in Ezekiel 36:25-27.</p>
+<h2>2. How can I be born again?</h2>
+<p><strong>John 3:13-15</strong> — Jesus points Nicodemus to the bronze serpent in the wilderness (Numbers 21). Whoever believes in Jesus, lifted up on the cross, will have eternal life.</p>
+<p><strong>John 3:16</strong> — "For God so loved the world, that he gave his only Son."</p>
+<p><strong>James 2:19</strong> — "Even the demons believe — and shudder!" Saving faith is entrusting your life to Jesus.</p>
+<h2>3. Are you born again?</h2>
+<p>Have you ever looked to Christ — not just known about Him, but trusted Him and surrendered your life to Him?</p>
+<ul>
+<li>Look away from yourself and look to Jesus! Just like the Israelites looked to the bronze serpent, look to Christ.</li>
+<li>Put the full weight of your life on Jesus Christ.</li>
+</ul>
+<p>Conclusion — Nicodemus was presented with a choice that night, and John never tells us how he responded — because now you have to answer the question.</p>`,
+    },
+    expected: {
+      title: "You Must Be Born Again",
+      series: "That's Not in the Bible",
+      points: [
+        "Why must you be born again?",
+        "Religious",
+        "Relationships",
+        "Riches",
+        "Respect",
+        "How can I be born again?",
+        "Are you born again?",
+      ],
+      refs: [
+        { book: "John", chapter: 3, start_verse: 1, point_index: null },
+        { book: "John", chapter: 3, start_verse: 10, point_index: 0 },
+        { book: "Ephesians", chapter: 2, start_verse: 3, point_index: 0 },
+        { book: "John", chapter: 3, start_verse: 5, point_index: 0 },
+        { book: "Ezekiel", chapter: 36, start_verse: 25, point_index: 0 },
+        { book: "John", chapter: 3, start_verse: 13, point_index: 1 },
+        { book: "John", chapter: 3, start_verse: 16, point_index: 1 },
+        { book: "James", chapter: 2, start_verse: 19, point_index: 1 },
+      ],
+    },
+  },
+  {
+    // Outline with points but zero scripture citations: the parser must return
+    // an empty refs array — any ref at all is a fabrication.
+    name: "points-no-refs",
+    input: {
+      kind: "text",
+      text: `Healthy Rhythms for a New Season
+
+1. Guard your calendar
+Busyness is not the same as fruitfulness. Decide in advance what gets your best hours, and leave margin for the interruptions that matter.
+
+2. Guard your mind
+What you feed your attention becomes your appetite. Choose inputs on purpose instead of by default.
+
+3. Guard your relationships
+Nobody drifts into deep friendship. Put the recurring dinner on the calendar and keep it.`,
+    },
+    expected: {
+      title: "Healthy Rhythms for a New Season",
+      series: null,
+      points: ["Guard your calendar", "Guard your mind", "Guard your relationships"],
+      refs: [],
+    },
+  },
 ];
