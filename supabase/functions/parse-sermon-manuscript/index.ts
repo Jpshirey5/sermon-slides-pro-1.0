@@ -215,10 +215,26 @@ serve(async (req) => {
 
     // Deterministic backstop: regex-extract references from the document text and
     // union them with the model's refs so a citation is never silently absent.
+    // Backstop-only refs have no point placement, so they render at the end of the
+    // deck (never the top) and each one is surfaced as a warning.
     // (PDF inputs have no client-extracted text layer, so the model is authoritative there.)
+    const modelRefs = parsedResult.data.scripture_references;
     const refs = backstopText
-      ? mergeRefs(parsedResult.data.scripture_references, extractRefsFromText(backstopText))
-      : parsedResult.data.scripture_references;
+      ? mergeRefs(
+          modelRefs,
+          extractRefsFromText(backstopText).map((r) => ({
+            ...r,
+            placement: "conclusion" as const,
+          })),
+        )
+      : modelRefs;
+    const backstopAdded = refs.slice(modelRefs.length);
+    const extractionWarnings = [...parsedResult.warnings];
+    if (backstopAdded.length > 0) {
+      extractionWarnings.push(
+        `Found ${backstopAdded.length} reference${backstopAdded.length === 1 ? "" : "s"} the parser couldn't place under a point (${backstopAdded.map((r) => r.raw_text).join(", ")}) — added at the end of the deck; check in Sermon Review`,
+      );
+    }
 
     const validation = await validateReferences({
       refs,
@@ -227,6 +243,7 @@ serve(async (req) => {
       anonKey,
       authHeader,
     });
+    const allWarnings = [...extractionWarnings, ...validation.warnings];
 
     const built = buildSermon({
       parsed: parsedResult.data,
@@ -251,7 +268,7 @@ serve(async (req) => {
     }
 
     const parsingDurationMs = Date.now() - startedAt;
-    const partial = validation.warnings.length > 0;
+    const partial = allWarnings.length > 0;
     const { data: usageRow } = await supabaseAdmin
       .from("quick_build_usage")
       .insert({
@@ -263,7 +280,7 @@ serve(async (req) => {
         tokens_used: parsedResult.tokens_used,
         parsing_duration_ms: parsingDurationMs,
         status: partial ? "partial" : "success",
-        error_message: partial ? validation.warnings.join("; ").slice(0, 500) : null,
+        error_message: partial ? allWarnings.join("; ").slice(0, 500) : null,
         translation,
         points_detected: built.pointsCount,
         verses_detected: built.versesCount,
@@ -313,7 +330,7 @@ serve(async (req) => {
       points_count: built.pointsCount,
       verses_count: built.versesCount,
       parsing_duration_ms: parsingDurationMs,
-      warnings: validation.warnings,
+      warnings: allWarnings,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Internal server error";

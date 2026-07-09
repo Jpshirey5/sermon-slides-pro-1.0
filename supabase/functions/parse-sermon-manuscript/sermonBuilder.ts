@@ -62,15 +62,19 @@ export function buildSermon(options: {
     scriptures: [],
   });
 
-  // Group verses by (point, subpoint) while preserving document order within each group.
+  // Group verses by (point, subpoint) while preserving document order within each
+  // group. Unplaced verses split on placement: refs cited before the first point
+  // open the deck; conclusion refs and backstop catches close it.
   const introVerses: ValidatedVerseBlock[] = [];
+  const conclusionVerses: ValidatedVerseBlock[] = [];
   const byPoint = new Map<number, { direct: ValidatedVerseBlock[]; bySubpoint: Map<number, ValidatedVerseBlock[]> }>();
   parsed.points.forEach((_, i) => byPoint.set(i, { direct: [], bySubpoint: new Map() }));
 
   for (const verse of validatedVerses) {
     const pIdx = verse.point_index;
     if (pIdx === null || pIdx < 0 || pIdx >= parsed.points.length) {
-      introVerses.push(verse);
+      if (verse.placement === "conclusion") conclusionVerses.push(verse);
+      else introVerses.push(verse);
       continue;
     }
     const group = byPoint.get(pIdx)!;
@@ -84,7 +88,7 @@ export function buildSermon(options: {
   }
 
   // Document order: intro verses, then per point — point block, its direct verses,
-  // then each subpoint block followed by that subpoint's verses.
+  // then each subpoint block followed by that subpoint's verses — then conclusion.
   const points: any[] = introVerses.map(makeVerseBlock);
   parsed.points.forEach((point, index) => {
     const group = byPoint.get(index)!;
@@ -96,6 +100,7 @@ export function buildSermon(options: {
       points.push(...subVerses.map(makeVerseBlock));
     });
   });
+  points.push(...conclusionVerses.map(makeVerseBlock));
 
   const pointsCount = parsed.points.length;
 
