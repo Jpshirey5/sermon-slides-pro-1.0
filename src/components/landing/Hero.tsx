@@ -1,10 +1,14 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Sparkles } from "lucide-react";
+import { ArrowRight, Play, Sparkles } from "lucide-react";
 import heroImage from "@/assets/hero-church.jpg";
 
+const DEMO_VIDEO_ID = "foiprpsTcWk";
+
 const Hero = () => {
+  const [isPlaying, setIsPlaying] = useState(false);
   return (
     <section className="relative min-h-screen flex items-center justify-center overflow-hidden pt-24 pb-16 grid-noise">
       <div className="absolute inset-0 bg-gradient-to-b from-white/30 to-transparent" />
@@ -89,7 +93,7 @@ const Hero = () => {
           </motion.div> */}
         </div>
 
-        {/* Preview Image */}
+        {/* Demo Video */}
         <motion.div
           initial={{ opacity: 0, y: 40 }}
           animate={{ opacity: 1, y: 0 }}
@@ -97,21 +101,44 @@ const Hero = () => {
           className="mt-16 max-w-5xl mx-auto"
         >
           <div className="relative rounded-3xl overflow-hidden shadow-elevated border border-white/70 glass-panel">
-            <img
-              src={heroImage}
-              alt="Sermon presentation preview"
-              className="w-full aspect-video object-cover"
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-background/60 to-transparent flex items-end justify-center pb-8">
-              <div className="text-center">
-                <h3 className="font-serif text-2xl font-semibold text-foreground mb-2">
-                  Beautiful Presentation Slides
-                </h3>
-                <p className="text-muted-foreground">
-                  Ready for PowerPoint or ProPresenter
-                </p>
-              </div>
-            </div>
+            {isPlaying ? (
+              <iframe
+                src={`https://www.youtube-nocookie.com/embed/${DEMO_VIDEO_ID}?autoplay=1&rel=0`}
+                title="Sermon Slides Pro demo"
+                allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+                allowFullScreen
+                className="w-full aspect-video"
+              />
+            ) : (
+              <button
+                type="button"
+                onClick={() => setIsPlaying(true)}
+                aria-label="Play product demo video"
+                className="group relative block w-full cursor-pointer"
+              >
+                <img
+                  src={heroImage}
+                  alt="Sermon presentation preview"
+                  className="w-full aspect-video object-cover"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-background/60 to-transparent" />
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <span className="flex items-center justify-center w-14 h-14 sm:w-20 sm:h-20 rounded-full bg-white/90 shadow-elevated transition-transform duration-300 group-hover:scale-110">
+                    <Play className="w-6 h-6 sm:w-8 sm:h-8 text-primary ml-1" fill="currentColor" />
+                  </span>
+                </div>
+                <div className="absolute inset-x-0 bottom-0 hidden sm:flex justify-center pb-8">
+                  <div className="text-center">
+                    <h3 className="font-serif text-2xl font-semibold text-foreground mb-2">
+                      Watch the Demo
+                    </h3>
+                    <p className="text-muted-foreground">
+                      See how sermon notes become slides in minutes
+                    </p>
+                  </div>
+                </div>
+              </button>
+            )}
           </div>
         </motion.div>
       </div>
