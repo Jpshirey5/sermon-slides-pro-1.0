@@ -90,7 +90,11 @@ export function parseScriptureReference(reference: string): {
   verseEnd?: number;
 } | null {
   const normalizedReference = normalizeScriptureReference(reference);
-  const match = normalizedReference.match(/^(\d?\s*[A-Za-z]+)\s+(\d+):(\d+)(?:-(\d+))?$/i);
+  // The book group allows multiple words so multi-word books ("Song of Solomon") parse.
+  // Digits aren't in [A-Za-z], so the trailing chapter number can never be absorbed into it.
+  const match = normalizedReference.match(
+    /^((?:\d\s*)?[A-Za-z]+(?:\s+[A-Za-z]+)*)\s+(\d+):(\d+)(?:-(\d+))?$/i
+  );
   if (!match) return null;
 
   return {

@@ -13,6 +13,13 @@ import {
 } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   BookOpen,
   ArrowLeft,
   Plus,
@@ -32,6 +39,8 @@ import ProductTour, { type ProductTourStep } from "@/components/ProductTour";
 import StructuredBuilderInfoModal from "@/components/StructuredBuilderInfoModal";
 import { consumeCreateTourPrompt } from "@/lib/product-tour";
 import { listAccountCampuses, type Campus } from "@/lib/campuses";
+import { blockDragFromNode } from "@/lib/block-drag";
+import ScripturePicker from "@/components/ScripturePicker";
 
 interface Scripture {
   reference: string;
@@ -76,6 +85,7 @@ const CreateSermon = () => {
   const [showTourBuilderPrompt, setShowTourBuilderPrompt] = useState(false);
   const [showStructuredBuilderInfo, setShowStructuredBuilderInfo] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [openInsertMenuId, setOpenInsertMenuId] = useState<string | null>(null);
   const [points, setPoints] = useState<SermonPoint[]>(
     editData?.points
       ? editData.points.map((p: any) => ({
@@ -107,6 +117,8 @@ const CreateSermon = () => {
   const appliedDefaultRef = useRef(false);
   const titleInputRef = useRef<HTMLInputElement | null>(null);
   const lastSavedDraftRef = useRef("");
+  // Id of a freshly inserted point/verse whose input should take focus on mount
+  const focusItemIdRef = useRef<string | null>(null);
 
   const clearLookupTimeout = useCallback((key: string) => {
     if (lookupTimeouts.current[key]) {
@@ -201,15 +213,24 @@ const CreateSermon = () => {
     };
   }, [accountId, dashboardCampusFilter?.type, dashboardCampusFilter?.value, editCampusId, isEnterpriseAccount]);
 
-  const addPoint = () => {
-    const newId = String(Date.now());
-    setPoints([...points, { id: newId, type: "point", title: "", scriptures: [] }]);
+  const insertItem = (type: "point" | "verse", index: number) => {
+    const newItem: SermonPoint = {
+      id: crypto.randomUUID(),
+      type,
+      title: "",
+      scriptures: type === "verse" ? [{ reference: "" }] : [],
+    };
+    setPoints((prev) => {
+      const next = [...prev];
+      next.splice(Math.max(0, Math.min(index, next.length)), 0, newItem);
+      return next;
+    });
+    focusItemIdRef.current = newItem.id;
   };
 
-  const addVerse = () => {
-    const newId = String(Date.now());
-    setPoints([...points, { id: newId, type: "verse", title: "", scriptures: [{ reference: "" }] }]);
-  };
+  const addPoint = () => insertItem("point", points.length);
+
+  const addVerse = () => insertItem("verse", points.length);
 
   const removePoint = (id: string) => {
     setPoints(points.filter((p) => p.id !== id));
@@ -857,7 +878,7 @@ const CreateSermon = () => {
                 <Reorder.Item
                   key={point.id}
                   value={point}
-                  className="p-6 rounded-2xl glass-panel"
+                  className="relative group p-6 rounded-2xl glass-panel"
                 >
                 {/* Point Header */}
                   <div className="flex items-start gap-4">
@@ -873,6 +894,12 @@ const CreateSermon = () => {
                         <div className="flex-1 space-y-4">
                           <div className="flex items-center gap-4">
                             <Input
+                              ref={(el) => {
+                                if (el && focusItemIdRef.current === point.id) {
+                                  focusItemIdRef.current = null;
+                                  el.focus();
+                                }
+                              }}
                               type="text"
                               placeholder="Enter sermon point title..."
                               value={point.title}
@@ -925,6 +952,12 @@ const CreateSermon = () => {
                                 <div className="flex items-center gap-3">
                                   <div className="relative flex-1">
                                     <Input
+                                      ref={(el) => {
+                                        if (el && scriptureIndex === 0 && focusItemIdRef.current === point.id) {
+                                          focusItemIdRef.current = null;
+                                          el.focus();
+                                        }
+                                      }}
                                       type="text"
                                       placeholder="e.g., John 3:16"
                                       value={scripture.reference}
@@ -943,15 +976,12 @@ const CreateSermon = () => {
                                       </div>
                                     )}
                                   </div>
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      removeScripture(point.id, scriptureIndex)
+                                  <ScripturePicker
+                                    value={scripture.reference}
+                                    onSelect={(reference) =>
+                                      updateScripture(point.id, scriptureIndex, reference)
                                     }
-                                    className="p-2 text-muted-foreground hover:text-destructive"
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                  </button>
+                                  />
                                 </div>
                                 {scripture.error && scripture.errorMessage && (
                                   <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/30">
@@ -978,6 +1008,45 @@ const CreateSermon = () => {
                       </>
                     )}
                   </div>
+
+                  {/* Inline insert control — add a point or verse next to this item */}
+                  <DropdownMenu
+                    open={openInsertMenuId === point.id}
+                    onOpenChange={(open) => setOpenInsertMenuId(open ? point.id : null)}
+                  >
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        ref={blockDragFromNode}
+                        type="button"
+                        aria-label="Insert a point or verse here"
+                        onClick={() =>
+                          setOpenInsertMenuId((current) => (current === point.id ? null : point.id))
+                        }
+                        className="absolute -bottom-3 right-6 z-20 flex h-7 w-7 items-center justify-center rounded-full border border-border bg-card text-muted-foreground shadow-soft transition-all hover:bg-primary hover:text-primary-foreground hover:shadow-elevated focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
+                      >
+                        <Plus className="w-4 h-4" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" side="bottom" className="w-52">
+                      <DropdownMenuItem onClick={() => insertItem("point", pointIndex + 1)}>
+                        <Plus className="mr-2 w-4 h-4" />
+                        Add Point Below
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => insertItem("verse", pointIndex + 1)}>
+                        <Book className="mr-2 w-4 h-4" />
+                        Add Verse Below
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={() => insertItem("point", pointIndex)}>
+                        <Plus className="mr-2 w-4 h-4" />
+                        Add Point Above
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => insertItem("verse", pointIndex)}>
+                        <Book className="mr-2 w-4 h-4" />
+                        Add Verse Above
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </Reorder.Item>
               ))}
               </Reorder.Group>
