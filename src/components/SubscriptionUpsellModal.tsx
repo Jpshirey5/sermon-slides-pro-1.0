@@ -4,32 +4,32 @@ import { PLAN_FAMILIES, type SubscriptionPlanId } from "@/lib/subscriptionPlans"
 
 interface SubscriptionUpsellModalProps {
   isOpen: boolean;
-  onContinue: () => void;
+  onDismiss: () => void;
   onSelectPlan: (planId: SubscriptionPlanId) => void;
 }
 
 export function SubscriptionUpsellModal({
   isOpen,
-  onContinue,
+  onDismiss,
   onSelectPlan,
 }: SubscriptionUpsellModalProps) {
   const featureHighlights: Record<string, string> = {
-    pro: "1 user • No watermark • Weekly sermon workflow",
-    team: "Up to 3 users • No watermark • Shared team workflow",
-    enterprise: "Up to 10 users • No watermark • Larger ministry teams",
+    core: "Up to 3 users • AI Quick Build • 25 shared generations/month",
+    team: "Up to 10 users • Multi-campus • 70 shared generations/month",
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onContinue()}>
-      <DialogContent className="sm:max-w-3xl">
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onDismiss()}>
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Unlock unlimited presentation creation</DialogTitle>
+          <DialogTitle>Your export is ready — want more?</DialogTitle>
           <DialogDescription>
-            Your preview still carries a small Sermon Slide Pro mark in the corner of each slide. Upgrade to Pro or higher to remove the watermark entirely, plus unlimited exports, saved presentations, and more flexibility each week.
+            You just exported for free with the manual builder. Create an account on Core or Team to unlock AI Quick
+            Build, saved presentations, and team collaboration.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid gap-4 py-2 md:grid-cols-3">
+        <div className="grid gap-4 py-2 md:grid-cols-2">
           {PLAN_FAMILIES.map((family) => (
             <div key={family.tier} className="rounded-2xl border border-border/70 bg-white/70 p-4">
               <h3 className="font-serif text-lg font-semibold text-foreground">{family.planName}</h3>
@@ -55,12 +55,9 @@ export function SubscriptionUpsellModal({
           ))}
         </div>
 
-        <div className="flex justify-end gap-3">
-          <Button variant="outline" onClick={onContinue}>
+        <div className="flex justify-end">
+          <Button variant="outline" onClick={onDismiss}>
             Maybe later
-          </Button>
-          <Button onClick={onContinue}>
-            Continue to Export
           </Button>
         </div>
       </DialogContent>

@@ -93,8 +93,16 @@ const NextInvoiceSummary = ({ nextInvoice }: { nextInvoice?: any }) => {
 
   return (
     <div className="space-y-0.5">
-      <p className="font-medium text-foreground">
+      <p className="font-medium text-foreground flex items-center gap-1.5">
         {typeof nextInvoice.amountDue === "number" ? formatMoney(nextInvoice.amountDue, nextInvoice.currency || "usd") : "Amount unavailable"}
+        {nextInvoice.discount && (
+          <span
+            className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary"
+            title="A Stripe coupon is applied to this subscription"
+          >
+            Coupon
+          </span>
+        )}
       </p>
       <p className="text-xs text-muted-foreground">{formatAdminDate(nextInvoice.nextInvoiceAt)}</p>
     </div>

@@ -12,7 +12,6 @@ const NOISY_EVENT_NAMES = new Set([
   "signup_viewed",
   "create_sermon_viewed",
   "editor_viewed",
-  "payment_success_viewed",
   "client_error",
 ]);
 

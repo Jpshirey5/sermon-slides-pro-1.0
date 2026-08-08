@@ -257,7 +257,7 @@ const Account = () => {
   const handleSaveDefaultTranslation = async () => {
     if (!user) return;
     if (isEnterprisePlan && !isOwner) {
-      toast.error("Enterprise Bible translation is inherited from the organization owner.");
+      toast.error("On the Team plan, Bible translation is inherited from the organization owner.");
       return;
     }
 
@@ -275,7 +275,7 @@ const Account = () => {
     if (error) {
       toast.error("Failed to update default translation.");
     } else {
-      toast.success(isEnterprisePlan ? "Enterprise default translation updated for the team!" : "Default translation updated!");
+      toast.success(isEnterprisePlan ? "Team plan default translation updated for everyone!" : "Default translation updated!");
       await loadTeam();
       await refreshProfile();
     }
@@ -626,7 +626,7 @@ const Account = () => {
   const inviteLimitReached = capacity.isUnlimited ? false : (inviteSlotsRemaining ?? 0) === 0;
   const isCancelingSubscription = subscription.subscribed && subscription.cancel_at_period_end;
   const planLabel = subscription.subscribed
-    ? resolvedPlan?.label || subscription.plan_label || "Pro"
+    ? resolvedPlan?.label || subscription.plan_label || "Free"
     : "No active subscription";
   const statusLabel = isCancelingSubscription
     ? "Cancelled"
@@ -638,8 +638,11 @@ const Account = () => {
     : subscription.subscribed
     ? "text-green-600 font-medium"
     : "text-muted-foreground";
-  const isEnterprisePlan = activePlanTier === "enterprise";
-  const isTeamOrEnterprisePlan = activePlanTier === "team" || isEnterprisePlan;
+  // "enterprise"/"team" here are the pre-rename tier keys; post Step 1 the DB
+  // stores the new keys (old enterprise -> "team", old team -> "core"), so
+  // these must check "team"/"core" to keep gating campus & multi-role features.
+  const isEnterprisePlan = activePlanTier === "team";
+  const isTeamOrEnterprisePlan = activePlanTier === "core" || isEnterprisePlan;
   const canCreateMoreCampuses = campuses.length < 5;
   const primaryCampus = campuses.find((campus) => campus.isPrimary) || null;
   const deletionCancelable = isDeletionCancelable(activeDeletionRequest);
@@ -720,7 +723,7 @@ const Account = () => {
       steps.push({
         targetId: "account-campuses-management",
         title: "Manage campuses",
-        description: "Enterprise owners can add, rename, set primary, and remove campuses, up to 5 total.",
+        description: "Team plan owners can add, rename, set primary, and remove campuses, up to 5 total.",
       });
     }
 
@@ -1081,11 +1084,11 @@ const Account = () => {
                       </div>
                       <p className="text-xs text-muted-foreground">
                         {defaultTranslationInherited
-                          ? "Enterprise team members inherit this from the organization owner."
+                          ? "Team plan members inherit this from the organization owner."
                           : inheritedDefaultTranslationLoading
                           ? "Loading your organization’s default translation..."
                           : isEnterprisePlan
-                          ? "Enterprise team members will inherit this translation for new presentations."
+                          ? "Team plan members will inherit this translation for new presentations."
                           : "New presentations will start with this translation by default."}
                       </p>
                     </div>
@@ -1266,7 +1269,7 @@ const Account = () => {
                     <div>
                       <h2 className="font-serif text-2xl font-semibold text-foreground">Campuses</h2>
                       <p className="text-sm text-muted-foreground">
-                        Enterprise accounts can organize presentations across up to 5 campuses.
+                        Team plan accounts can organize presentations across up to 5 campuses.
                       </p>
                     </div>
                   </div>
@@ -1323,7 +1326,7 @@ const Account = () => {
                                     </div>
                                     <p className="mt-1 text-xs text-muted-foreground">
                                       {campus.isPrimary
-                                        ? "New Enterprise presentations default here unless another campus is selected."
+                                        ? "New Team plan presentations default here unless another campus is selected."
                                         : primaryCampus
                                         ? `Deleting this campus moves its presentations to ${primaryCampus.name}.`
                                         : "Presentations in this campus stay filtered together on the dashboard."}
@@ -1395,7 +1398,7 @@ const Account = () => {
                       <p className="mt-2 text-xs text-muted-foreground">
                         {canCreateMoreCampuses
                           ? `${campuses.length} of 5 campuses used.`
-                          : "You have reached the 5-campus limit for Enterprise."}
+                          : "You have reached the 5-campus limit for the Team plan."}
                       </p>
                     </div>
                   )}
@@ -1436,7 +1439,7 @@ const Account = () => {
                     <div className="rounded-2xl border border-border/70 bg-white/70 p-5">
                       <Label className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Price</Label>
                       <p className="mt-3 text-base font-medium text-foreground">
-                        {resolvedPlan ? resolvedPlan.displayPrice : "Pro"}
+                        {resolvedPlan ? resolvedPlan.displayPrice : "Free"}
                       </p>
                     </div>
                   )}
@@ -1507,7 +1510,7 @@ const Account = () => {
                           <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
                             <p className="text-sm font-medium text-foreground">Subscription required</p>
                             <p className="mt-1 text-xs text-muted-foreground">
-                              Choose Pro, Team, or Enterprise with monthly or annual billing to activate your account and continue.
+                              Choose Core or Team with monthly or annual billing to activate your account and continue.
                             </p>
                           </div>
                           <SubscriptionPlanPicker

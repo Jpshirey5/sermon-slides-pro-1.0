@@ -156,7 +156,9 @@ const Dashboard = () => {
   const [globalMessagesQueue, setGlobalMessagesQueue] = useState<any[]>([]);
   const [dismissingGlobalMessage, setDismissingGlobalMessage] = useState(false);
   const [deferGlobalMessages, setDeferGlobalMessages] = useState(false);
-  const isEnterpriseAccount = subscription.plan_tier === "enterprise";
+  // "enterprise" is the pre-rename tier key; post Step 1 the DB stores "team"
+  // for what was Enterprise (old team -> "core", old enterprise -> "team").
+  const isEnterpriseAccount = subscription.plan_tier === "team";
   const latestPresentationLoadIdRef = useRef(0);
   const activeGlobalMessage = globalMessagesQueue[0] || null;
   const currentMonthKey = getLocalMonthKey();

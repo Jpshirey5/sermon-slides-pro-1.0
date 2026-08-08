@@ -67,7 +67,9 @@ const CreateSermon = () => {
   const editId = (location.state as any)?.editId;
   const editCampusId = (location.state as any)?.editCampusId || editData?.campusId || "";
   const dashboardCampusFilter = (location.state as any)?.campusFilter || null;
-  const isEnterpriseAccount = subscription.plan_tier === "enterprise";
+  // "enterprise" is the pre-rename tier key; post Step 1 the DB stores "team"
+  // for what was Enterprise (old team -> "core", old enterprise -> "team").
+  const isEnterpriseAccount = subscription.plan_tier === "team";
   const [draftId] = useState(() => editId || crypto.randomUUID());
   const [title, setTitle] = useState(editData?.title || "");
   const [series, setSeries] = useState(editData?.series || "");
@@ -833,7 +835,7 @@ const CreateSermon = () => {
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">
-                    Enterprise presentations are saved to a campus so they can be filtered on the dashboard.
+                    Team plan presentations are saved to a campus so they can be filtered on the dashboard.
                   </p>
                 </div>
               )}

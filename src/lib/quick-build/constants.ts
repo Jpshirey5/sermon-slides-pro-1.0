@@ -9,12 +9,6 @@ export const ACCEPTED_EXTENSIONS = [".pdf", ".docx"] as const;
 
 export const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 
-export const TIER_LIMITS: Record<string, number> = {
-  pro: 5,
-  team: 15,
-  enterprise: Number.POSITIVE_INFINITY,
-};
-
 export const QUICK_BUILD_STEPS = [
   "Uploading your outline...",
   "Reading your document...",

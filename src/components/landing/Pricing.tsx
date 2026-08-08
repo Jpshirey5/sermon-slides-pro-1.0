@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Check, ChevronsUp, Crown } from "lucide-react";
+import { Check, ChevronsUp, Crown, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -11,33 +11,31 @@ type TierFeatures = {
   items: readonly string[];
 };
 
-const FEATURES_BY_TIER: Record<"pro" | "team" | "enterprise", TierFeatures> = {
-  pro: {
+const FREE_TIER_FEATURES: readonly string[] = [
+  "No account or payment required",
+  "Full manual sermon builder",
+  "Unlimited free exports",
+  "Great for trying things out before you subscribe",
+];
+
+const FEATURES_BY_TIER: Record<"core" | "team", TierFeatures> = {
+  core: {
     items: [
-      "1 user",
-      "AI Quick Builder — 5 builds/month",
+      "Up to 3 users",
+      "AI Quick Builder — 25 shared generations/month",
       "Unlimited presentation creation",
       "Unlimited PowerPoint and ProPresenter exports",
       "No watermark — clean, unbranded slides on every export",
       "Saved presentations and editing history",
       "Scripture lookup and weekly sermon workflow",
-      "Best for solo pastors and ministry leaders",
-    ],
-  },
-  team: {
-    inheritsFromLabel: "Everything in Pro, plus:",
-    items: [
-      "Up to 3 users",
-      "AI Quick Builder — 15 builds/month",
-      "Shared account for pastors, worship leaders, and staff",
       "Best for small church teams",
     ],
   },
-  enterprise: {
-    inheritsFromLabel: "Everything in Team, plus:",
+  team: {
+    inheritsFromLabel: "Everything in Core, plus:",
     items: [
       "Up to 10 users",
-      "AI Quick Builder — Unlimited builds/month",
+      "AI Quick Builder — 70 shared generations/month",
       "Built for larger ministries and multi-role teams",
       "Built to support multi-campus teams",
       "Best for growing churches and larger teams",
@@ -77,8 +75,8 @@ const Pricing = () => {
             Simple, Transparent Pricing
           </h2>
           <p className="text-lg text-muted-foreground">
-            Subscribe to unlock unlimited exports, saved presentations, and the right collaboration access for your team.
-            Pro and higher remove the watermark for clean, unbranded slides on every export.
+            Try it free with our manual builder, or subscribe to unlock AI Quick Build and the right collaboration
+            access for your team. Core and higher remove the watermark for clean, unbranded slides on every export.
           </p>
         </motion.div>
 
@@ -139,6 +137,41 @@ const Pricing = () => {
           transition={{ duration: 0.5 }}
           className="max-w-6xl mx-auto grid gap-6 lg:grid-cols-3"
         >
+          <div className="relative rounded-3xl glass-panel overflow-hidden border border-border/60">
+            <div className="p-8 flex h-full flex-col">
+              <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-6 bg-secondary">
+                <Sparkles className="w-7 h-7 text-foreground" />
+              </div>
+              <h3 className="font-serif text-2xl font-semibold text-foreground mb-2">Try it Free</h3>
+              <p className="text-sm text-muted-foreground mb-6">No account required</p>
+
+              <div className="flex items-baseline gap-1 mb-2">
+                <span className="text-5xl font-bold text-foreground">$0</span>
+              </div>
+              <p className="text-sm text-muted-foreground mb-6">Free, forever</p>
+
+              <ul className="space-y-4 mb-8">
+                {FREE_TIER_FEATURES.map((feature, featureIndex) => (
+                  <li key={featureIndex} className="flex items-start gap-3">
+                    <div className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <Check className="w-3 h-3 text-primary" />
+                    </div>
+                    <span className="text-foreground">{feature}</span>
+                  </li>
+                ))}
+              </ul>
+
+              <Button
+                variant="outline"
+                className="w-full mt-auto"
+                size="lg"
+                onClick={() => navigate("/create")}
+              >
+                Start Creating Free
+              </Button>
+            </div>
+          </div>
+
           {PLAN_FAMILIES.map((family) => {
             const plan = billingInterval === "monthly" ? family.monthly : family.annual;
             const isFeatured = family.tier === "team";

@@ -44,7 +44,7 @@ const CTA = () => {
           <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-card/85 border border-border/70 mb-8">
             <Sparkles className="w-4 h-4 text-primary" />
             <span className="text-sm font-medium text-foreground">
-              Built for Pro, Team, and Enterprise workflows
+              Built for Free, Core, and Team workflows
             </span>
           </div>
 
