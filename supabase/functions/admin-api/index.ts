@@ -284,7 +284,96 @@ const emptyNextInvoiceSummary = (status = "none") => ({
   nextInvoiceAt: null,
   subscriptionId: null,
   error: null,
+  livePlan: null,
+  discount: null,
+  priceUnitAmount: null,
 });
+
+// Resolves a Stripe price ID to our current plan metadata. Mirrors the
+// PLAN_BY_PRICE_ID pattern in check-subscription/stripe-webhook -- only the
+// 4 current Core/Team prices are recognized (legacy Pro/Team/Enterprise
+// mappings were retired). Used to cross-check what Stripe actually has a
+// subscription priced at against our own accounts.plan_tier, so admin
+// screens don't rely solely on a DB field that could drift if a webhook
+// was ever missed.
+const ADMIN_PLAN_BY_PRICE_ID = new Map<string, { planTier: string; planLabel: string; billingInterval: "monthly" | "annual" }>(
+  [
+    [Deno.env.get("STRIPE_PRICE_CORE_MONTHLY"), { planTier: "core", planLabel: "Core", billingInterval: "monthly" }],
+    [Deno.env.get("STRIPE_PRICE_CORE_ANNUAL"), { planTier: "core", planLabel: "Core", billingInterval: "annual" }],
+    [Deno.env.get("STRIPE_PRICE_TEAM_MONTHLY"), { planTier: "team", planLabel: "Team", billingInterval: "monthly" }],
+    [Deno.env.get("STRIPE_PRICE_TEAM_ANNUAL"), { planTier: "team", planLabel: "Team", billingInterval: "annual" }],
+  ].filter((entry): entry is [string, { planTier: string; planLabel: string; billingInterval: "monthly" | "annual" }] => Boolean(entry[0]))
+);
+
+const resolveStripePriceMetadata = (priceId?: string | null) => {
+  if (!priceId) return null;
+  return ADMIN_PLAN_BY_PRICE_ID.get(priceId) || null;
+};
+
+// Subscription discounts moved from a singular `discount` field to a
+// `discounts` array in newer Stripe API versions; handle both shapes so
+// this doesn't silently show "no discount" on an SDK/version mismatch.
+const extractDiscountInfo = (subscription: any) => {
+  const raw = subscription?.discount || (Array.isArray(subscription?.discounts) ? subscription.discounts[0] : null);
+  if (!raw || typeof raw === "string" || !raw.coupon) return null;
+  const coupon = raw.coupon;
+  return {
+    name: coupon.name || coupon.id || null,
+    percentOff: typeof coupon.percent_off === "number" ? coupon.percent_off : null,
+    amountOff: typeof coupon.amount_off === "number" ? coupon.amount_off : null,
+    currency: coupon.currency || null,
+    duration: coupon.duration || null,
+    durationInMonths: typeof coupon.duration_in_months === "number" ? coupon.duration_in_months : null,
+    end: raw.end || null,
+  };
+};
+
+// Confirmed via a live diagnostic dump on Koby Dickinson's account: for an
+// invoice *preview* (createPreview/retrieveUpcoming), the applied discount
+// shows up under total_discount_amounts[].discount -- a distinct expand
+// path from `discounts`/`discount`, which stayed empty even with those
+// expanded. total_discount_amounts[].discount is itself just a string ID
+// unless `total_discount_amounts.discount`(.coupon) is separately expanded.
+// This derives a discount summary from the actual dollar amount taken off
+// this invoice, which is correct regardless of whether that expansion
+// resolves a full coupon object.
+const extractDiscountFromInvoiceTotals = (upcoming: any, priceUnitAmount: number | null, currency: string | null) => {
+  const entries = Array.isArray(upcoming?.total_discount_amounts) ? upcoming.total_discount_amounts : [];
+  if (entries.length === 0) return null;
+
+  const expandedEntry = entries.find((entry: any) => entry?.discount && typeof entry.discount === "object");
+  if (expandedEntry) {
+    const resolved = extractDiscountInfo({ discount: expandedEntry.discount });
+    if (resolved) return resolved;
+  }
+
+  const totalOff = entries.reduce((sum: number, entry: any) => sum + (typeof entry?.amount === "number" ? entry.amount : 0), 0);
+  if (totalOff <= 0) return null;
+
+  const percentOff = priceUnitAmount ? Math.round((totalOff / priceUnitAmount) * 100) : null;
+  return {
+    name: null,
+    percentOff: percentOff && percentOff >= 100 ? 100 : percentOff,
+    amountOff: percentOff && percentOff >= 100 ? null : totalOff,
+    currency: currency || null,
+    duration: null,
+    durationInMonths: null,
+    end: null,
+  };
+};
+
+// The subscription item's price sticker amount, independent of any
+// discount (that's what the coupon is applied against). This is what a
+// customer's plan is nominally priced at, as opposed to amountDue below
+// which already reflects the discount.
+const extractLivePriceInfo = (subscription: any) => {
+  const price = subscription?.items?.data?.[0]?.price;
+  if (!price) return { livePlan: null, priceUnitAmount: null };
+  return {
+    livePlan: resolveStripePriceMetadata(price.id),
+    priceUnitAmount: typeof price.unit_amount === "number" ? price.unit_amount : null,
+  };
+};
 
 const notApplicableNextInvoiceSummary = () => ({
   ...emptyNextInvoiceSummary("not_applicable"),
@@ -338,9 +427,11 @@ const getNextInvoiceSummary = async (stripe: Stripe | null, account: any) => {
     const subscriptionId = clean(account?.stripe_subscription_id);
     let subscription: any = null;
 
+    const subscriptionExpand = ["items.data.price", "discounts", "discounts.coupon"];
+
     if (subscriptionId) {
       try {
-        const retrieved = await stripe.subscriptions.retrieve(subscriptionId);
+        const retrieved = await stripe.subscriptions.retrieve(subscriptionId, { expand: subscriptionExpand });
         if (["active", "trialing", "past_due"].includes(retrieved.status)) subscription = retrieved;
       } catch (error) {
         logStep("Failed retrieving subscription for next invoice", { subscriptionId, error: String(error) });
@@ -348,22 +439,53 @@ const getNextInvoiceSummary = async (stripe: Stripe | null, account: any) => {
     }
 
     if (!subscription) {
-      const subscriptions = await stripe.subscriptions.list({ customer: customerId, status: "all", limit: 10 });
+      const subscriptions = await stripe.subscriptions.list({
+        customer: customerId,
+        status: "all",
+        limit: 10,
+        expand: subscriptionExpand.map((path) => `data.${path}`),
+      });
       subscription = subscriptions.data.find((sub: any) => ["active", "trialing", "past_due"].includes(sub.status)) || null;
     }
 
     if (!subscription) return emptyNextInvoiceSummary("none");
 
+    const { livePlan, priceUnitAmount } = extractLivePriceInfo(subscription);
+
+    // A coupon can be attached at the subscription level, the customer
+    // level (common for manually-comped accounts applied via "Customer >
+    // Add coupon" in the Dashboard), or only reflected on the invoice
+    // itself -- check all three and use whichever is actually populated,
+    // rather than assuming subscription.discount is the only place it lives.
+    let discount = extractDiscountInfo(subscription);
+    let customerRaw: any = null;
+    if (!discount) {
+      try {
+        customerRaw = await stripe.customers.retrieve(customerId, { expand: ["discount", "discount.coupon"] });
+        discount = extractDiscountInfo(customerRaw as any);
+      } catch (error) {
+        logStep("Failed retrieving customer discount", { customerId, error: String(error) });
+      }
+    }
+
     let upcoming: any = null;
     try {
       const invoicesApi = stripe.invoices as any;
+      const invoiceExpand = ["discounts", "discounts.coupon", "total_discount_amounts.discount", "total_discount_amounts.discount.coupon"];
       if (typeof invoicesApi.createPreview === "function") {
-        upcoming = await invoicesApi.createPreview({ customer: customerId, subscription: subscription.id });
+        upcoming = await invoicesApi.createPreview({ customer: customerId, subscription: subscription.id, expand: invoiceExpand });
       } else if (typeof invoicesApi.retrieveUpcoming === "function") {
-        upcoming = await invoicesApi.retrieveUpcoming({ customer: customerId, subscription: subscription.id });
+        upcoming = await invoicesApi.retrieveUpcoming({ customer: customerId, subscription: subscription.id, expand: invoiceExpand });
       }
     } catch (error) {
       logStep("Upcoming invoice lookup failed", { customerId, subscriptionId: subscription.id, error: String(error) });
+    }
+
+    if (!discount && upcoming) {
+      discount = extractDiscountInfo(upcoming);
+    }
+    if (!discount && upcoming) {
+      discount = extractDiscountFromInvoiceTotals(upcoming, priceUnitAmount, upcoming.currency || subscription.currency || null);
     }
 
     if (!upcoming) {
@@ -374,6 +496,9 @@ const getNextInvoiceSummary = async (stripe: Stripe | null, account: any) => {
         nextInvoiceAt: subscription.current_period_end || null,
         subscriptionId: subscription.id,
         error: null,
+        livePlan,
+        discount,
+        priceUnitAmount,
       };
     }
 
@@ -384,6 +509,9 @@ const getNextInvoiceSummary = async (stripe: Stripe | null, account: any) => {
       nextInvoiceAt: upcoming.next_payment_attempt || upcoming.period_end || subscription.current_period_end || null,
       subscriptionId: subscription.id,
       error: null,
+      livePlan,
+      discount,
+      priceUnitAmount,
     };
   } catch (error) {
     return {
@@ -1446,9 +1574,9 @@ const customerBetaUpdate = async (ctx: AdminContext, body: any) => {
   if (!account) throw new Error("Customer account not found");
 
   const now = new Date();
-  const betaPlanTier = ["pro", "team", "enterprise"].includes(clean(account.plan_tier))
+  const betaPlanTier = ["free", "core", "team"].includes(clean(account.plan_tier))
     ? clean(account.plan_tier)
-    : "pro";
+    : "free";
   const trialEndsAt = addDays(now, 30).toISOString();
   const update = enabled
     ? {
@@ -1968,14 +2096,43 @@ const passwordReset = async (ctx: AdminContext, body: any) => {
   return { success: true };
 };
 
+// PERFORMANCE NOTE: this endpoint has no pagination -- it always pulls up to
+// 200 accounts and, for however many of those have a stripe_customer_id,
+// fires 2-3 live Stripe calls each (subscription retrieve/list, possibly a
+// customer retrieve, an invoice preview) at a concurrency of 4.
+// getNextInvoiceSummary short-circuits with zero Stripe calls for accounts
+// with no stripe_customer_id, so today (1 paying customer) this is
+// instant. At, say, 100+ paying customers this becomes 200-300+
+// concurrency-4-batched Stripe calls per page load -- slow, and edge
+// functions have a wall-clock timeout, so this would eventually need real
+// offset/limit pagination (only resolve live data for the current page,
+// not all 200 rows at once) or a cached/TTL'd version of the live lookup.
+// Not needed yet; flagging for whenever the paying customer base grows.
 const billingList = async (ctx: AdminContext) => {
   const { data: accounts } = await ctx.supabaseAdmin
     .from("accounts")
     .select("*")
     .order("updated_at", { ascending: false })
     .limit(200);
+
+  const rows = accounts || [];
+  const stripe = getStripe();
+  // Reuses the exact same live-resolution helper (and its subscription ->
+  // customer -> invoice discounts -> invoice total_discount_amounts
+  // fallback chain) that AdminCustomerDetail.tsx's detail view and
+  // AdminCustomers.tsx's list view already rely on -- no separate
+  // extraction logic here.
+  const nextInvoiceSummaries = await mapWithConcurrency(rows, 4, async (account: any) => ({
+    accountId: account.id,
+    nextInvoice: await getNextInvoiceSummary(stripe, account),
+  }));
+  const nextInvoiceMap = new Map(nextInvoiceSummaries.map((summary) => [summary.accountId, summary.nextInvoice]));
+
   return {
-    items: accounts || [],
+    items: rows.map((account: any) => ({
+      account,
+      nextInvoice: nextInvoiceMap.get(account.id) || emptyNextInvoiceSummary("none"),
+    })),
   };
 };
 

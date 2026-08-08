@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
-import { Link, useParams, useSearchParams, useLocation, useNavigate } from "react-router-dom";
+import { Link, useParams, useLocation, useNavigate } from "react-router-dom";
 import { motion, Reorder, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -10,20 +10,10 @@ import { exportToPowerPoint, SlideData } from "@/lib/export-pptx";
 import { exportToPdf } from "@/lib/export-pdf";
 import { exportAsProBundle, validateSlidesForExport } from "@/services/proPresenterExport";
 import { ExportOptionsModal } from "@/components/ExportOptionsModal";
-import { PaymentPromptModal } from "@/components/PaymentPromptModal";
 import { SubscriptionUpsellModal } from "@/components/SubscriptionUpsellModal";
-import { SlideWatermark } from "@/components/SlideWatermark";
 import { toast } from "sonner";
 import { getEditorPresentationState, SermonPresentation, saveEditorSlides as saveEditorSlidesToDb } from "@/lib/presentations";
 import { useAuth } from "@/contexts/AuthContext";
-import {
-  clearPendingExportContext,
-  clearVerifiedExportUnlockSession,
-  getVerifiedExportUnlockSession,
-  setPendingExportSnapshot,
-  setVerifiedExportUnlockSession,
-} from "@/lib/payPerExport";
-import { verifyGuestCheckoutSession } from "@/lib/guest-checkout";
 import { getPlanById, type SubscriptionPlanId } from "@/lib/subscriptionPlans";
 import {
   deleteStoredBackground,
@@ -127,7 +117,6 @@ const SlideEditor = () => {
   const location = useLocation();
   const editorNavigate = useNavigate();
   const { subscription, accountId, user } = useAuth();
-  const [searchParams, setSearchParams] = useSearchParams();
   const [slides, setSlides] = useState<SlideData[]>(defaultSlides);
   const [selectedSlide, setSelectedSlide] = useState(0);
   const [selectedSlides, setSelectedSlides] = useState<Set<number>>(new Set([0]));
@@ -143,19 +132,10 @@ const SlideEditor = () => {
   const [presentationFormData, setPresentationFormData] = useState<SermonPresentation["data"] | null>(null);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastSavedSlidesRef = useRef(JSON.stringify(defaultSlides));
-  
-  // Payment state
-  const [isExportUnlocked, setIsExportUnlocked] = useState(() => {
-    if (id && id !== "new") {
-      return Boolean(getVerifiedExportUnlockSession(id));
-    }
-    return false;
-  });
-  const [showPaymentModal, setShowPaymentModal] = useState(false);
+
   const [showExportModal, setShowExportModal] = useState(false);
   const [showUpsellModal, setShowUpsellModal] = useState(false);
-  const [isVerifyingUnlock, setIsVerifyingUnlock] = useState(false);
-  
+
   // Undo/Redo history
   const [history, setHistory] = useState<SlideData[][]>([defaultSlides]);
   const [historyIndex, setHistoryIndex] = useState(0);
@@ -169,98 +149,15 @@ const SlideEditor = () => {
   const editorBackPath = subscription.subscribed ? "/dashboard" : "/";
   const editorBackLabel = subscription.subscribed ? "Dashboard" : "Home";
 
-  // Watermark shown on slide previews:
-  // - Pro and higher subscribers: no watermark (removed entirely).
-  // - One-time export unlocked: small subtle brand mark in the corner.
-  // - Otherwise (before payment): large diagonal "Preview" mark across the slide.
-  const watermarkVariant: "preview" | "brand" | null = subscription.subscribed
-    ? null
-    : isExportUnlocked
-      ? "brand"
-      : "preview";
-
-  useEffect(() => {
-    setIsExportUnlocked(Boolean(id && id !== "new" && getVerifiedExportUnlockSession(id)));
-  }, [id]);
-
-  // Handle payment return from Stripe embedded checkout (fallback for return_url)
-  useEffect(() => {
-    let cancelled = false;
-    const paymentStatus = searchParams.get('payment');
-    const checkoutSessionId = searchParams.get('session_id');
-    
-    if (paymentStatus === 'success' && id && id !== "new") {
-      const verifyReturnedPayment = async () => {
-        if (!checkoutSessionId) {
-          toast.error("Payment verification failed", {
-            description: "The checkout confirmation was missing. Please contact support if you were charged.",
-          });
-          searchParams.delete('payment');
-          setSearchParams(searchParams, { replace: true });
-          return;
-        }
-
-        setIsVerifyingUnlock(true);
-        const verified = await verifyGuestCheckoutSession(id, checkoutSessionId);
-        if (cancelled) return;
-        setIsVerifyingUnlock(false);
-        searchParams.delete('payment');
-        searchParams.delete('session_id');
-        setSearchParams(searchParams, { replace: true });
-
-        if (!verified) {
-          clearVerifiedExportUnlockSession(id);
-          setIsExportUnlocked(false);
-          trackEvent("payment_unlock_verification_failed", { sermonId: id });
-          toast.error("Payment verification failed", {
-            description: "We could not confirm that checkout payment for this presentation.",
-          });
-          return;
-        }
-
-        trackEvent("payment_unlock_applied", { sermonId: id });
-        setVerifiedExportUnlockSession(id, checkoutSessionId);
-        setIsExportUnlocked(true);
-        const shouldShowUpsell =
-          !subscription.subscribed &&
-          upsellSessionKey &&
-          sessionStorage.getItem(upsellSessionKey) !== "true";
-
-        if (shouldShowUpsell) {
-          sessionStorage.setItem(upsellSessionKey, "true");
-          setShowUpsellModal(true);
-          setShowExportModal(false);
-        } else {
-          setShowExportModal(true);
-        }
-        toast.success('Payment verified! Your export is unlocked.');
-      };
-
-      void verifyReturnedPayment().catch((error) => {
-        if (cancelled) return;
-        setIsVerifyingUnlock(false);
-        logError(error, { scope: "payment_unlock_verification", sermonId: id });
-        toast.error("Payment verification failed", {
-          description: "Please contact support if you were charged.",
-        });
-      });
-    }
-
-    return () => {
-      cancelled = true;
-    };
-  }, [searchParams, setSearchParams, id, subscription.subscribed, upsellSessionKey]);
-
+  // Shown after a guest (no account) successfully exports for free, prompting
+  // them to create an account for Core/Team access. Export has already
+  // completed by the time this modal is shown, so dismissing it just closes
+  // the dialog -- there's nothing left to "continue" to.
   const handleDismissUpsell = () => {
     if (upsellSessionKey) {
       sessionStorage.setItem(upsellSessionKey, "true");
     }
     setShowUpsellModal(false);
-  };
-
-  const handleContinueFromUpsell = () => {
-    handleDismissUpsell();
-    setShowExportModal(true);
   };
 
   const handleUpsellSelectPlan = (planId: SubscriptionPlanId) => {
@@ -270,14 +167,8 @@ const SlideEditor = () => {
       sessionStorage.setItem(upsellSessionKey, "true");
     }
 
-    const params = new URLSearchParams({ priceId: plan.priceId });
-    if (user) {
-      params.set("startCheckout", "pro");
-      editorNavigate(`/account?${params.toString()}`);
-      return;
-    }
-
-    editorNavigate(`/signup?${params.toString()}`);
+    // This modal only shows for guests (no account), so always route to signup.
+    editorNavigate(`/signup?${new URLSearchParams({ priceId: plan.priceId }).toString()}`);
   };
 
   useEffect(() => {
@@ -618,71 +509,26 @@ const SlideEditor = () => {
     setIsDragging(false);
     setDragOverIndex(null);
   }, []);
-  // Handle export button click - check subscription and unlock status
-  const handleExportButtonClick = async () => {
-    if (subscription.subscribed) {
-      trackEvent("export_modal_opened", { sermonId: id || "unknown", source: "subscription" });
-      trackEvent("pre_export_modal_viewed", {
-        sermonId: id || "unknown",
-        source: "subscription",
-        slideCount: valueMetrics.slideCount,
-        scripturePassageCount: valueMetrics.scripturePassageCount,
-      });
-      // Pro user — show export options immediately
-      setShowExportModal(true);
-      return;
-    }
-    
-    const unlockSessionId = id && id !== "new" ? getVerifiedExportUnlockSession(id) : null;
-      
-    if (unlockSessionId && id && id !== "new") {
-      setIsVerifyingUnlock(true);
-      try {
-        const verified = await verifyGuestCheckoutSession(id, unlockSessionId);
-        setIsVerifyingUnlock(false);
-        if (verified) {
-          trackEvent("export_modal_opened", { sermonId: id || "unknown", source: "one_time_unlock" });
-          trackEvent("pre_export_modal_viewed", {
-            sermonId: id || "unknown",
-            source: "one_time_unlock",
-            slideCount: valueMetrics.slideCount,
-            scripturePassageCount: valueMetrics.scripturePassageCount,
-          });
-          setIsExportUnlocked(true);
-          setShowExportModal(true);
-          return;
-        }
-
-        clearVerifiedExportUnlockSession(id);
-        setIsExportUnlocked(false);
-        toast.error("Export unlock could not be verified", {
-          description: "Please complete checkout to export this presentation.",
-        });
-      } catch (error) {
-        setIsVerifyingUnlock(false);
-        logError(error, { scope: "stored_payment_unlock_verification", sermonId: id });
-        toast.error("Payment verification is unavailable", {
-          description: "Please try again in a moment.",
-        });
-        return;
-      }
-    }
-
+  // Handle export button click - export is free and immediate for every
+  // user, guest or subscribed. There is no payment gate.
+  const handleExportButtonClick = () => {
     if (!id || id === "new") {
       trackEvent("export_blocked_unsaved");
       toast.error("Please save your presentation first");
       return;
     }
 
-    // Show payment modal
-    trackEvent("export_payment_prompt_opened", { sermonId: id });
+    trackEvent("export_modal_opened", {
+      sermonId: id,
+      source: subscription.subscribed ? "subscription" : "guest",
+    });
     trackEvent("pre_export_modal_viewed", {
       sermonId: id,
-      source: "guest_checkout",
+      source: subscription.subscribed ? "subscription" : "guest",
       slideCount: valueMetrics.slideCount,
       scripturePassageCount: valueMetrics.scripturePassageCount,
     });
-    setShowPaymentModal(true);
+    setShowExportModal(true);
   };
   
   const handleExport = async (format: "pptx" | "probundle") => {
@@ -730,8 +576,18 @@ const SlideEditor = () => {
         format,
         slideCount: slides.length,
       });
-      clearPendingExportContext();
       setShowExportModal(false);
+
+      // Guest (no account) just exported for free -- offer to create a
+      // Core/Team account, once per sermon per session.
+      const shouldShowUpsell =
+        !user &&
+        upsellSessionKey &&
+        sessionStorage.getItem(upsellSessionKey) !== "true";
+      if (shouldShowUpsell) {
+        sessionStorage.setItem(upsellSessionKey, "true");
+        setShowUpsellModal(true);
+      }
     } catch (error) {
       logError(error, {
         scope: "editor_export",
@@ -791,18 +647,6 @@ const SlideEditor = () => {
     } finally {
       setIsPrinting(false);
     }
-  };
-
-  const prepareForCheckout = async () => {
-    if (!id || id === "new") return;
-    trackEvent("export_checkout_prepared", { sermonId: id, slideCount: slides.length });
-    await saveEditorSlidesToDb(id, slides);
-    setPendingExportSnapshot({
-      sermonId: id,
-      title: presentationTitle,
-      slides,
-      createdAt: Date.now(),
-    });
   };
 
   const getRenderableBackgroundImage = (slide: SlideData) =>
@@ -1083,7 +927,6 @@ const SlideEditor = () => {
               </p>
             </div>}
         </div>
-        {watermarkVariant && <SlideWatermark variant={watermarkVariant} />}
       </div>;
   }
   if (isPresentationLoading) {
@@ -1120,14 +963,6 @@ const SlideEditor = () => {
                   {presentationTitle}
                 </span>
               </Link>
-              
-              {/* Paid Badge - shows when export is unlocked */}
-              {isExportUnlocked && (
-                <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/10 border border-primary/20">
-                  <Check className="w-3 h-3 text-primary" />
-                  <span className="text-xs font-medium text-primary">Paid</span>
-                </div>
-              )}
               
               {/* Save Indicator */}
               <AnimatePresence mode="wait">
@@ -1207,10 +1042,10 @@ const SlideEditor = () => {
                   {isPrinting ? "Preparing..." : "Print PDF"}
                 </span>
               </Button>
-              <Button variant="hero" disabled={isExporting || isVerifyingUnlock} onClick={handleExportButtonClick} data-tour-id="editor-export-button">
+              <Button variant="hero" disabled={isExporting} onClick={handleExportButtonClick} data-tour-id="editor-export-button">
                 <Download className="w-4 h-4" />
                 <span className="hidden sm:inline">
-                  {isExporting ? "Exporting..." : isVerifyingUnlock ? "Verifying..." : "Export"}
+                  {isExporting ? "Exporting..." : "Export"}
                 </span>
               </Button>
             </div>
@@ -1352,7 +1187,6 @@ const SlideEditor = () => {
                       >
                         {slide.content.title || slide.content.scripture}
                       </p>
-                      {watermarkVariant && <SlideWatermark variant={watermarkVariant} size="thumb" />}
                     </div>
                   </div>
                 </Reorder.Item>
@@ -1452,8 +1286,6 @@ const SlideEditor = () => {
                   </>}
                 {currentSlide.type === "blank" && <p className="text-muted-foreground text-sm">Blank Slide</p>}
               </div>
-
-              {watermarkVariant && <SlideWatermark variant={watermarkVariant} />}
             </motion.div>
               );
             })()}
@@ -1553,15 +1385,6 @@ const SlideEditor = () => {
         </main>
       </div>
       
-      {/* Payment Prompt Modal */}
-      <PaymentPromptModal
-        isOpen={showPaymentModal}
-        onClose={() => setShowPaymentModal(false)}
-        sermonId={id || ""}
-        prepareForCheckout={prepareForCheckout}
-        valueMetrics={valueMetrics}
-      />
-      
       {/* Export Options Modal */}
       <ExportOptionsModal
         isOpen={showExportModal}
@@ -1572,7 +1395,7 @@ const SlideEditor = () => {
       />
       <SubscriptionUpsellModal
         isOpen={showUpsellModal}
-        onContinue={handleContinueFromUpsell}
+        onDismiss={handleDismissUpsell}
         onSelectPlan={handleUpsellSelectPlan}
       />
       {user && (

@@ -13,7 +13,7 @@ This repository contains the web app, the supporting Supabase configuration, and
 - shadcn/ui
 - Supabase Auth, Database, and Edge Functions
 - Stripe
-- Cloudflare Wrangler
+- Cloudflare Pages (auto-deploys from GitHub `main`)
 
 ## Core Features
 
@@ -32,7 +32,6 @@ This repository contains the web app, the supporting Supabase configuration, and
 
 - Node.js 20+ recommended
 - npm for local development
-- Bun for the Cloudflare deploy scripts in `package.json`
 
 ### Install
 
@@ -57,8 +56,6 @@ The Vite dev server runs locally and uses frontend environment variables from a 
 - `npm run build:dev` creates a development-mode build
 - `npm run preview` previews the production build locally
 - `npm run lint` runs ESLint
-- `bun run deploy` builds the app and deploys with Wrangler
-- `bun run preview:cf` builds the app and starts Wrangler dev for Cloudflare preview behavior
 
 ## Environment Variables
 
@@ -147,7 +144,7 @@ Supabase Dashboard requirements:
     - `https://www.sermonslidepro.com/auth/confirm`
     - `https://www.sermonslidepro.com/reset-password`
     - `https://www.sermonslidepro.com/admin/accept-invite`
-    - Cloudflare preview URLs only when intentionally testing preview deployments
+    - Cloudflare Pages preview URLs only when intentionally testing branch preview deployments
 - `Authentication -> Email Templates`
   - Confirm signup should use the app confirmation route
   - Recovery should use the app reset-password route
@@ -210,25 +207,23 @@ These functions intentionally reject requests without their configured scheduler
 
 ## Deployment
 
-This project is deployed as a Vite app with Cloudflare Wrangler.
+This project is deployed as a Vite app via Cloudflare Pages, connected directly to this repository's GitHub `main` branch. There is no Wrangler CLI step and no manual deploy command — Cloudflare Pages watches `main` and automatically builds and deploys on every push.
 
 Scripture lookup backend:
 
 - The frontend always calls the Supabase `scripture-lookup` Edge Function.
 - The same Supabase route is used in both local development and production.
-- Cloudflare/Wrangler continues to deploy the frontend app, but it is not part of the scripture lookup backend path.
+- Cloudflare Pages continues to deploy the frontend app, but it is not part of the scripture lookup backend path.
 
 Typical deploy flow:
 
-```sh
-bun install --frozen-lockfile
-bun run build
-bun run deploy
-```
+- Merge or push directly to `main` on GitHub.
+- Cloudflare Pages picks up the push, runs the project's build (`npm run build`), and deploys the result automatically.
+- No local build or deploy command needs to be run by hand for a production deploy.
 
 Operational requirements:
 
-- Cloudflare/Wrangler must be configured for the target environment.
+- Cloudflare Pages must have its GitHub integration and build settings (build command, output directory, environment variables) configured for the target environment.
 - Supabase URL Configuration must use the correct production domain.
 - Supabase email templates must align with the app’s confirmation route.
 - Stripe-related Supabase Edge Functions must have the required environment secrets configured.

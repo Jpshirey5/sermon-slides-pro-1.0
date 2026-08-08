@@ -23,9 +23,8 @@ const SubscriptionPlanPicker = ({
   const [billingInterval, setBillingInterval] = useState<BillingInterval>("monthly");
 
   const featureHighlights: Record<string, string> = {
-    pro: "1 user • No watermark • Saved presentations • Weekly sermon workflow",
-    team: "Up to 3 users • No watermark • Shared team workflow • Recurring collaboration",
-    enterprise: "Up to 10 users • No watermark • Multi-role teams • Organization-wide workflow",
+    core: "Up to 3 users • No watermark • 25 shared AI Quick Build generations/month",
+    team: "Up to 10 users • No watermark • Multi-role teams • 70 shared AI Quick Build generations/month",
   };
 
   return (
@@ -74,7 +73,7 @@ const SubscriptionPlanPicker = ({
         </div>
       )}
 
-      <div className="grid items-stretch gap-4 lg:grid-cols-3">
+      <div className="mx-auto grid max-w-2xl items-stretch gap-4 sm:grid-cols-2">
         {PLAN_FAMILIES.map((family) => {
           const plan = billingInterval === "monthly" ? family.monthly : family.annual;
           const isFeatured = family.tier === "team";

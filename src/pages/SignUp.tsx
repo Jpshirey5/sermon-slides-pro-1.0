@@ -518,7 +518,7 @@ const SignUp = () => {
       ]
     : [
         { title: "Create your account", detail: "Enter your details and secure your login.", complete: true },
-        { title: "Choose your plan", detail: "Pick Pro, Team, or Enterprise with monthly or annual billing.", complete: Boolean(showPlanSelection || preselectedPlan) },
+        { title: "Choose your plan", detail: "Pick Core or Team with monthly or annual billing.", complete: Boolean(showPlanSelection || preselectedPlan) },
         { title: "Confirm email and finish checkout", detail: "We will send you to secure checkout after confirmation.", complete: false },
       ];
 
@@ -579,7 +579,7 @@ const SignUp = () => {
               <div className="space-y-4">
                 <SubscriptionPlanPicker
                   title="Choose Your Plan"
-                  description="Select Pro, Team, or Enterprise with monthly or annual billing before creating your account."
+                  description="Select Core or Team with monthly or annual billing before creating your account."
                   onSelectPlan={handleSelectPlan}
                   loadingPlanId={planLoading}
                   selectedPlanId={selectedPlanId}

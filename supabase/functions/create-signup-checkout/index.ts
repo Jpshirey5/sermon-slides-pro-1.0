@@ -14,72 +14,28 @@ const normalizeEmail = (value: unknown) => clean(value).toLowerCase();
 const CURRENT_TERMS_VERSION = "2026-05-07";
 const CURRENT_PRIVACY_VERSION = "2026-05-07";
 
-const CANONICAL_PRICE_IDS = [
-  "price_1TVyQnP2Yr0z0IcsKcAHhYX8",
-  "price_1TVyQqP2Yr0z0IcsKQ6KN3xA",
-  "price_1TVyQtP2Yr0z0IcsfNMO4n3o",
-  "price_1TVyQxP2Yr0z0IcsMr2gCkbm",
-  "price_1TVyQzP2Yr0z0Ics7qONt0Fm",
-  "price_1TVyR1P2Yr0z0IcsBZck11XI",
-];
-
-const LEGACY_PRICE_IDS = [
-  "price_1TEfgIP2Yr0z0IcsX2VXk6wJ",
-  "price_1TEfi2P2Yr0z0Icsnod1blF1",
-  "price_1TJJjFP2Yr0z0IcsZRFgIQlX",
-  "price_1TJJjWP2Yr0z0IcsAV9Y4SV5",
-  "price_1TJJlcP2Yr0z0IcsUb9IHJuS",
-  "price_1TJQdEP2Yr0z0IcsjUAm4Xq6",
-  "price_1TEfggP2Yr0z0IcsHHgS6kye",
-  "price_1TEfjmP2Yr0z0IcsXW3ZujSG",
-  "price_1TEfhaP2Yr0z0IcsGlDJJyu7",
-  "price_1TEfkDP2Yr0z0IcsUhXwzh9z",
-  "price_1TJJlpP2Yr0z0IcsDJBpCJHa",
-];
-
 const PLAN_BY_PRICE_ID = new Map<string, { planTier: string; billingInterval: "monthly" | "annual"; maxAdditionalUsers: number | null }>(
   [
-    [Deno.env.get("STRIPE_PRICE_PRO_MONTHLY"), { planTier: "pro", billingInterval: "monthly", maxAdditionalUsers: 0 }],
-    [Deno.env.get("STRIPE_PRICE_PRO_ANNUAL"), { planTier: "pro", billingInterval: "annual", maxAdditionalUsers: 0 }],
-    [Deno.env.get("STRIPE_PRICE_TEAM_MONTHLY"), { planTier: "team", billingInterval: "monthly", maxAdditionalUsers: 2 }],
-    [Deno.env.get("STRIPE_PRICE_TEAM_ANNUAL"), { planTier: "team", billingInterval: "annual", maxAdditionalUsers: 2 }],
-    [Deno.env.get("STRIPE_PRICE_ENTERPRISE_MONTHLY"), { planTier: "enterprise", billingInterval: "monthly", maxAdditionalUsers: 9 }],
-    [Deno.env.get("STRIPE_PRICE_ENTERPRISE_ANNUAL"), { planTier: "enterprise", billingInterval: "annual", maxAdditionalUsers: 9 }],
-    ["price_1TVyQnP2Yr0z0IcsKcAHhYX8", { planTier: "pro", billingInterval: "monthly", maxAdditionalUsers: 0 }],
-    ["price_1TVyQqP2Yr0z0IcsKQ6KN3xA", { planTier: "pro", billingInterval: "annual", maxAdditionalUsers: 0 }],
-    ["price_1TVyQtP2Yr0z0IcsfNMO4n3o", { planTier: "team", billingInterval: "monthly", maxAdditionalUsers: 2 }],
-    ["price_1TVyQxP2Yr0z0IcsMr2gCkbm", { planTier: "team", billingInterval: "annual", maxAdditionalUsers: 2 }],
-    ["price_1TVyQzP2Yr0z0Ics7qONt0Fm", { planTier: "enterprise", billingInterval: "monthly", maxAdditionalUsers: 9 }],
-    ["price_1TVyR1P2Yr0z0IcsBZck11XI", { planTier: "enterprise", billingInterval: "annual", maxAdditionalUsers: 9 }],
-    ["price_1TEfgIP2Yr0z0IcsX2VXk6wJ", { planTier: "pro", billingInterval: "monthly", maxAdditionalUsers: 0 }],
-    ["price_1TEfi2P2Yr0z0Icsnod1blF1", { planTier: "pro", billingInterval: "annual", maxAdditionalUsers: 0 }],
-    ["price_1TEfggP2Yr0z0IcsHHgS6kye", { planTier: "team", billingInterval: "monthly", maxAdditionalUsers: 2 }],
-    ["price_1TEfjmP2Yr0z0IcsXW3ZujSG", { planTier: "team", billingInterval: "annual", maxAdditionalUsers: 2 }],
-    ["price_1TEfhaP2Yr0z0IcsGlDJJyu7", { planTier: "enterprise", billingInterval: "monthly", maxAdditionalUsers: 9 }],
-    ["price_1TEfkDP2Yr0z0IcsUhXwzh9z", { planTier: "enterprise", billingInterval: "annual", maxAdditionalUsers: 9 }],
-    ["price_1TJJjFP2Yr0z0IcsZRFgIQlX", { planTier: "team", billingInterval: "monthly", maxAdditionalUsers: 2 }],
-    ["price_1TJJjWP2Yr0z0IcsAV9Y4SV5", { planTier: "team", billingInterval: "annual", maxAdditionalUsers: 2 }],
-    ["price_1TJJlcP2Yr0z0IcsUb9IHJuS", { planTier: "enterprise", billingInterval: "monthly", maxAdditionalUsers: 9 }],
-    ["price_1TJJlpP2Yr0z0IcsDJBpCJHa", { planTier: "enterprise", billingInterval: "annual", maxAdditionalUsers: 9 }],
-    ["price_1TJQdEP2Yr0z0IcsjUAm4Xq6", { planTier: "enterprise", billingInterval: "annual", maxAdditionalUsers: 9 }],
+    [Deno.env.get("STRIPE_PRICE_CORE_MONTHLY"), { planTier: "core", billingInterval: "monthly", maxAdditionalUsers: 2 }],
+    [Deno.env.get("STRIPE_PRICE_CORE_ANNUAL"), { planTier: "core", billingInterval: "annual", maxAdditionalUsers: 2 }],
+    [Deno.env.get("STRIPE_PRICE_TEAM_MONTHLY"), { planTier: "team", billingInterval: "monthly", maxAdditionalUsers: 9 }],
+    [Deno.env.get("STRIPE_PRICE_TEAM_ANNUAL"), { planTier: "team", billingInterval: "annual", maxAdditionalUsers: 9 }],
   ].filter((entry): entry is [string, { planTier: string; billingInterval: "monthly" | "annual"; maxAdditionalUsers: number | null }] => Boolean(entry[0]))
 );
 
 const getAllowedPriceIds = () => {
   const configuredPriceIds = [
-    Deno.env.get("STRIPE_PRICE_PRO_MONTHLY"),
-    Deno.env.get("STRIPE_PRICE_PRO_ANNUAL"),
+    Deno.env.get("STRIPE_PRICE_CORE_MONTHLY"),
+    Deno.env.get("STRIPE_PRICE_CORE_ANNUAL"),
     Deno.env.get("STRIPE_PRICE_TEAM_MONTHLY"),
     Deno.env.get("STRIPE_PRICE_TEAM_ANNUAL"),
-    Deno.env.get("STRIPE_PRICE_ENTERPRISE_MONTHLY"),
-    Deno.env.get("STRIPE_PRICE_ENTERPRISE_ANNUAL"),
   ].filter((value): value is string => Boolean(value && value.startsWith("price_")));
 
-  return Array.from(new Set([...configuredPriceIds, ...CANONICAL_PRICE_IDS, ...LEGACY_PRICE_IDS]));
+  return Array.from(new Set(configuredPriceIds));
 };
 
 const resolvePlanMetadata = (priceId: string) =>
-  PLAN_BY_PRICE_ID.get(priceId) || { planTier: "pro", billingInterval: "monthly" as const, maxAdditionalUsers: 0 };
+  PLAN_BY_PRICE_ID.get(priceId) || { planTier: "free", billingInterval: "monthly" as const, maxAdditionalUsers: 0 };
 
 const hashToken = async (token: string) => {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));

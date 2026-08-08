@@ -10,35 +10,16 @@ const logStep = (step: string, details?: any) => {
 
 const PLAN_BY_PRICE_ID = new Map<string, { planTier: string; billingInterval: "monthly" | "annual"; maxAdditionalUsers: number | null }>(
   [
-    [Deno.env.get("STRIPE_PRICE_PRO_MONTHLY"), { planTier: "pro", billingInterval: "monthly", maxAdditionalUsers: 0 }],
-    [Deno.env.get("STRIPE_PRICE_PRO_ANNUAL"), { planTier: "pro", billingInterval: "annual", maxAdditionalUsers: 0 }],
-    [Deno.env.get("STRIPE_PRICE_TEAM_MONTHLY"), { planTier: "team", billingInterval: "monthly", maxAdditionalUsers: 2 }],
-    [Deno.env.get("STRIPE_PRICE_TEAM_ANNUAL"), { planTier: "team", billingInterval: "annual", maxAdditionalUsers: 2 }],
-    [Deno.env.get("STRIPE_PRICE_ENTERPRISE_MONTHLY"), { planTier: "enterprise", billingInterval: "monthly", maxAdditionalUsers: 9 }],
-    [Deno.env.get("STRIPE_PRICE_ENTERPRISE_ANNUAL"), { planTier: "enterprise", billingInterval: "annual", maxAdditionalUsers: 9 }],
-    ["price_1TVyQnP2Yr0z0IcsKcAHhYX8", { planTier: "pro", billingInterval: "monthly", maxAdditionalUsers: 0 }],
-    ["price_1TVyQqP2Yr0z0IcsKQ6KN3xA", { planTier: "pro", billingInterval: "annual", maxAdditionalUsers: 0 }],
-    ["price_1TVyQtP2Yr0z0IcsfNMO4n3o", { planTier: "team", billingInterval: "monthly", maxAdditionalUsers: 2 }],
-    ["price_1TVyQxP2Yr0z0IcsMr2gCkbm", { planTier: "team", billingInterval: "annual", maxAdditionalUsers: 2 }],
-    ["price_1TVyQzP2Yr0z0Ics7qONt0Fm", { planTier: "enterprise", billingInterval: "monthly", maxAdditionalUsers: 9 }],
-    ["price_1TVyR1P2Yr0z0IcsBZck11XI", { planTier: "enterprise", billingInterval: "annual", maxAdditionalUsers: 9 }],
-    ["price_1TEfgIP2Yr0z0IcsX2VXk6wJ", { planTier: "pro", billingInterval: "monthly", maxAdditionalUsers: 0 }],
-    ["price_1TEfi2P2Yr0z0Icsnod1blF1", { planTier: "pro", billingInterval: "annual", maxAdditionalUsers: 0 }],
-    ["price_1TEfggP2Yr0z0IcsHHgS6kye", { planTier: "team", billingInterval: "monthly", maxAdditionalUsers: 2 }],
-    ["price_1TEfjmP2Yr0z0IcsXW3ZujSG", { planTier: "team", billingInterval: "annual", maxAdditionalUsers: 2 }],
-    ["price_1TEfhaP2Yr0z0IcsGlDJJyu7", { planTier: "enterprise", billingInterval: "monthly", maxAdditionalUsers: 9 }],
-    ["price_1TEfkDP2Yr0z0IcsUhXwzh9z", { planTier: "enterprise", billingInterval: "annual", maxAdditionalUsers: 9 }],
-    ["price_1TJJjFP2Yr0z0IcsZRFgIQlX", { planTier: "team", billingInterval: "monthly", maxAdditionalUsers: 2 }],
-    ["price_1TJJjWP2Yr0z0IcsAV9Y4SV5", { planTier: "team", billingInterval: "annual", maxAdditionalUsers: 2 }],
-    ["price_1TJJlcP2Yr0z0IcsUb9IHJuS", { planTier: "enterprise", billingInterval: "monthly", maxAdditionalUsers: 9 }],
-    ["price_1TJJlpP2Yr0z0IcsDJBpCJHa", { planTier: "enterprise", billingInterval: "annual", maxAdditionalUsers: 9 }],
-    ["price_1TJQdEP2Yr0z0IcsjUAm4Xq6", { planTier: "enterprise", billingInterval: "annual", maxAdditionalUsers: 9 }],
+    [Deno.env.get("STRIPE_PRICE_CORE_MONTHLY"), { planTier: "core", billingInterval: "monthly", maxAdditionalUsers: 2 }],
+    [Deno.env.get("STRIPE_PRICE_CORE_ANNUAL"), { planTier: "core", billingInterval: "annual", maxAdditionalUsers: 2 }],
+    [Deno.env.get("STRIPE_PRICE_TEAM_MONTHLY"), { planTier: "team", billingInterval: "monthly", maxAdditionalUsers: 9 }],
+    [Deno.env.get("STRIPE_PRICE_TEAM_ANNUAL"), { planTier: "team", billingInterval: "annual", maxAdditionalUsers: 9 }],
   ].filter((entry): entry is [string, { planTier: string; billingInterval: "monthly" | "annual"; maxAdditionalUsers: number | null }] => Boolean(entry[0]))
 );
 
 const resolvePlanMetadata = (priceId?: string | null) => {
   if (!priceId) return { planTier: "free", billingInterval: null, maxAdditionalUsers: 0 };
-  return PLAN_BY_PRICE_ID.get(priceId) || { planTier: "pro", billingInterval: null, maxAdditionalUsers: 0 };
+  return PLAN_BY_PRICE_ID.get(priceId) || { planTier: "free", billingInterval: null, maxAdditionalUsers: 0 };
 };
 
 const hashToken = async (token: string) => {

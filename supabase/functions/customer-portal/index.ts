@@ -8,59 +8,23 @@ const logStep = (step: string, details?: any) => {
   console.log(`[CUSTOMER-PORTAL] ${step}${details ? ` - ${JSON.stringify(details)}` : ''}`);
 };
 
-const CANONICAL_PRICE_IDS = [
-  "price_1TEfgIP2Yr0z0IcsX2VXk6wJ",
-  "price_1TEfi2P2Yr0z0Icsnod1blF1",
-  "price_1TJJjFP2Yr0z0IcsZRFgIQlX",
-  "price_1TJJjWP2Yr0z0IcsAV9Y4SV5",
-  "price_1TJJlcP2Yr0z0IcsUb9IHJuS",
-  "price_1TJQdEP2Yr0z0IcsjUAm4Xq6",
-];
-
-const LEGACY_PRICE_IDS = [
-  "price_1TEfggP2Yr0z0IcsHHgS6kye",
-  "price_1TEfjmP2Yr0z0IcsXW3ZujSG",
-  "price_1TEfhaP2Yr0z0IcsGlDJJyu7",
-  "price_1TEfkDP2Yr0z0IcsUhXwzh9z",
-  "price_1TJJlpP2Yr0z0IcsDJBpCJHa",
-];
-
 const getAllowedPriceIds = () => {
   const configuredPriceIds = [
-    Deno.env.get("STRIPE_PRICE_PRO_MONTHLY"),
-    Deno.env.get("STRIPE_PRICE_PRO_ANNUAL"),
+    Deno.env.get("STRIPE_PRICE_CORE_MONTHLY"),
+    Deno.env.get("STRIPE_PRICE_CORE_ANNUAL"),
     Deno.env.get("STRIPE_PRICE_TEAM_MONTHLY"),
     Deno.env.get("STRIPE_PRICE_TEAM_ANNUAL"),
-    Deno.env.get("STRIPE_PRICE_ENTERPRISE_MONTHLY"),
-    Deno.env.get("STRIPE_PRICE_ENTERPRISE_ANNUAL"),
   ].filter((value): value is string => Boolean(value && value.startsWith("price_")));
 
-  return Array.from(new Set([
-    ...configuredPriceIds,
-    ...CANONICAL_PRICE_IDS,
-    ...LEGACY_PRICE_IDS,
-  ]));
+  return Array.from(new Set(configuredPriceIds));
 };
 
 const PLAN_BY_PRICE_ID = new Map<string, { planId: string; planTier: string; billingInterval: "monthly" | "annual" }>(
   [
-    [Deno.env.get("STRIPE_PRICE_PRO_MONTHLY"), { planId: "pro_monthly", planTier: "pro", billingInterval: "monthly" }],
-    [Deno.env.get("STRIPE_PRICE_PRO_ANNUAL"), { planId: "pro_annual", planTier: "pro", billingInterval: "annual" }],
+    [Deno.env.get("STRIPE_PRICE_CORE_MONTHLY"), { planId: "core_monthly", planTier: "core", billingInterval: "monthly" }],
+    [Deno.env.get("STRIPE_PRICE_CORE_ANNUAL"), { planId: "core_annual", planTier: "core", billingInterval: "annual" }],
     [Deno.env.get("STRIPE_PRICE_TEAM_MONTHLY"), { planId: "team_monthly", planTier: "team", billingInterval: "monthly" }],
     [Deno.env.get("STRIPE_PRICE_TEAM_ANNUAL"), { planId: "team_annual", planTier: "team", billingInterval: "annual" }],
-    [Deno.env.get("STRIPE_PRICE_ENTERPRISE_MONTHLY"), { planId: "enterprise_monthly", planTier: "enterprise", billingInterval: "monthly" }],
-    [Deno.env.get("STRIPE_PRICE_ENTERPRISE_ANNUAL"), { planId: "enterprise_annual", planTier: "enterprise", billingInterval: "annual" }],
-    ["price_1TEfgIP2Yr0z0IcsX2VXk6wJ", { planId: "pro_monthly", planTier: "pro", billingInterval: "monthly" }],
-    ["price_1TEfi2P2Yr0z0Icsnod1blF1", { planId: "pro_annual", planTier: "pro", billingInterval: "annual" }],
-    ["price_1TEfggP2Yr0z0IcsHHgS6kye", { planId: "team_monthly", planTier: "team", billingInterval: "monthly" }],
-    ["price_1TEfjmP2Yr0z0IcsXW3ZujSG", { planId: "team_annual", planTier: "team", billingInterval: "annual" }],
-    ["price_1TEfhaP2Yr0z0IcsGlDJJyu7", { planId: "enterprise_monthly", planTier: "enterprise", billingInterval: "monthly" }],
-    ["price_1TEfkDP2Yr0z0IcsUhXwzh9z", { planId: "enterprise_annual", planTier: "enterprise", billingInterval: "annual" }],
-    ["price_1TJJjFP2Yr0z0IcsZRFgIQlX", { planId: "team_monthly", planTier: "team", billingInterval: "monthly" }],
-    ["price_1TJJjWP2Yr0z0IcsAV9Y4SV5", { planId: "team_annual", planTier: "team", billingInterval: "annual" }],
-    ["price_1TJJlcP2Yr0z0IcsUb9IHJuS", { planId: "enterprise_monthly", planTier: "enterprise", billingInterval: "monthly" }],
-    ["price_1TJJlpP2Yr0z0IcsDJBpCJHa", { planId: "enterprise_annual", planTier: "enterprise", billingInterval: "annual" }],
-    ["price_1TJQdEP2Yr0z0IcsjUAm4Xq6", { planId: "enterprise_annual", planTier: "enterprise", billingInterval: "annual" }],
   ].filter((entry): entry is [string, { planId: string; planTier: string; billingInterval: "monthly" | "annual" }] => Boolean(entry[0]))
 );
 

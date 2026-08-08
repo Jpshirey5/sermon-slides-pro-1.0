@@ -250,7 +250,9 @@ async function resolvePresentationCampusId(
 ): Promise<string | null> {
   const planTier = await getAccountPlanTier(accountId);
 
-  if (planTier !== "enterprise") {
+  // "enterprise" is the pre-rename tier key; post Step 1 the DB stores "team"
+  // for what was Enterprise (old team -> "core", old enterprise -> "team").
+  if (planTier !== "team") {
     return requestedCampusId || null;
   }
 

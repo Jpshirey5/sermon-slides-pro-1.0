@@ -9,7 +9,6 @@ import Index from "./pages/Index";
 import CreateSermon from "./pages/CreateSermon";
 import SermonReview from "./pages/SermonReview";
 import SlideEditor from "./pages/SlideEditor";
-import PaymentSuccess from "./pages/PaymentSuccess";
 import Login from "./pages/Login";
 import SignUp from "./pages/SignUp";
 import SignupComplete from "./pages/SignupComplete";
@@ -65,7 +64,6 @@ const App = () => (
               <Route path="/create" element={<CreateSermon />} />
               <Route path="/create/review/:id" element={<SermonReview />} />
               <Route path="/editor/:id" element={<SlideEditor />} />
-              <Route path="/payment-success" element={<PaymentSuccess />} />
               <Route path="/login" element={<Login />} />
               <Route path="/signup" element={<SignUp />} />
               <Route path="/signup/complete" element={<SignupComplete />} />

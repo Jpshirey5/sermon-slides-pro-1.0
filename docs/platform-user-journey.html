@@ -63,18 +63,20 @@
   <h1>Sermon Slide Pro User Journey Documentation</h1>
   <p class="meta">
     Prepared from the current implementation in <b>sermon-slides-pro-1.0</b> as of
-    <b>May 17, 2026</b>. This is the canonical internal operations document in the
-    <b>/docs</b> folder and is intended for support, onboarding, handoff, and product
-    operations.
+    <b>May 17, 2026</b>, revised <b>August 7, 2026</b> for the pricing restructure
+    (Free/Core/Team, no-payment manual builder). This is the canonical internal operations
+    document in the <b>/docs</b> folder and is intended for support, onboarding, handoff, and
+    product operations.
   </p>
 
   <h2>1. Product Summary</h2>
   <p>
     Sermon Slide Pro is a web application for building sermon presentations from a structured
     sermon form, refining them in a slide editor, and exporting them for presentation software.
-    The application supports both a pay-per-export path and authenticated subscription-based
-    account usage. A separate Admin Center supports internal staff with customer, billing,
-    support, and messaging operations.
+    The application supports a free, no-account manual builder path (Try it Free, with export
+    now free with no payment step) and authenticated subscription-based account usage (Core or
+    Team). A separate Admin Center supports internal staff with customer, billing, support, and
+    messaging operations.
   </p>
 
   <table>
@@ -108,7 +110,7 @@
     </tr>
     <tr>
       <td>Organize larger ministries</td>
-      <td>Enterprise-only campus support with up to 5 campuses and campus-filtered dashboard views</td>
+      <td>Team-plan-only campus support with up to 5 campuses and campus-filtered dashboard views</td>
     </tr>
     <tr>
       <td>Internal operations</td>
@@ -143,28 +145,23 @@
       <th>Current platform behavior</th>
     </tr>
     <tr>
-      <td>Pay Per Export</td>
-      <td>User wants to create first and pay only when exporting</td>
-      <td>Opens the public creator at <b>/create</b>; export later triggers a one-time Stripe checkout</td>
+      <td>Try it Free</td>
+      <td>User wants to create and export without an account or payment</td>
+      <td>Opens the public manual builder at <b>/create</b>; export is free with no payment step (the previous one-time export checkout has been removed)</td>
     </tr>
     <tr>
-      <td>Pro</td>
-      <td>Single-user recurring workflow</td>
-      <td>Subscription flow through signup or account checkout</td>
-    </tr>
-    <tr>
-      <td>Team</td>
+      <td>Core</td>
       <td>Small church team workflow</td>
       <td>Subscription flow with shared account support for up to 3 total users</td>
     </tr>
     <tr>
-      <td>Enterprise</td>
+      <td>Team</td>
       <td>Larger ministry workflow with broader collaboration and campus organization</td>
       <td>Subscription flow with up to 10 total users and campus support</td>
     </tr>
   </table>
 
-  <p>The pricing UI supports both <b>monthly</b> and <b>annual</b> billing for Pro, Team, and Enterprise. Stripe promotion codes are honored during checkout.</p>
+  <p>The pricing UI supports both <b>monthly</b> and <b>annual</b> billing for Core and Team (Try it Free has no billing). Stripe promotion codes are honored during checkout.</p>
 
   <table>
     <tr>
@@ -172,27 +169,31 @@
       <th>Monthly</th>
       <th>Annual</th>
       <th>Total users</th>
+      <th>Generations/month (Quick Build, shared)</th>
       <th>Notes</th>
     </tr>
     <tr>
-      <td>Pro</td>
-      <td>$49</td>
-      <td>$490</td>
-      <td>1</td>
-      <td>Single-user workflow</td>
+      <td>Try it Free</td>
+      <td>$0</td>
+      <td>$0</td>
+      <td>N/A (no account)</td>
+      <td>Quick Build not available; manual builder is unlimited</td>
+      <td>No account or payment required</td>
     </tr>
     <tr>
-      <td>Team</td>
-      <td>$99</td>
-      <td>$990</td>
+      <td>Core</td>
+      <td>$19</td>
+      <td>$190</td>
       <td>Up to 3 (owner + 2 invited)</td>
+      <td>25</td>
       <td>Shared account</td>
     </tr>
     <tr>
-      <td>Enterprise</td>
-      <td>$199</td>
-      <td>$1,990</td>
+      <td>Team</td>
+      <td>$49</td>
+      <td>$490</td>
       <td>Up to 10 (owner + 9 invited)</td>
+      <td>70</td>
       <td>Multi-campus support, up to 5 campuses</td>
     </tr>
   </table>
@@ -201,8 +202,8 @@
 
   <h3>2.3 Current Entry Paths</h3>
   <ol>
-    <li><b>Pay-per-export path:</b> user opens the creator without needing an account first.</li>
-    <li><b>Account subscription path:</b> user selects Pro, Team, or Enterprise and moves through signup and Stripe checkout.</li>
+    <li><b>Try it Free path:</b> user opens the manual builder without needing an account first; export is free with no payment step.</li>
+    <li><b>Account subscription path:</b> user selects Core or Team and moves through signup and Stripe checkout.</li>
     <li><b>Signup-during-checkout path:</b> the signup-checkout edge function pre-creates the account and routes the user back through <b>/signup/complete</b> or <b>/signup-incomplete</b> if email confirmation is still pending.</li>
     <li><b>Authenticated upgrade path:</b> signed-in users can begin subscription checkout from the Account page.</li>
     <li><b>Beta path:</b> approved beta users are flagged on their subscription record and surfaced with a Beta badge on the Account page.</li>
@@ -279,7 +280,7 @@
     <tr>
       <td>Public creator</td>
       <td>No account required</td>
-      <td>Supports guest usage and later pay-per-export checkout</td>
+      <td>Supports guest usage; export is free with no payment step</td>
     </tr>
     <tr>
       <td>Admin Center</td>
@@ -321,7 +322,7 @@
   <h3>4.2 Subscription Checkout Execution Path</h3>
   <p>The account subscription flow uses the following execution chain:</p>
   <ol>
-    <li>User selects a Pro, Team, or Enterprise price</li>
+    <li>User selects a Core or Team price</li>
     <li>The app invokes the Supabase Edge Function <b>create-checkout</b> (or <b>create-signup-checkout</b> during signup)</li>
     <li>The function validates the selected Stripe price and the user account</li>
     <li>Stripe checkout session is created (promotion codes allowed)</li>
@@ -395,7 +396,7 @@
     <li>Verse breakdown mode</li>
     <li>Sermon points</li>
     <li>Verse sections and scripture references</li>
-    <li>Enterprise-only campus selection</li>
+    <li>Team-plan-only campus selection</li>
   </ul>
 
   <h3>5.3 Scripture Lookup Execution</h3>
@@ -432,15 +433,15 @@
     <li><b>Full verses</b></li>
   </ul>
 
-  <h3>5.6 Enterprise Campus Assignment During Creation</h3>
+  <h3>5.6 Team-Plan Campus Assignment During Creation</h3>
   <p>
-    Enterprise accounts must assign every presentation to a campus. The campus selector is shown
-    only for Enterprise users and defaults according to the current app state:
+    Team-plan accounts must assign every presentation to a campus. The campus selector is shown
+    only for Team-plan users and defaults according to the current app state:
   </p>
   <ul>
     <li>If the user came from a campus-filtered dashboard, that campus is preselected</li>
     <li>Otherwise the user preference or primary campus is used</li>
-    <li>Non-Enterprise flows do not show campus selection</li>
+    <li>Non-Team-plan flows do not show campus selection</li>
   </ul>
 
   <h3>5.7 Save and Continue to Sermon Review</h3>
@@ -452,7 +453,7 @@
     <li>Authenticated account usage saves the presentation to the backend</li>
     <li>Guest usage stores the presentation locally until later unlock/export steps</li>
     <li>Series and presentation date are saved as first-class sermon metadata</li>
-    <li>Enterprise presentations also persist campus assignment</li>
+    <li>Team-plan presentations also persist campus assignment</li>
   </ul>
 
   <h2>6. Sermon Review (Pre-Editor Step)</h2>
@@ -524,39 +525,26 @@
     <li>editor slide payload used for final editing and export</li>
   </ul>
 
-  <h2>8. Export and Payment Logic</h2>
+  <h2>8. Export Logic</h2>
 
   <h3>8.1 Export Decision Logic</h3>
-  <p>When a user exports from the editor, the platform applies one of two models:</p>
-  <table>
-    <tr>
-      <th>User state</th>
-      <th>What happens next</th>
-    </tr>
-    <tr>
-      <td>Subscribed account user</td>
-      <td>Export options open directly</td>
-    </tr>
-    <tr>
-      <td>Guest or non-subscriber without unlock</td>
-      <td>One-time export checkout is required first</td>
-    </tr>
-  </table>
-
-  <h3>8.2 Pay-Per-Export Execution</h3>
   <p>
-    The pay-per-export path uses <b>create-guest-checkout</b> to start the Stripe session and
-    <b>verify-guest-checkout</b> to validate the completed session and unlock the export. The
-    app stores pending export context locally before redirecting to Stripe so it can restore the
-    presentation after payment. The <b>get-checkout-email</b> function retrieves the email
-    associated with the checkout for guests who proceed without an account.
+    Export options open directly for every user, guest or subscribed. There is no payment step
+    and no unlock/checkout gate before export; the previous one-time export checkout
+    (<b>create-guest-checkout</b> / <b>verify-guest-checkout</b> / <b>/payment-success</b>) has
+    been removed along with the large "Preview" watermark that used to gate it. Guests who export
+    without an account are shown an upsell prompt afterward inviting them to create a Core or
+    Team account (<b>SubscriptionUpsellModal</b>) — this is a post-export prompt, not a gate.
   </p>
-  <p>
-    Success returns to <b>/payment-success</b>, where the app restores the pending presentation
-    and routes the user back into the editor.
-  </p>
+  <div class="note">
+    <b>Orphaned function note:</b> <b>get-checkout-email</b> still exists in
+    <b>supabase/functions/</b> and is registered in <b>supabase/config.toml</b>, but has no
+    remaining callers anywhere in the codebase now that the guest-checkout flow it supported has
+    been removed. It has not been deleted as part of this documentation pass; flagging for a
+    future cleanup.
+  </div>
 
-  <h3>8.3 Export Formats</h3>
+  <h3>8.2 Export Formats</h3>
   <table>
     <tr>
       <th>Format</th>
@@ -580,14 +568,14 @@
     </tr>
   </table>
 
-  <h3>8.4 Export Validation</h3>
+  <h3>8.3 Export Validation</h3>
   <p>
     Export is validated before file creation. If required data is missing or invalid, export is
     blocked until the user fixes the issue. The export formatting itself is shared across
     single export and dashboard bulk export flows.
   </p>
 
-  <h3>8.5 Dashboard Bulk Export</h3>
+  <h3>8.4 Dashboard Bulk Export</h3>
   <p>
     The dashboard supports multi-select export. Users select multiple presentations, click
     <b>Export Selected</b>, choose one format for the full batch, and receive a single zip file
@@ -633,7 +621,7 @@
     <li>Presentation date</li>
     <li>Slide count</li>
     <li>Last modified timestamp</li>
-    <li>Campus and former-campus labeling for Enterprise presentations where applicable</li>
+    <li>Campus and former-campus labeling for Team-plan presentations where applicable</li>
   </ul>
 
   <h3>9.5 Selection Mode</h3>
@@ -645,9 +633,9 @@
     <li>Bulk exporting selected presentations into a zip file</li>
   </ul>
 
-  <h3>9.6 Campus Filtering for Enterprise</h3>
+  <h3>9.6 Campus Filtering for Team Plan</h3>
   <p>
-    Enterprise users see a campus dropdown on the dashboard. The default option is
+    Team-plan users see a campus dropdown on the dashboard. The default option is
     <b>All Campuses</b>, but the dashboard can also open to a user-selected default campus based
     on the Account-page preference.
   </p>
@@ -673,7 +661,7 @@
     <li>User returns later for the next sermon cycle</li>
   </ol>
 
-  <h2>10. Account Management and Enterprise Campuses</h2>
+  <h2>10. Account Management and Team-Plan Campuses</h2>
 
   <h3>10.1 Account Page Structure</h3>
   <p>
@@ -683,7 +671,7 @@
   <ul>
     <li>Profile</li>
     <li>Team</li>
-    <li>Campuses (Enterprise only)</li>
+    <li>Campuses (Team plan only)</li>
     <li>Subscription</li>
     <li>Account (includes deletion flow)</li>
   </ul>
@@ -696,7 +684,7 @@
     <li>Email (read-only on this page; admin-initiated change is the supported path)</li>
     <li>Church Role</li>
     <li>Default Translation</li>
-    <li>Associated Campus (Enterprise only) — controls the default campus the dashboard opens to</li>
+    <li>Associated Campus (Team plan only) — controls the default campus the dashboard opens to</li>
     <li>Beta badge if the subscription is flagged as beta</li>
   </ul>
 
@@ -711,16 +699,16 @@
     <li>Owner-only removal of a team member, routed through the <b>remove-team-member</b> edge function</li>
   </ul>
 
-  <h3>10.4 Enterprise Campus Model</h3>
+  <h3>10.4 Team-Plan Campus Model</h3>
   <p>
-    Enterprise accounts support up to <b>5 total campuses</b>. A primary <b>Main Campus</b> is
-    ensured for Enterprise accounts and existing Enterprise presentations are backfilled into a
+    Team-plan accounts support up to <b>5 total campuses</b>. A primary <b>Main Campus</b> is
+    ensured for Team-plan accounts and existing Team-plan presentations are backfilled into a
     campus when needed.
   </p>
   <ul>
-    <li>Campus management is visible only for Enterprise plans</li>
+    <li>Campus management is visible only for the Team plan</li>
     <li>Only account owners can create, rename, set primary, or delete campuses</li>
-    <li>Enterprise presentations must belong to an active campus</li>
+    <li>Team-plan presentations must belong to an active campus</li>
     <li>Deleting a campus moves its presentations to the primary campus</li>
     <li>Moved presentations keep the deleted campus name as a former-campus label for filtering</li>
   </ul>
@@ -730,7 +718,7 @@
   <ul>
     <li>Subscribed users open the Manage Subscription modal</li>
     <li>Unsubscribed users can activate a plan from the Account page</li>
-    <li>Current plan recognition supports Pro, Team, and Enterprise with monthly or annual billing</li>
+    <li>Current plan recognition supports Free, Core, and Team, with monthly or annual billing for Core and Team (Free has no billing)</li>
   </ul>
 
   <h3>10.6 Account Deletion</h3>
@@ -824,9 +812,9 @@
 
   <h3>12.1 Runtime and Platform Dependencies</h3>
   <ul>
-    <li>Frontend app is deployed as a Vite application with Cloudflare Wrangler</li>
+    <li>Frontend app is a Vite application deployed via Cloudflare Pages, which auto-builds and deploys from the GitHub `main` branch on every push (no Wrangler CLI involved)</li>
     <li>Supabase handles Auth, database, storage-related flows, and Edge Functions</li>
-    <li>Stripe handles subscription checkout, one-time export payment, promotion codes, and billing portal actions</li>
+    <li>Stripe handles subscription checkout, promotion codes, and billing portal actions (the previous one-time export payment has been removed)</li>
     <li>Resend handles transactional email for custom flows (invites, support replies, email-change confirmations)</li>
   </ul>
 
@@ -857,16 +845,8 @@
       <td>Processes Stripe subscription lifecycle and payment events</td>
     </tr>
     <tr>
-      <td>create-guest-checkout</td>
-      <td>Starts one-time export checkout for non-subscribed export usage</td>
-    </tr>
-    <tr>
-      <td>verify-guest-checkout</td>
-      <td>Validates a completed guest checkout and unlocks the export</td>
-    </tr>
-    <tr>
       <td>get-checkout-email</td>
-      <td>Resolves the email associated with a guest checkout session</td>
+      <td>Orphaned: supported the one-time guest-export checkout that has since been removed; the function still exists in the repo but has no remaining callers</td>
     </tr>
     <tr>
       <td>scripture-lookup</td>
@@ -933,7 +913,7 @@
     <li>Stripe webhook secret must be configured for <b>stripe-webhook</b> event verification</li>
     <li>Scripture lookup depends on the scripture function being deployed and correctly configured with its secrets</li>
     <li>Invite delivery and email-change confirmations depend on the Resend API key and verified from-address</li>
-    <li>Enterprise campus behavior depends on the current database migrations being applied</li>
+    <li>Team-plan campus behavior depends on the current database migrations being applied</li>
     <li>Beta lifecycle scheduling depends on <b>process-beta-trial-emails</b> being scheduled</li>
     <li>Admin Center depends on <b>admin_users</b> records being seeded for staff</li>
   </ul>
@@ -944,7 +924,6 @@
     <li><b>/create</b> public creator</li>
     <li><b>/create/review/:id</b> public sermon review</li>
     <li><b>/editor/:id</b> slide editor</li>
-    <li><b>/payment-success</b> one-time export return</li>
     <li><b>/login</b>, <b>/signup</b>, <b>/signup/complete</b>, <b>/signup-incomplete</b>, <b>/invite-signup</b>, <b>/auth/confirm</b></li>
     <li><b>/auth/confirm-email-change</b></li>
     <li><b>/forgot-password</b>, <b>/reset-password</b></li>

@@ -15,7 +15,7 @@ const GetStartedModal = ({ open, onOpenChange }: GetStartedModalProps) => {
   const { user } = useAuth();
   const [proLoading, setProLoading] = useState(false);
 
-  const handlePayPerExport = () => {
+  const handleTryFree = () => {
     onOpenChange(false);
     navigate("/create");
   };
@@ -38,20 +38,20 @@ const GetStartedModal = ({ open, onOpenChange }: GetStartedModalProps) => {
 
         <div className="grid sm:grid-cols-2 gap-4 p-6 pt-2">
           <button
-            onClick={handlePayPerExport}
+            onClick={handleTryFree}
             className="group relative flex flex-col items-center text-center rounded-xl border border-border bg-card p-6 hover:border-primary/40 hover:shadow-soft transition-all"
           >
             <div className="w-12 h-12 rounded-xl bg-secondary flex items-center justify-center mb-4">
               <FileText className="w-6 h-6 text-foreground" />
             </div>
             <h3 className="font-serif text-lg font-semibold text-foreground mb-1">
-              Try for Free
+              Try it Free
             </h3>
             <p className="text-sm text-muted-foreground mb-4">
-              Create your presentation first, then pay only when you are ready to export.
+              No account, no payment — build and export your presentation right now.
             </p>
             <span className="inline-flex items-center gap-1 text-sm font-medium text-primary group-hover:gap-2 transition-all">
-              Open Creator <ArrowRight className="w-4 h-4" />
+              Start Creating Free <ArrowRight className="w-4 h-4" />
             </span>
           </button>
 
@@ -67,10 +67,10 @@ const GetStartedModal = ({ open, onOpenChange }: GetStartedModalProps) => {
               <Crown className="w-6 h-6 text-primary-foreground" />
             </div>
             <h3 className="font-serif text-lg font-semibold text-foreground mb-1">
-              Unlock Full Access
+              Create an Account
             </h3>
             <p className="text-sm text-muted-foreground mb-4">
-              Choose Pro, Team, or Enterprise to unlock the full account experience.
+              Choose Core or Team to unlock AI Quick Build, saved presentations, and team collaboration.
             </p>
             {proLoading ? (
               <Loader2 className="w-5 h-5 animate-spin text-primary" />

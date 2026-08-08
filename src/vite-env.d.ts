@@ -4,12 +4,10 @@ interface ImportMetaEnv {
   readonly VITE_SITE_URL?: string;
   readonly VITE_SUPABASE_URL?: string;
   readonly VITE_SUPABASE_PUBLISHABLE_KEY?: string;
-  readonly VITE_STRIPE_PRICE_PRO_MONTHLY?: string;
-  readonly VITE_STRIPE_PRICE_PRO_ANNUAL?: string;
+  readonly VITE_STRIPE_PRICE_CORE_MONTHLY?: string;
+  readonly VITE_STRIPE_PRICE_CORE_ANNUAL?: string;
   readonly VITE_STRIPE_PRICE_TEAM_MONTHLY?: string;
   readonly VITE_STRIPE_PRICE_TEAM_ANNUAL?: string;
-  readonly VITE_STRIPE_PRICE_ENTERPRISE_MONTHLY?: string;
-  readonly VITE_STRIPE_PRICE_ENTERPRISE_ANNUAL?: string;
 }
 
 interface ImportMeta {

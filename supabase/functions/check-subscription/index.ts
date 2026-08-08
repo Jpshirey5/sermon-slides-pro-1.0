@@ -9,23 +9,10 @@ const logStep = (step: string, details?: any) => {
 
 const PLAN_BY_PRICE_ID = new Map<string, { planTier: string; planLabel: string; billingInterval: "monthly" | "annual"; maxAdditionalUsers: number | null }>(
   [
-    [Deno.env.get("STRIPE_PRICE_PRO_MONTHLY"), { planTier: "pro", planLabel: "Pro", billingInterval: "monthly", maxAdditionalUsers: 0 }],
-    [Deno.env.get("STRIPE_PRICE_PRO_ANNUAL"), { planTier: "pro", planLabel: "Pro", billingInterval: "annual", maxAdditionalUsers: 0 }],
-    [Deno.env.get("STRIPE_PRICE_TEAM_MONTHLY"), { planTier: "team", planLabel: "Team", billingInterval: "monthly", maxAdditionalUsers: 2 }],
-    [Deno.env.get("STRIPE_PRICE_TEAM_ANNUAL"), { planTier: "team", planLabel: "Team", billingInterval: "annual", maxAdditionalUsers: 2 }],
-    [Deno.env.get("STRIPE_PRICE_ENTERPRISE_MONTHLY"), { planTier: "enterprise", planLabel: "Enterprise", billingInterval: "monthly", maxAdditionalUsers: 9 }],
-    [Deno.env.get("STRIPE_PRICE_ENTERPRISE_ANNUAL"), { planTier: "enterprise", planLabel: "Enterprise", billingInterval: "annual", maxAdditionalUsers: 9 }],
-    ["price_1TEfgIP2Yr0z0IcsX2VXk6wJ", { planTier: "pro", planLabel: "Pro", billingInterval: "monthly", maxAdditionalUsers: 0 }],
-    ["price_1TEfi2P2Yr0z0Icsnod1blF1", { planTier: "pro", planLabel: "Pro", billingInterval: "annual", maxAdditionalUsers: 0 }],
-    ["price_1TEfggP2Yr0z0IcsHHgS6kye", { planTier: "team", planLabel: "Team", billingInterval: "monthly", maxAdditionalUsers: 2 }],
-    ["price_1TEfjmP2Yr0z0IcsXW3ZujSG", { planTier: "team", planLabel: "Team", billingInterval: "annual", maxAdditionalUsers: 2 }],
-    ["price_1TEfhaP2Yr0z0IcsGlDJJyu7", { planTier: "enterprise", planLabel: "Enterprise", billingInterval: "monthly", maxAdditionalUsers: 9 }],
-    ["price_1TEfkDP2Yr0z0IcsUhXwzh9z", { planTier: "enterprise", planLabel: "Enterprise", billingInterval: "annual", maxAdditionalUsers: 9 }],
-    ["price_1TJJjFP2Yr0z0IcsZRFgIQlX", { planTier: "team", planLabel: "Team", billingInterval: "monthly", maxAdditionalUsers: 2 }],
-    ["price_1TJJjWP2Yr0z0IcsAV9Y4SV5", { planTier: "team", planLabel: "Team", billingInterval: "annual", maxAdditionalUsers: 2 }],
-    ["price_1TJJlcP2Yr0z0IcsUb9IHJuS", { planTier: "enterprise", planLabel: "Enterprise", billingInterval: "monthly", maxAdditionalUsers: 9 }],
-    ["price_1TJJlpP2Yr0z0IcsDJBpCJHa", { planTier: "enterprise", planLabel: "Enterprise", billingInterval: "annual", maxAdditionalUsers: 9 }],
-    ["price_1TJQdEP2Yr0z0IcsjUAm4Xq6", { planTier: "enterprise", planLabel: "Enterprise", billingInterval: "annual", maxAdditionalUsers: 9 }],
+    [Deno.env.get("STRIPE_PRICE_CORE_MONTHLY"), { planTier: "core", planLabel: "Core", billingInterval: "monthly", maxAdditionalUsers: 2 }],
+    [Deno.env.get("STRIPE_PRICE_CORE_ANNUAL"), { planTier: "core", planLabel: "Core", billingInterval: "annual", maxAdditionalUsers: 2 }],
+    [Deno.env.get("STRIPE_PRICE_TEAM_MONTHLY"), { planTier: "team", planLabel: "Team", billingInterval: "monthly", maxAdditionalUsers: 9 }],
+    [Deno.env.get("STRIPE_PRICE_TEAM_ANNUAL"), { planTier: "team", planLabel: "Team", billingInterval: "annual", maxAdditionalUsers: 9 }],
   ].filter((entry): entry is [string, { planTier: string; planLabel: string; billingInterval: "monthly" | "annual"; maxAdditionalUsers: number | null }] => Boolean(entry[0]))
 );
 
@@ -47,7 +34,7 @@ const getBetaInfo = (account: any) => {
     beta_trial_active: trialActive,
     beta_trial_ends_at: trialEndsAt,
     beta_trial_days_remaining: daysRemaining,
-    beta_plan_tier: account?.beta_plan_tier || "pro",
+    beta_plan_tier: account?.beta_plan_tier || "free",
   };
 };
 
@@ -263,8 +250,8 @@ serve(async (req) => {
       } else {
         const recurringInterval = sub.items.data[0].price.recurring?.interval;
         billingInterval = recurringInterval === "year" ? "annual" : recurringInterval === "month" ? "monthly" : null;
-        planLabel = "Pro";
-        planTier = "pro";
+        planLabel = "Free";
+        planTier = "free";
         maxAdditionalUsers = 0;
       }
       cancelAtPeriodEnd = Boolean(sub.cancel_at_period_end);
@@ -339,7 +326,7 @@ serve(async (req) => {
       planLabel = "Beta";
       subscriptionEnd = betaInfo.beta_trial_ends_at;
       subscriptionStatus = "trialing";
-      maxAdditionalUsers = planTier === "enterprise" ? 9 : planTier === "team" ? 2 : 0;
+      maxAdditionalUsers = planTier === "team" ? 9 : planTier === "core" ? 2 : 0;
       await supabaseClient
         .from("accounts")
         .update({

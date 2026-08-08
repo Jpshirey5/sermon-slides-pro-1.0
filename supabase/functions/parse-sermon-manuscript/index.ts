@@ -22,6 +22,8 @@ const MAX_PDF_BYTES = 10 * 1024 * 1024;
 interface ResolvedAccount {
   accountId: string;
   tier: string;
+  isLegacyGrandfathered: boolean;
+  legacyUncappedTier: string | null;
 }
 
 async function resolveAccountAndTier(
@@ -40,12 +42,17 @@ async function resolveAccountAndTier(
 
   const { data: account, error: accountError } = await supabaseAdmin
     .from("accounts")
-    .select("id, plan_tier")
+    .select("id, plan_tier, is_legacy_grandfathered, legacy_uncapped_tier")
     .eq("id", membership.account_id)
     .maybeSingle();
   if (accountError) throw new Error(accountError.message);
   const tier = (account?.plan_tier || "").toLowerCase() || "free";
-  return { accountId: membership.account_id, tier };
+  return {
+    accountId: membership.account_id,
+    tier,
+    isLegacyGrandfathered: Boolean(account?.is_legacy_grandfathered),
+    legacyUncappedTier: account?.legacy_uncapped_tier || null,
+  };
 }
 
 serve(async (req) => {
@@ -177,15 +184,28 @@ serve(async (req) => {
       );
     }
 
-    const { accountId, tier } = await resolveAccountAndTier(supabaseAdmin, userId);
+    const { accountId, tier, isLegacyGrandfathered, legacyUncappedTier } = await resolveAccountAndTier(
+      supabaseAdmin,
+      userId,
+    );
     logContext.accountId = accountId;
 
-    const limit = await checkMonthlyLimit(supabaseAdmin, userId, tier);
+    const limit = await checkMonthlyLimit(supabaseAdmin, accountId, tier, {
+      isLegacyGrandfathered,
+      legacyUncappedTier,
+    });
     if (!limit.allowed) {
-      const nextTier = tier === "pro" ? "Team" : tier === "team" ? "Enterprise" : null;
-      const message = nextTier
-        ? `You've used your ${limit.limit} Quick Build uploads for this month. Upgrade to ${nextTier} for more.`
-        : `You've used your ${limit.limit} Quick Build uploads for this month.`;
+      let nextTier: string | null = null;
+      let message: string;
+      if (tier === "free") {
+        nextTier = "Core";
+        message = "Quick Build requires a Core or Team plan. Upgrade to unlock AI-powered sermon parsing.";
+      } else if (tier === "core") {
+        nextTier = "Team";
+        message = `You've used your ${limit.limit} Quick Build uploads for this month. Upgrade to Team for more.`;
+      } else {
+        message = `You've used your ${limit.limit} Quick Build uploads for this month.`;
+      }
       return json(
         {
           success: false,
@@ -251,9 +271,12 @@ serve(async (req) => {
       translation,
     });
 
-    // Resolve campus for enterprise accounts, mirroring src/lib/presentations.ts logic.
+    // Resolve campus for Team-tier accounts (old "enterprise"), mirroring
+    // src/lib/presentations.ts logic. "team" is the post-Step-1 rename of the
+    // old "enterprise" tier -- this check was still comparing against the
+    // pre-rename literal and would never have matched any real account.
     let resolvedCampusId: string | null = null;
-    if (tier === "enterprise") {
+    if (tier === "team") {
       if (requestedCampusId) {
         resolvedCampusId = requestedCampusId;
       } else {

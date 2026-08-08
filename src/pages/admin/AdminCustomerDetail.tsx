@@ -33,6 +33,40 @@ const formatNextInvoiceSummary = (nextInvoice?: any) => {
   return `${amount} · ${date}`;
 };
 
+// livePlan/priceUnitAmount/discount are resolved live from the Stripe
+// subscription's actual price ID and discount object -- independent of
+// accounts.plan_tier, so this can catch drift if a webhook was ever missed.
+const formatLiveStripePlan = (nextInvoice?: any) => {
+  const livePlan = nextInvoice?.livePlan;
+  if (!livePlan) return null;
+  const interval = livePlan.billingInterval === "annual" ? "Yearly" : "Monthly";
+  return `${livePlan.planLabel} ${interval}`;
+};
+
+const formatStickerPrice = (nextInvoice?: any) => {
+  if (typeof nextInvoice?.priceUnitAmount !== "number") return null;
+  const suffix = nextInvoice?.livePlan?.billingInterval === "annual" ? "/yr" : nextInvoice?.livePlan?.billingInterval === "monthly" ? "/mo" : "";
+  return `${formatMoney(nextInvoice.priceUnitAmount, nextInvoice.currency || "usd")}${suffix}`;
+};
+
+const formatDiscountSummary = (discount?: any) => {
+  if (!discount) return "None";
+  const amountPart = typeof discount.percentOff === "number"
+    ? `${discount.percentOff}% off`
+    : typeof discount.amountOff === "number"
+      ? `${formatMoney(discount.amountOff, discount.currency || "usd")} off`
+      : discount.name || "Discount active";
+  const durationPart =
+    discount.duration === "forever"
+      ? "forever"
+      : discount.duration === "repeating" && discount.durationInMonths
+        ? `${discount.durationInMonths} month${discount.durationInMonths === 1 ? "" : "s"}`
+        : discount.duration === "once"
+          ? "one-time"
+          : null;
+  return durationPart ? `${amountPart} · ${durationPart}` : amountPart;
+};
+
 type CustomerEditState = {
   ownerFullName: string;
   ownerChurchRole: string;
@@ -304,6 +338,8 @@ const AdminCustomerDetail = () => {
   const invoices = data.stripeContext?.invoices || [];
   const members = data.members || [];
   const nextInvoice = data.nextInvoice || data.stripeContext?.nextInvoice || null;
+  const livePlanTier = nextInvoice?.livePlan?.planTier || null;
+  const planTierMismatch = Boolean(livePlanTier && account.plan_tier && livePlanTier !== account.plan_tier);
   const organizationName = account.name || "";
   const canHardDelete = hardDeleteConfirmation.trim().toLowerCase() === organizationName.trim().toLowerCase();
   const betaCountdown = formatBetaTrialCountdown(getBetaTrialDaysRemaining(account.beta_trial_ends_at));
@@ -485,12 +521,28 @@ const AdminCustomerDetail = () => {
 
           <div className="mt-6 grid gap-4 border-t border-border/70 pt-5 md:grid-cols-2">
             <div><p className="text-xs text-muted-foreground">Church Location</p><p className="flex items-center gap-1"><MapPin className="h-3.5 w-3.5" /> {data.location?.label || "Unavailable"}</p></div>
-            <div><p className="text-xs text-muted-foreground">Plan</p><p className="capitalize">{account.plan_tier || "free"}</p></div>
+            <div>
+              <p className="text-xs text-muted-foreground">Plan</p>
+              <p className="capitalize flex items-center gap-2">
+                {account.plan_tier || "free"}
+                {planTierMismatch && (
+                  <span
+                    className="rounded-full bg-destructive/10 px-2 py-0.5 text-[11px] font-medium normal-case text-destructive"
+                    title={`Stripe shows "${livePlanTier}" but the account record shows "${account.plan_tier}" -- a sync may have been missed.`}
+                  >
+                    Mismatch vs Stripe
+                  </span>
+                )}
+              </p>
+            </div>
             <div><p className="text-xs text-muted-foreground">Beta Program</p><p>{account.is_beta_user ? betaCountdown : "Not beta"}</p></div>
             <div><p className="text-xs text-muted-foreground">Subscription</p><p>{data.adminSubscriptionStatusLabel || account.subscription_status}</p></div>
             {activeDeletionRequest && (
               <div><p className="text-xs text-muted-foreground">{offboardingDateLabel}</p><p>{formatAdminDate(data.offboardingDate)}</p></div>
             )}
+            <div><p className="text-xs text-muted-foreground">Stripe Plan (live)</p><p>{formatLiveStripePlan(nextInvoice) || "No active Stripe subscription"}</p></div>
+            <div><p className="text-xs text-muted-foreground">Sticker Price (live)</p><p>{formatStickerPrice(nextInvoice) || "Unavailable"}</p></div>
+            <div><p className="text-xs text-muted-foreground">Discount / Coupon</p><p>{formatDiscountSummary(nextInvoice?.discount)}</p></div>
             <div><p className="text-xs text-muted-foreground">Next Invoice</p><p>{formatNextInvoiceSummary(nextInvoice)}</p></div>
             <div><p className="text-xs text-muted-foreground">Presentations</p><p>{data.presentationCount}</p></div>
             <div><p className="text-xs text-muted-foreground">Created</p><p>{formatAdminDate(account.created_at)}</p></div>

@@ -19,9 +19,8 @@ const SubscriptionManagementPicker = ({
 }: SubscriptionManagementPickerProps) => {
   const currentPlan = getPlanByPriceId(currentPriceId);
   const featureHighlights: Record<string, string> = {
-    pro: "1 user • Saved presentations • Weekly sermon workflow",
-    team: "Up to 3 users • Shared team workflow • Recurring collaboration",
-    enterprise: "Up to 10 users • Multi-role teams • Organization-wide workflow",
+    core: "Up to 3 users • 25 shared AI Quick Build generations/month",
+    team: "Up to 10 users • Multi-role teams • 70 shared AI Quick Build generations/month",
   };
 
   return (
@@ -61,7 +60,7 @@ const SubscriptionManagementPicker = ({
               )}
             </div>
 
-            <div className={`grid gap-3 ${family.tier === "enterprise" ? "md:grid-cols-[minmax(0,1.15fr)_minmax(0,1.15fr)]" : "sm:grid-cols-2"}`}>
+            <div className={`grid gap-3 ${family.tier === "team" ? "md:grid-cols-[minmax(0,1.15fr)_minmax(0,1.15fr)]" : "sm:grid-cols-2"}`}>
               {[family.monthly, family.annual].map((plan) => {
                 const isLoading = loadingPlanId === plan.id;
                 const isCurrentPlan = currentPlan?.id === plan.id;

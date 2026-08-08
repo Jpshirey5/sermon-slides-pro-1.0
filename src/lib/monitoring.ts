@@ -29,7 +29,6 @@ const EVENT_SAMPLE_RATES: Record<string, number> = {
   signup_viewed: 0.5,
   create_sermon_viewed: 0.5,
   editor_viewed: 0.5,
-  payment_success_viewed: 0.5,
 };
 
 const DEDUPE_WINDOW_MS_BY_EVENT: Record<string, number> = {
