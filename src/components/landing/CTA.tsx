@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Sparkles } from "lucide-react";
+import { ArrowRight, Gift, Sparkles } from "lucide-react";
 import GetStartedModal from "@/components/GetStartedModal";
 
 const CTA = () => {
@@ -66,6 +66,18 @@ const CTA = () => {
                 Log In
               </Button>
             </Link>
+          </div>
+
+          <div className="mt-6 text-center">
+            <a
+              href="/promo"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-sm font-semibold text-primary hover:opacity-80 transition-opacity"
+            >
+              <Gift className="w-4 h-4" />
+              Get a Discount Code
+            </a>
           </div>
         </motion.div>
       </div>
