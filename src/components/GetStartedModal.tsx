@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { FileText, Crown, ArrowRight, Loader2 } from "lucide-react";
+import { FileText, Crown, ArrowRight, Gift, Loader2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
 interface GetStartedModalProps {
@@ -80,6 +80,18 @@ const GetStartedModal = ({ open, onOpenChange }: GetStartedModalProps) => {
               </span>
             )}
           </button>
+        </div>
+
+        <div className="pb-6 text-center">
+          <a
+            href="/promo"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-sm font-semibold text-primary hover:opacity-80 transition-opacity"
+          >
+            <Gift className="w-4 h-4" />
+            Get a Discount Code
+          </a>
         </div>
       </DialogContent>
     </Dialog>

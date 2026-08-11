@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Check, ChevronsUp, Crown, Sparkles } from "lucide-react";
+import { Check, ChevronsUp, Crown, Gift, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -114,6 +114,24 @@ const Pricing = () => {
               );
             })}
           </div>
+        </motion.div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.5 }}
+          className="text-center mb-10"
+        >
+          <a
+            href="/promo"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-sm font-semibold text-primary hover:opacity-80 transition-opacity"
+          >
+            <Gift className="w-4 h-4" />
+            Get a Discount Code
+          </a>
         </motion.div>
 
         {billingInterval === "annual" && (

@@ -23,6 +23,7 @@ import Account from "./pages/Account";
 import ExitSurvey from "./pages/ExitSurvey";
 import CheckoutRedirect from "./pages/CheckoutRedirect";
 import Contact from "./pages/Contact";
+import PromoCode from "./pages/PromoCode";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import TermsAndConditions from "./pages/TermsAndConditions";
 import TrustCenter from "./pages/TrustCenter";
@@ -91,6 +92,7 @@ const App = () => (
               
               <Route path="/account" element={<ProtectedRoute allowUnsubscribed><Account /></ProtectedRoute>} />
               <Route path="/contact" element={<Contact />} />
+              <Route path="/promo" element={<PromoCode />} />
               <Route path="/privacy-policy" element={<PrivacyPolicy />} />
               <Route path="/terms-and-conditions" element={<TermsAndConditions />} />
               <Route path="/trust-center" element={<TrustCenter />} />

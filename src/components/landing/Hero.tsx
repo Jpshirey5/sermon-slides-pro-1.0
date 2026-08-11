@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Play, Sparkles } from "lucide-react";
+import { ArrowRight, Gift, Play, Sparkles } from "lucide-react";
 import heroImage from "@/assets/hero-church.jpg";
 
 const DEMO_VIDEO_ID = "foiprpsTcWk";
@@ -72,6 +72,23 @@ const Hero = () => {
                 <ArrowRight className="w-5 h-5" />
               </Button>
             </Link>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.35 }}
+            className="mt-5"
+          >
+            <a
+              href="/promo"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-sm font-semibold text-primary hover:opacity-80 transition-opacity"
+            >
+              <Gift className="w-4 h-4" />
+              Get a Discount Code
+            </a>
           </motion.div>
 
           {/* <motion.div
