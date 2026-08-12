@@ -67,7 +67,7 @@ const QuickBuildUploadCard = ({ mode, children }: QuickBuildUploadCardProps) => 
     const tier = (subscription?.plan_tier || "").toLowerCase();
     if (tier === "free") return "Quick Build requires a Core or Team plan";
     if (tier === "core") return "25 shared uploads / month";
-    if (tier === "team") return "70 shared uploads / month";
+    if (tier === "team") return "150 shared uploads / month";
     return null;
   }, [subscription?.plan_tier]);
 

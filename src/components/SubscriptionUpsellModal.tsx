@@ -15,7 +15,7 @@ export function SubscriptionUpsellModal({
 }: SubscriptionUpsellModalProps) {
   const featureHighlights: Record<string, string> = {
     core: "Up to 3 users • AI Quick Build • 25 shared generations/month",
-    team: "Up to 10 users • Multi-campus • 70 shared generations/month",
+    team: "Up to 10 users • Multi-campus • 150 shared generations/month",
   };
 
   return (

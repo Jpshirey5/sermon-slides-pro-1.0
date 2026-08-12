@@ -35,7 +35,7 @@ const FEATURES_BY_TIER: Record<"core" | "team", TierFeatures> = {
     inheritsFromLabel: "Everything in Core, plus:",
     items: [
       "Up to 10 users",
-      "AI Quick Builder — 70 shared generations/month",
+      "AI Quick Builder — 150 shared generations/month",
       "Built for larger ministries and multi-role teams",
       "Built to support multi-campus teams",
       "Best for growing churches and larger teams",

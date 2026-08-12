@@ -24,7 +24,7 @@ const SubscriptionPlanPicker = ({
 
   const featureHighlights: Record<string, string> = {
     core: "Up to 3 users • No watermark • 25 shared AI Quick Build generations/month",
-    team: "Up to 10 users • No watermark • Multi-role teams • 70 shared AI Quick Build generations/month",
+    team: "Up to 10 users • No watermark • Multi-role teams • 150 shared AI Quick Build generations/month",
   };
 
   return (
