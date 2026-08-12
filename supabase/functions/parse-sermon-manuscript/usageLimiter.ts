@@ -3,7 +3,7 @@
 const TIER_LIMITS: Record<string, number> = {
   free: 0,
   core: 25,
-  team: 70,
+  team: 150,
 };
 
 // Floor for the handful of pre-restructure accounts tagged
