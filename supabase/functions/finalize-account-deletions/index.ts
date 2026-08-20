@@ -1,47 +1,11 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@18.5.0";
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
+import { cancelAndDeleteStripeCustomer } from "../_shared/stripe-account-cleanup.ts";
 
 
 const logStep = (step: string, details?: any) => {
   console.log(`[FINALIZE-ACCOUNT-DELETIONS] ${step}${details ? ` - ${JSON.stringify(details)}` : ""}`);
-};
-
-const cancelAndDeleteStripeCustomer = async (
-  stripe: Stripe,
-  customerId: string,
-  subscriptionId: string | null
-) => {
-  const subscriptionIds = new Set<string>();
-  if (subscriptionId) subscriptionIds.add(subscriptionId);
-
-  try {
-    const subscriptions = await stripe.subscriptions.list({ customer: customerId, status: "all", limit: 100 });
-    for (const sub of subscriptions.data) {
-      subscriptionIds.add(sub.id);
-    }
-  } catch (error) {
-    logStep("Failed listing Stripe subscriptions before final delete", { customerId, error: String(error) });
-  }
-
-  for (const id of subscriptionIds) {
-    try {
-      const subscription = await stripe.subscriptions.retrieve(id);
-      if (subscription.status !== "canceled" && subscription.status !== "incomplete_expired") {
-        await stripe.subscriptions.cancel(id);
-        logStep("Canceled Stripe subscription during finalization", { subscriptionId: id });
-      }
-    } catch (error) {
-      logStep("Failed canceling Stripe subscription during finalization", { subscriptionId: id, error: String(error) });
-    }
-  }
-
-  try {
-    await stripe.customers.del(customerId);
-    logStep("Deleted Stripe customer during finalization", { customerId });
-  } catch (error) {
-    logStep("Failed deleting Stripe customer during finalization", { customerId, error: String(error) });
-  }
 };
 
 const escapeHtml = (value: string) =>
@@ -55,7 +19,7 @@ const escapeHtml = (value: string) =>
 const createAdminNotification = async (
   supabaseAdmin: ReturnType<typeof createClient>,
   notification: {
-    type: "account_saving_needed" | "support_request";
+    type: "account_saving_needed" | "support_request" | "account_deletion_finalization_failed";
     title: string;
     message: string;
     accountId?: string | null;
@@ -298,6 +262,19 @@ serve(async (req) => {
       const accountId = deletionRequest.account_id as string;
 
       try {
+        // Stripe cleanup runs before any local data is touched: if it fails, the
+        // catch below marks this request "failed" and local data is left exactly
+        // as it was, so we never end up with local data gone but a Stripe customer
+        // (and its stored payment methods) still lingering with no record of it.
+        if (stripe && deletionRequest.stripe_customer_id) {
+          await cancelAndDeleteStripeCustomer(
+            stripe,
+            deletionRequest.stripe_customer_id,
+            deletionRequest.stripe_subscription_id || null,
+            logStep,
+          );
+        }
+
         const { data: members } = await supabaseAdmin
           .from("account_members")
           .select("user_id")
@@ -321,14 +298,6 @@ serve(async (req) => {
           }
         }
 
-        if (stripe && deletionRequest.stripe_customer_id) {
-          await cancelAndDeleteStripeCustomer(
-            stripe,
-            deletionRequest.stripe_customer_id,
-            deletionRequest.stripe_subscription_id || null
-          );
-        }
-
         const { error: updateError } = await supabaseAdmin
           .from("account_deletion_requests" as any)
           .update({
@@ -345,11 +314,34 @@ serve(async (req) => {
         results.push({ id: requestId, accountId, status: "completed" });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        logStep("Deletion request finalization failed", { requestId, accountId, error: message });
+        logStep("Deletion request finalization failed", {
+          requestId,
+          accountId,
+          stripeCustomerId: deletionRequest.stripe_customer_id || null,
+          stripeSubscriptionId: deletionRequest.stripe_subscription_id || null,
+          error: message,
+        });
         await supabaseAdmin
           .from("account_deletion_requests" as any)
           .update({ status: "failed", last_error: message })
           .eq("id", requestId);
+        // Local data is only ever deleted after Stripe cleanup succeeds (see above), so
+        // a Stripe failure here never leaves an orphaned Stripe customer with nothing
+        // to show for it -- but flag every finalization failure in the admin feed too
+        // (including ones after Stripe succeeded, e.g. the accounts-row delete failing),
+        // since a "failed" request is not retried automatically.
+        await createAdminNotification(supabaseAdmin, {
+          type: "account_deletion_finalization_failed",
+          title: "Account deletion finalization failed",
+          message: `Automatic finalization failed for account ${accountId} and was left as status "failed" -- it will NOT be retried automatically. Check last_error and the Stripe customer (${deletionRequest.stripe_customer_id || "none on file"}) to see how far it got before manually resolving. Error: ${message}`,
+          accountId,
+          accountDeletionRequestId: requestId,
+          metadata: {
+            stripeCustomerId: deletionRequest.stripe_customer_id || null,
+            stripeSubscriptionId: deletionRequest.stripe_subscription_id || null,
+            error: message,
+          },
+        });
         results.push({ id: requestId, accountId, status: "failed", error: message });
       }
     }

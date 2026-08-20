@@ -3,6 +3,7 @@ import Stripe from "https://esm.sh/stripe@18.5.0";
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { computeRevenueMetrics } from "../_shared/revenue.ts";
 import { computeSignupChurnMetrics, computeUsageMetrics, getInternalAccountIds } from "../_shared/reporting.ts";
+import { cancelAndDeleteStripeCustomer } from "../_shared/stripe-account-cleanup.ts";
 
 
 
@@ -564,39 +565,6 @@ If you think this was a mistake, please contact Sermon Slide Pro support.`,
     throw new Error(`Resend removal email failed: ${response.status} ${await response.text()}`);
   }
   return true;
-};
-
-const cancelAndDeleteStripeCustomer = async (
-  stripe: Stripe,
-  customerId: string,
-  subscriptionId: string | null,
-) => {
-  const subscriptionIds = new Set<string>();
-  if (subscriptionId) subscriptionIds.add(subscriptionId);
-
-  try {
-    const subscriptions = await stripe.subscriptions.list({ customer: customerId, status: "all", limit: 100 });
-    for (const sub of subscriptions.data) subscriptionIds.add(sub.id);
-  } catch (error) {
-    logStep("Failed listing Stripe subscriptions before hard delete", { customerId, error: String(error) });
-  }
-
-  for (const id of subscriptionIds) {
-    try {
-      const subscription = await stripe.subscriptions.retrieve(id);
-      if (subscription.status !== "canceled" && subscription.status !== "incomplete_expired") {
-        await stripe.subscriptions.cancel(id);
-      }
-    } catch (error) {
-      logStep("Failed canceling Stripe subscription during hard delete", { subscriptionId: id, error: String(error) });
-    }
-  }
-
-  try {
-    await stripe.customers.del(customerId);
-  } catch (error) {
-    logStep("Failed deleting Stripe customer during hard delete", { customerId, error: String(error) });
-  }
 };
 
 const dateKey = (date: Date) => date.toISOString().slice(0, 10);
@@ -1533,8 +1501,16 @@ const customerHardDeleteOrg = async (ctx: AdminContext, body: any) => {
   const activeAdminUserIds = new Set((activeAdmins || []).map((admin: any) => admin.user_id));
 
   const stripe = getStripe();
+  // Stripe cleanup runs before any local data is touched below: if it throws, this
+  // whole action fails and the account (and its members) are left untouched, so we
+  // never end up with local data gone but an orphaned Stripe customer left behind.
   if (stripe && account.stripe_customer_id) {
-    await cancelAndDeleteStripeCustomer(stripe, account.stripe_customer_id, account.stripe_subscription_id || null);
+    await cancelAndDeleteStripeCustomer(
+      stripe,
+      account.stripe_customer_id,
+      account.stripe_subscription_id || null,
+      logStep,
+    );
   }
 
   const { error: deleteAccountError } = await ctx.supabaseAdmin.from("accounts").delete().eq("id", accountId);
