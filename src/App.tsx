@@ -39,6 +39,7 @@ import AdminLogin from "./pages/admin/AdminLogin";
 import AdminAcceptInvite from "./pages/admin/AdminAcceptInvite";
 import AdminOverview from "./pages/admin/AdminOverview";
 import AdminCustomers from "./pages/admin/AdminCustomers";
+import AdminPendingSignups from "./pages/admin/AdminPendingSignups";
 import AdminCustomerDetail from "./pages/admin/AdminCustomerDetail";
 import AdminSupport from "./pages/admin/AdminSupport";
 import AdminBilling from "./pages/admin/AdminBilling";
@@ -80,6 +81,7 @@ const App = () => (
                 <Route index element={<AdminOverview />} />
                 <Route path="customers" element={<AdminCustomers />} />
                 <Route path="customers/:id" element={<AdminCustomerDetail />} />
+                <Route path="pending-signups" element={<AdminPendingSignups />} />
                 <Route path="support" element={<AdminSupport />} />
                 <Route path="billing" element={<AdminBilling />} />
                 <Route path="reports" element={<AdminReports />} />

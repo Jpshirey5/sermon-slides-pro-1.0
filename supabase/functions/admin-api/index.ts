@@ -4,6 +4,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { computeRevenueMetrics } from "../_shared/revenue.ts";
 import { computeSignupChurnMetrics, computeUsageMetrics, getInternalAccountIds } from "../_shared/reporting.ts";
 import { cancelAndDeleteStripeCustomer } from "../_shared/stripe-account-cleanup.ts";
+import { hashToken, generateToken, sendPaidSignupFinishEmail } from "../_shared/paid-signup.ts";
 
 
 
@@ -814,6 +815,87 @@ const getPendingEmailChangeRequestForUser = async (
 
   if (error) throw new Error(error.message);
   return data || null;
+};
+
+const pendingSignupsList = async (ctx: AdminContext, body: any) => {
+  const search = clean(body?.search).toLowerCase();
+  const limit = Math.min(Math.max(Number(body?.limit) || 25, 1), 100);
+  const offset = Math.max(Number(body?.offset) || 0, 0);
+
+  const { data: rows, count, error } = await ctx.supabaseAdmin
+    .from("paid_signup_sessions" as any)
+    .select(
+      "id, checkout_email, stripe_customer_id, stripe_subscription_id, price_id, plan_tier, billing_interval, status, paid_at, expires_at, finish_email_sent_at, finish_email_error, created_at, updated_at",
+      { count: "exact" },
+    )
+    .in("status", ["paid", "email_conflict"])
+    .is("completed_user_id", null)
+    .order("updated_at", { ascending: true })
+    .range(offset, offset + limit - 1);
+  if (error) throw new Error(error.message);
+
+  const now = Date.now();
+  let items = (rows || []).map((row: any) => ({
+    ...row,
+    reason: row.status === "email_conflict" ? "email_conflict" : "awaiting_completion",
+    staleHours: Math.floor((now - new Date(row.updated_at ?? row.created_at).getTime()) / (60 * 60 * 1000)),
+    isExpired: row.expires_at ? new Date(row.expires_at).getTime() < now : false,
+  }));
+
+  if (search) {
+    items = items.filter((item: any) =>
+      [item.checkout_email, item.stripe_customer_id].some((value) => clean(value).toLowerCase().includes(search))
+    );
+  }
+
+  return { items, total: count ?? items.length, limit, offset };
+};
+
+const pendingSignupsResendEmail = async (ctx: AdminContext, body: any) => {
+  const id = clean(body?.id);
+  if (!isUuid(id)) throw new Error("A valid paid signup session id is required");
+
+  const { data: signupSession, error: fetchError } = await ctx.supabaseAdmin
+    .from("paid_signup_sessions" as any)
+    .select("id, checkout_email, stripe_customer_id, status, completed_user_id")
+    .eq("id", id)
+    .maybeSingle();
+  if (fetchError) throw new Error(fetchError.message);
+  if (!signupSession) throw new Error("Paid signup session not found");
+  if ((signupSession as any).completed_user_id) throw new Error("This signup has already been completed");
+  if ((signupSession as any).status === "email_conflict") {
+    throw new Error("An account already uses this email — resolve the conflict before resending");
+  }
+  if ((signupSession as any).status !== "paid") throw new Error("This signup session is not awaiting completion");
+  if (!(signupSession as any).checkout_email) throw new Error("This signup session has no email on file");
+
+  const finishToken = generateToken();
+  const finishTokenHash = await hashToken(finishToken);
+  const expiresAt = new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString();
+
+  const { error: updateError } = await ctx.supabaseAdmin
+    .from("paid_signup_sessions" as any)
+    .update({ finish_token_hash: finishTokenHash, expires_at: expiresAt, status: "paid" })
+    .eq("id", id);
+  if (updateError) throw new Error(updateError.message);
+
+  const emailResult = await sendPaidSignupFinishEmail((signupSession as any).checkout_email, finishToken);
+  await ctx.supabaseAdmin
+    .from("paid_signup_sessions" as any)
+    .update({
+      finish_email_sent_at: emailResult.sent ? new Date().toISOString() : null,
+      finish_email_error: emailResult.error,
+    })
+    .eq("id", id);
+
+  await audit(ctx, "paid_signup_finish_email_resent", "paid_signup_session", id, {
+    checkoutEmail: (signupSession as any).checkout_email,
+    stripeCustomerId: (signupSession as any).stripe_customer_id,
+  });
+
+  if (!emailResult.sent) throw new Error(emailResult.error || "Failed to send the finish-signup email");
+
+  return { success: true, finishEmailSentAt: new Date().toISOString(), finishEmailError: emailResult.error };
 };
 
 const customers = async (ctx: AdminContext, body: any) => {
@@ -1710,6 +1792,7 @@ const supportEmailContactedUpdate = async (ctx: AdminContext, body: any) => {
 };
 
 const notificationTargetUrl = (notification: any) => {
+  if (notification.type === "orphaned_stripe_customer") return "/admin/pending-signups";
   if (notification.account_id) return `/admin/customers/${notification.account_id}`;
   if (notification.support_request_id) return "/admin/support";
   return "/admin";
@@ -2165,6 +2248,10 @@ serve(async (req) => {
         return json(await overviewActivity(ctx, body));
       case "overview_usage":
         return json(await overviewUsage(ctx, body));
+      case "pending_signups_list":
+        return json(await pendingSignupsList(ctx, body));
+      case "pending_signups_resend_email":
+        return json(await pendingSignupsResendEmail(ctx, body));
       case "customers":
         return json(await customers(ctx, body));
       case "customer_detail":

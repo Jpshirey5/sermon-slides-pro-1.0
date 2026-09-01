@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
-import { BarChart3, Bell, BookOpen, CheckCheck, CreditCard, Inbox, LineChart, LogOut, MessageSquareText, Shield, Trash2, Users } from "lucide-react";
+import { BarChart3, Bell, BookOpen, CheckCheck, CreditCard, Inbox, LineChart, LogOut, MessageSquareText, Shield, Trash2, UserPlus, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -16,6 +16,7 @@ import { supabase } from "@/integrations/supabase/client";
 const navItems = [
   { to: "/admin", label: "Overview", icon: BarChart3 },
   { to: "/admin/customers", label: "Customers", icon: Users },
+  { to: "/admin/pending-signups", label: "Pending Signups", icon: UserPlus },
   { to: "/admin/support", label: "Support", icon: Inbox },
   { to: "/admin/billing", label: "Billing", icon: CreditCard },
   { to: "/admin/reports", label: "Reports", icon: LineChart },
