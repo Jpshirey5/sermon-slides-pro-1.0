@@ -1,3 +1,4 @@
+import { formatDistanceToNow } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 
 export type AdminApiAction =
@@ -5,6 +6,8 @@ export type AdminApiAction =
   | "bootstrap"
   | "overview"
   | "overview_revenue"
+  | "pending_signups_list"
+  | "pending_signups_resend_email"
   | "customers"
   | "customer_detail"
   | "customer_update"
@@ -81,4 +84,10 @@ export const formatAdminDate = (value: string | number | null | undefined) => {
     day: "numeric",
     year: "numeric",
   });
+};
+
+export const formatAdminRelativeTime = (value: string | number | null | undefined) => {
+  if (!value) return "Unavailable";
+  const date = typeof value === "number" ? new Date(value * 1000) : new Date(value);
+  return formatDistanceToNow(date, { addSuffix: true });
 };

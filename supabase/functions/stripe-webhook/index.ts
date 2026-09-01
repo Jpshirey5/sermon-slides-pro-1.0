@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@18.5.0";
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
-import { getConfiguredAppOrigin } from "../_shared/app-url.ts";
+import { hashToken, generateToken, sendPaidSignupFinishEmail } from "../_shared/paid-signup.ts";
 
 
 const logStep = (step: string, details?: any) => {
@@ -22,19 +22,10 @@ const resolvePlanMetadata = (priceId?: string | null) => {
   return PLAN_BY_PRICE_ID.get(priceId) || { planTier: "free", billingInterval: null, maxAdditionalUsers: 0 };
 };
 
-const hashToken = async (token: string) => {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
-  return Array.from(new Uint8Array(digest))
-    .map((value) => value.toString(16).padStart(2, "0"))
-    .join("");
-};
-
-const generateToken = () => `${crypto.randomUUID()}${crypto.randomUUID()}`.replace(/-/g, "");
-
 const createAdminNotification = async (
   supabaseClient: ReturnType<typeof createClient>,
   notification: {
-    type?: "subscription_changed" | "payment_issue";
+    type?: "subscription_changed" | "payment_issue" | "orphaned_stripe_customer";
     title: string;
     message: string;
     accountId?: string | null;
@@ -69,42 +60,6 @@ const getAccountForStripeCustomer = async (
     .eq("stripe_customer_id", customerId)
     .maybeSingle();
   return data || null;
-};
-
-const sendPaidSignupFinishEmail = async (email: string, token: string) => {
-  const resendApiKey = Deno.env.get("RESEND_API_KEY") ?? "";
-  const resendFromEmail = Deno.env.get("RESEND_FROM_EMAIL") ?? "";
-  const resendFromName = Deno.env.get("RESEND_FROM_NAME") || "Sermon Slide Pro";
-  if (!resendApiKey || !resendFromEmail) return { sent: false, error: "Resend is not configured" };
-
-  const finishUrl = `${getConfiguredAppOrigin()}/signup/complete?token=${encodeURIComponent(token)}`;
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${resendApiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from: `${resendFromName} <${resendFromEmail}>`,
-      to: [email],
-      subject: "Finish creating your Sermon Slide Pro account",
-      html: `
-        <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #1f2937;">
-          <h2>Your Sermon Slide Pro subscription is ready</h2>
-          <p>Thanks for subscribing. Finish creating your account so you can start building sermon slides.</p>
-          <p><a href="${finishUrl}">Finish creating your account</a></p>
-          <p>If you did not request this, you can ignore this email.</p>
-        </div>
-      `,
-      text: `Your Sermon Slide Pro subscription is ready.\n\nFinish creating your account: ${finishUrl}\n\nIf you did not request this, you can ignore this email.`,
-    }),
-  });
-
-  if (!response.ok) {
-    return { sent: false, error: `Resend failed: ${response.status} ${await response.text()}` };
-  }
-
-  return { sent: true, error: null };
 };
 
 const getStripeCustomerContact = async (
@@ -351,6 +306,22 @@ serve(async (req) => {
             });
           } else {
             logStep("WARNING: Could not find account for customer", { customerId });
+            const contact = await getStripeCustomerContact(stripe, customerId);
+            await createAdminNotification(supabaseClient, {
+              type: "orphaned_stripe_customer",
+              title: "Stripe checkout has no matching account",
+              message: `A Stripe checkout completed for customer ${contact.email || customerId}, but no matching account or paid-signup session was found. This customer may need manual account creation.`,
+              externalEventId: event.id,
+              metadata: {
+                stripeEventId: event.id,
+                stripeCustomerId: customerId,
+                stripeSubscriptionId: subscriptionId,
+                customerEmail: contact.email,
+                customerName: contact.name,
+                priceId: lineItemPriceId,
+                planTier: planMeta.planTier,
+              },
+            });
           }
         }
         break;
