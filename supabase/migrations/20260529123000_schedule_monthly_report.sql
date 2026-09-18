@@ -1,6 +1,6 @@
 -- Schedules the monthly-report Edge Function to run on the 1st of each month at
--- 13:00 UTC. Mirrors the HubSpot webhook approach: the function URL and worker
--- secret are read from Supabase Vault at runtime so no secret is committed here.
+-- 13:00 UTC. The function URL and worker secret are read from Supabase Vault at
+-- runtime so no secret is committed here.
 --
 -- One-time setup BEFORE (or after) applying this migration (run in SQL editor/psql):
 --   select vault.create_secret(
