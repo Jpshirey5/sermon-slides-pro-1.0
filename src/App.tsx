@@ -17,6 +17,7 @@ import InviteSignUp from "./pages/InviteSignUp";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import AuthConfirm from "./pages/AuthConfirm";
+import PartnerHandoff from "./pages/PartnerHandoff";
 import ConfirmEmailChange from "./pages/ConfirmEmailChange";
 import Dashboard from "./pages/Dashboard";
 import Account from "./pages/Account";
@@ -71,6 +72,7 @@ const App = () => (
               <Route path="/signup-incomplete" element={<ProtectedRoute allowUnsubscribed allowPendingCheckout><SignupIncomplete /></ProtectedRoute>} />
               <Route path="/invite-signup" element={<InviteSignUp />} />
               <Route path="/auth/confirm" element={<AuthConfirm />} />
+              <Route path="/handoff/complete" element={<PartnerHandoff />} />
               <Route path="/auth/confirm-email-change" element={<ConfirmEmailChange />} />
               <Route path="/forgot-password" element={<ForgotPassword />} />
               <Route path="/reset-password" element={<ResetPassword />} />

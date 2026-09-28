@@ -1,0 +1,829 @@
+openapi: 3.1.0
+info:
+  title: Sermon Slide Pro Partner API
+  version: "1.0.0"
+  summary: Provision pastors, generate sermon slide decks, hand pastors into Sermon Slide Pro, and export ProPresenter 7 / PowerPoint files.
+  description: |
+    Server-to-server, polling-only API. There are no webhooks.
+
+    **Every request** must carry `Authorization`, `X-SSP-Timestamp`, and `X-SSP-Signature`.
+    The signature is the lowercase hex HMAC-SHA256, keyed with your signing secret, of
+
+        <timestamp> "." <METHOD> "." <pathname> "." <rawBody>
+
+    where `pathname` is the request path starting `/api/partner/v1/` without the query
+    string, and `rawBody` is the exact request body (empty for GET and DELETE).
+    Timestamps more than 300 seconds from server time are rejected.
+
+    Every response carries `X-Request-Id`; every error body has the shape in `Error`.
+    See docs/partner-api/README.md for the integration guide.
+  contact:
+    name: Sermon Slide Pro partner support
+    url: https://www.sermonslidepro.com/contact
+servers:
+  - url: https://www.sermonslidepro.com/api/partner/v1
+security:
+  - apiKey: []
+    timestamp: []
+    signature: []
+
+tags:
+  - name: Accounts
+    description: Pastor seats provisioned by your partner account.
+  - name: Themes
+    description: Per-church slide styling.
+  - name: Sessions
+    description: Single-use links that sign a pastor into Sermon Slide Pro.
+  - name: Decks
+    description: Sermon slide decks and their generation status.
+  - name: Exports
+    description: ProPresenter 7 and PowerPoint files for a deck.
+
+paths:
+  /accounts:
+    post:
+      tags: [Accounts]
+      operationId: provisionAccount
+      summary: Provision (or re-provision) a pastor
+      description: |
+        Idempotent on `external_user_id`: an existing seat is returned with 200 (and
+        reactivated if it was revoked). A new email creates a passwordless, unconfirmed
+        Sermon Slide Pro user; an email that already has an account is linked without
+        touching its password, billing history, or decks.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AccountCreate" }
+            example:
+              external_user_id: chms-user-4821
+              email: pastor.pat@gracechurch.org
+              name: Pat Rivera
+              church_name: Grace Church
+              role: Lead Pastor
+              theme_id: grace-dark
+              send_welcome_email: false
+      responses:
+        "201":
+          description: Seat created.
+          headers: { X-Request-Id: { $ref: "#/components/headers/X-Request-Id" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AccountCreated" }
+              example:
+                ssp_user_id: 3f2b9c1e-7d44-4a8b-b1e2-9c0a5d6f7e81
+                external_user_id: chms-user-4821
+                email: pastor.pat@gracechurch.org
+                entitlement: core
+                entitlement_status: active
+                theme_id: 8b0c5a4e-2f61-4c8e-9a0f-3c1d2b7e6a11
+                provisioned_at: "2026-09-25T14:03:40.117Z"
+                created: true
+        "200":
+          description: Seat already existed for this `external_user_id`.
+          headers: { X-Request-Id: { $ref: "#/components/headers/X-Request-Id" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AccountCreated" }
+        "401": { $ref: "#/components/responses/AuthError" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /accounts/{id}:
+    get:
+      tags: [Accounts]
+      operationId: getAccount
+      summary: Read a seat
+      parameters:
+        - $ref: "#/components/parameters/AccountId"
+      responses:
+        "200":
+          description: The seat.
+          headers: { X-Request-Id: { $ref: "#/components/headers/X-Request-Id" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AccountDetail" }
+              example:
+                ssp_user_id: 3f2b9c1e-7d44-4a8b-b1e2-9c0a5d6f7e81
+                external_user_id: chms-user-4821
+                email: pastor.pat@gracechurch.org
+                entitlement: core
+                entitlement_status: active
+                theme_id: 8b0c5a4e-2f61-4c8e-9a0f-3c1d2b7e6a11
+                provisioned_at: "2026-09-25T14:03:40.117Z"
+                decks_generated_total: 12
+                last_active_at: "2026-09-24T19:12:03.000Z"
+        "401": { $ref: "#/components/responses/AuthError" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /accounts/{id}/entitlement:
+    delete:
+      tags: [Accounts]
+      operationId: revokeEntitlement
+      summary: Revoke a seat's entitlement
+      description: |
+        Ends your entitlement for this pastor. Never deletes the pastor's Sermon Slide
+        Pro account, decks, or exports; they can still sign in directly. Revoking an
+        already-revoked seat returns 200 with no change.
+      parameters:
+        - $ref: "#/components/parameters/AccountId"
+      responses:
+        "200":
+          description: The revoked seat.
+          headers: { X-Request-Id: { $ref: "#/components/headers/X-Request-Id" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Account" }
+              example:
+                ssp_user_id: 3f2b9c1e-7d44-4a8b-b1e2-9c0a5d6f7e81
+                external_user_id: chms-user-4821
+                email: pastor.pat@gracechurch.org
+                entitlement: core
+                entitlement_status: revoked
+                theme_id: 8b0c5a4e-2f61-4c8e-9a0f-3c1d2b7e6a11
+                provisioned_at: "2026-09-25T14:03:40.117Z"
+        "401": { $ref: "#/components/responses/AuthError" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /themes:
+    post:
+      tags: [Themes]
+      operationId: upsertTheme
+      summary: Create or update a theme
+      description: Upserts on `external_theme_id`. Always returns 201.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ThemeCreate" }
+            example:
+              external_theme_id: grace-dark
+              church_name: Grace Church
+              config:
+                background: "#101820"
+                text_color: "#F2AA4C"
+                accent_color: "#FFFFFF"
+                font_family: Georgia
+                logo_url: https://cdn.gracechurch.org/logo.png
+                default_translation: NIV
+      responses:
+        "201":
+          description: The stored theme.
+          headers: { X-Request-Id: { $ref: "#/components/headers/X-Request-Id" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Theme" }
+        "401": { $ref: "#/components/responses/AuthError" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /themes/{id}:
+    get:
+      tags: [Themes]
+      operationId: getTheme
+      summary: Read a theme
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The SSP `theme_id` or your `external_theme_id`.
+          schema: { type: string, maxLength: 128 }
+      responses:
+        "200":
+          description: The theme.
+          headers: { X-Request-Id: { $ref: "#/components/headers/X-Request-Id" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Theme" }
+              example:
+                theme_id: 8b0c5a4e-2f61-4c8e-9a0f-3c1d2b7e6a11
+                external_theme_id: grace-dark
+                church_name: Grace Church
+                config: { background: "#101820", text_color: "#F2AA4C", default_translation: NIV }
+                created_at: "2026-09-25T14:02:11.482Z"
+                updated_at: "2026-09-25T14:02:11.482Z"
+        "401": { $ref: "#/components/responses/AuthError" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /sessions:
+    post:
+      tags: [Sessions]
+      operationId: createSession
+      summary: Mint a single-use sign-in link for a pastor
+      description: |
+        Returns a URL that signs the pastor in and opens the deck (or their dashboard).
+        Single use, valid 300 seconds. Redirect the browser to it immediately.
+        `return_url` must be https with a host on your allowlist; when present, the deck
+        editor offers "Approve and send back", which returns the browser to
+        `return_url?ssp_deck_id=<deck_id>`. Every call mints a new link; Idempotency-Key
+        is not honored here.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SessionCreate" }
+            example:
+              external_user_id: chms-user-4821
+              deck_id: 5bf6c2ec-331b-423b-b6b6-355ea54760e8
+              return_url: https://app.yourchms.com/sermons/991/slides
+      responses:
+        "201":
+          description: The sign-in link.
+          headers: { X-Request-Id: { $ref: "#/components/headers/X-Request-Id" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Session" }
+              example:
+                url: https://www.sermonslidepro.com/handoff?t=Qm9vZ3VzLXRva2VuLWZvci1kb2NzLW9ubHktMTIzNDU2
+                expires_at: "2026-09-25T14:11:40.000Z"
+                expires_in: 300
+        "400": { $ref: "#/components/responses/InvalidReturnUrl" }
+        "401": { $ref: "#/components/responses/AuthError" }
+        "403": { $ref: "#/components/responses/EntitlementInactive" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /decks:
+    post:
+      tags: [Decks]
+      operationId: createDeck
+      summary: Submit a sermon for slide generation
+      description: |
+        Send structured `points` or the manuscript as `raw_text` (exactly one).
+        Generation is asynchronous; poll `GET /decks/{id}`.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DeckCreate" }
+            examples:
+              points:
+                summary: Structured outline
+                value:
+                  external_user_id: chms-user-4821
+                  title: Anchored
+                  scripture_ref: Hebrews 6:19
+                  service_date: "2026-10-04"
+                  translation: NIV
+                  theme_id: grace-dark
+                  big_idea: Hope holds when everything else moves
+                  points:
+                    - { heading: Hope is a person, refs: ["John 14:6"] }
+                    - { heading: Hope is a promise, refs: ["Romans 8:28", "2 Corinthians 1:20"] }
+                    - { heading: Hope is a practice, refs: [] }
+              raw_text:
+                summary: Manuscript
+                value:
+                  external_user_id: chms-user-4821
+                  title: Rest for the Weary
+                  raw_text: "Come to me, all you who are weary (Matthew 11:28)…"
+      responses:
+        "201":
+          description: Deck queued.
+          headers: { X-Request-Id: { $ref: "#/components/headers/X-Request-Id" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeckQueued" }
+              example:
+                deck_id: 5bf6c2ec-331b-423b-b6b6-355ea54760e8
+                status: queued
+                source: points
+                poll_after_ms: 3000
+        "401": { $ref: "#/components/responses/AuthError" }
+        "403": { $ref: "#/components/responses/EntitlementInactive" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "413": { $ref: "#/components/responses/PayloadTooLarge" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /decks/{id}:
+    get:
+      tags: [Decks]
+      operationId: getDeck
+      summary: Poll a deck
+      description: A deck owned by another partner returns the same 404 as a missing one.
+      parameters:
+        - $ref: "#/components/parameters/DeckId"
+      responses:
+        "200":
+          description: Deck status.
+          headers: { X-Request-Id: { $ref: "#/components/headers/X-Request-Id" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Deck" }
+              examples:
+                generating:
+                  value:
+                    deck_id: 5bf6c2ec-331b-423b-b6b6-355ea54760e8
+                    status: generating
+                    slide_count: 0
+                    completeness: null
+                    thumbnails: []
+                    approved_at: null
+                    created_at: "2026-09-25T14:05:02.901Z"
+                    error: null
+                    poll_after_ms: 3000
+                ready:
+                  value:
+                    deck_id: 5bf6c2ec-331b-423b-b6b6-355ea54760e8
+                    status: ready
+                    slide_count: 9
+                    completeness:
+                      score: 0.86
+                      total_points: 3
+                      points_with_slides: 3
+                      total_refs: 4
+                      resolved_refs: 3
+                      unresolved_verses: ["2 Corinthians 1:20"]
+                      points_without_slides: []
+                      formula: "(points_with_slides + resolved_refs) / (total_points + total_refs), clamped to 0..1, rounded to 2 places; 1.0 when the denominator is 0"
+                    thumbnails: []
+                    approved_at: null
+                    created_at: "2026-09-25T14:05:02.901Z"
+                    error: null
+                    poll_after_ms: null
+        "401": { $ref: "#/components/responses/AuthError" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /decks/{id}/exports:
+    post:
+      tags: [Exports]
+      operationId: createExport
+      summary: Export a ready deck
+      description: Exports the deck's current slides, including the pastor's edits. `pdf` is reserved and currently rejected with 422.
+      parameters:
+        - $ref: "#/components/parameters/DeckId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ExportCreate" }
+            example: { formats: [pro7, pptx] }
+      responses:
+        "201":
+          description: Export queued.
+          headers: { X-Request-Id: { $ref: "#/components/headers/X-Request-Id" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExportQueued" }
+              example:
+                export_id: 679b3a95-0a69-4ece-98a9-bd9014245a15
+                deck_id: 5bf6c2ec-331b-423b-b6b6-355ea54760e8
+                status: queued
+                poll_after_ms: 5000
+        "401": { $ref: "#/components/responses/AuthError" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /exports/{id}:
+    get:
+      tags: [Exports]
+      operationId: getExport
+      summary: Poll an export
+      description: Download URLs are signed for 7 days and re-signed on every read. Do not store them.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Export status.
+          headers: { X-Request-Id: { $ref: "#/components/headers/X-Request-Id" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Export" }
+              example:
+                export_id: 679b3a95-0a69-4ece-98a9-bd9014245a15
+                deck_id: 5bf6c2ec-331b-423b-b6b6-355ea54760e8
+                status: ready
+                files:
+                  - { format: pro7, url: "https://hqtcgynnnghxihvykrin.supabase.co/storage/v1/object/sign/partner-exports/PARTNER_ID/DECK_ID/EXPORT_ID/pro7.probundle?token=SIGNED_TOKEN&download=Anchored.probundle", bytes: 48213, expires_at: "2026-10-02T14:07:19.000Z" }
+                  - { format: pptx, url: "https://hqtcgynnnghxihvykrin.supabase.co/storage/v1/object/sign/partner-exports/PARTNER_ID/DECK_ID/EXPORT_ID/pptx.pptx?token=SIGNED_TOKEN&download=Anchored.pptx", bytes: 91877, expires_at: "2026-10-02T14:07:19.000Z" }
+                error: null
+                poll_after_ms: null
+        "401": { $ref: "#/components/responses/AuthError" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+components:
+  securitySchemes:
+    apiKey:
+      type: http
+      scheme: bearer
+      description: "`ssp_live_<8 char prefix>_<secret>` (or `ssp_test_…` for a test partner)."
+    timestamp:
+      type: apiKey
+      in: header
+      name: X-SSP-Timestamp
+      description: Current Unix time in seconds. Must be within 300 seconds of server time.
+    signature:
+      type: apiKey
+      in: header
+      name: X-SSP-Signature
+      description: 'Lowercase hex HMAC-SHA256 of `timestamp + "." + METHOD + "." + pathname + "." + rawBody` keyed with your signing secret.'
+
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: |
+        Replays the original response byte-for-byte (with `Idempotent-Replayed: true`)
+        when retried with the same body within 30 days; a different body with the same
+        key is `422 validation_failed`. 500 responses are not stored.
+      schema: { type: string, minLength: 1, maxLength: 255, pattern: "^[\\x21-\\x7e]+$" }
+    AccountId:
+      name: id
+      in: path
+      required: true
+      description: Your `external_user_id` or the SSP `ssp_user_id`.
+      schema: { type: string, maxLength: 128 }
+    DeckId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+
+  headers:
+    X-Request-Id:
+      description: Unique id for this request (`req_` + 24 hex). Quote it to support.
+      schema: { type: string, pattern: "^req_[0-9a-f]{24}$" }
+    Retry-After:
+      description: Seconds to wait before retrying.
+      schema: { type: integer, example: 60 }
+
+  responses:
+    AuthError:
+      description: "`unauthorized`, `invalid_signature`, or `timestamp_skew`."
+      headers: { X-Request-Id: { $ref: "#/components/headers/X-Request-Id" } }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example: { error: { code: invalid_signature, message: Signature does not match the request., request_id: req_4f1c9a0b2e7d6c5a8b3f1e20 } }
+    NotFound:
+      description: "`account_not_provisioned`, `theme_not_found`, `deck_not_found`, or `export_not_found`. Another partner's resource is indistinguishable from a missing one."
+      headers: { X-Request-Id: { $ref: "#/components/headers/X-Request-Id" } }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example: { error: { code: deck_not_found, message: No deck with that id exists., request_id: req_0b6d2c9e4f1a7b3c8d5e2f10 } }
+    Conflict:
+      description: "`email_conflict` (accounts) or `deck_not_ready` (exports). `account_already_exists` is reserved."
+      headers: { X-Request-Id: { $ref: "#/components/headers/X-Request-Id" } }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example: { error: { code: email_conflict, message: That email already belongs to a user you provisioned under a different external_user_id., request_id: req_7a1b2c3d4e5f60718293a4b5 } }
+    EntitlementInactive:
+      description: "`entitlement_inactive`: the seat was revoked."
+      headers: { X-Request-Id: { $ref: "#/components/headers/X-Request-Id" } }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example: { error: { code: entitlement_inactive, message: "This user's entitlement has been revoked. Re-provision with POST /accounts.", request_id: req_1e2d3c4b5a69788796a5b4c3 } }
+    InvalidReturnUrl:
+      description: "`invalid_return_url`: not https, or host not on your allowlist."
+      headers: { X-Request-Id: { $ref: "#/components/headers/X-Request-Id" } }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example: { error: { code: invalid_return_url, message: 'return_url host "evil.example" is not on this partner''s allowlist.', request_id: req_9c8b7a6d5e4f3a2b1c0d9e8f } }
+    PayloadTooLarge:
+      description: "`payload_too_large`: body over 1 MB."
+      headers: { X-Request-Id: { $ref: "#/components/headers/X-Request-Id" } }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    ValidationFailed:
+      description: "`validation_failed`: the message names the offending field."
+      headers: { X-Request-Id: { $ref: "#/components/headers/X-Request-Id" } }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example: { error: { code: validation_failed, message: "email: is required", request_id: req_2b3c4d5e6f708192a3b4c5d6 } }
+    TooManyRequests:
+      description: "`rate_limited` (per-minute request limit; honor Retry-After) or `quota_exceeded` (daily deck limit)."
+      headers:
+        X-Request-Id: { $ref: "#/components/headers/X-Request-Id" }
+        Retry-After: { $ref: "#/components/headers/Retry-After" }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example: { error: { code: rate_limited, message: Rate limit of 120 requests per minute exceeded., request_id: req_5d6e7f8091a2b3c4d5e6f708 } }
+    InternalError:
+      description: "`internal_error`: retry with backoff and the same Idempotency-Key."
+      headers: { X-Request-Id: { $ref: "#/components/headers/X-Request-Id" } }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, request_id]
+          properties:
+            code:
+              type: string
+              enum:
+                - unauthorized
+                - invalid_signature
+                - timestamp_skew
+                - rate_limited
+                - validation_failed
+                - account_not_provisioned
+                - account_already_exists
+                - email_conflict
+                - entitlement_inactive
+                - deck_not_found
+                - deck_not_ready
+                - export_not_found
+                - theme_not_found
+                - invalid_return_url
+                - payload_too_large
+                - quota_exceeded
+                - internal_error
+                - route_not_found
+            message: { type: string, description: Human-readable. Do not branch on it. }
+            request_id: { type: string, pattern: "^req_[0-9a-f]{24}$" }
+
+    ExternalId:
+      type: string
+      minLength: 1
+      maxLength: 128
+      pattern: "^[\\x21-\\x7e]+$"
+      description: Your identifier. Printable ASCII, no spaces.
+
+    Translation:
+      type: string
+      description: Case-insensitive. Some translations are licensed per church.
+      enum: [KJV, NKJV, NIV, CSB, ESV, WEB, ASV, AMP, RVR1960, NVI, LSG, LUT, ALMEIDA]
+
+    HexColor:
+      type: string
+      pattern: "^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$"
+
+    AccountCreate:
+      type: object
+      required: [external_user_id, email]
+      properties:
+        external_user_id: { $ref: "#/components/schemas/ExternalId" }
+        email: { type: string, format: email, maxLength: 254 }
+        name: { type: string, maxLength: 200 }
+        church_name: { type: string, maxLength: 200 }
+        role: { type: string, maxLength: 100 }
+        theme_id:
+          type: string
+          maxLength: 128
+          description: SSP `theme_id` or your `external_theme_id`. Default theme for this pastor's decks.
+        send_welcome_email:
+          type: boolean
+          default: false
+          description: For newly created users only, email a link to set a password for direct sign-in.
+
+    Account:
+      type: object
+      required: [ssp_user_id, external_user_id, email, entitlement, entitlement_status, theme_id, provisioned_at]
+      properties:
+        ssp_user_id: { type: string, format: uuid }
+        external_user_id: { $ref: "#/components/schemas/ExternalId" }
+        email: { type: [string, "null"], format: email }
+        entitlement: { type: string, examples: [core] }
+        entitlement_status: { type: string, enum: [active, revoked] }
+        theme_id: { type: [string, "null"], format: uuid }
+        provisioned_at: { type: string, format: date-time }
+
+    AccountCreated:
+      allOf:
+        - $ref: "#/components/schemas/Account"
+        - type: object
+          required: [created]
+          properties:
+            created: { type: boolean, description: true when this call created the seat. }
+
+    AccountDetail:
+      allOf:
+        - $ref: "#/components/schemas/Account"
+        - type: object
+          required: [decks_generated_total, last_active_at]
+          properties:
+            decks_generated_total: { type: integer, minimum: 0, description: Decks created through your partner account for this pastor. }
+            last_active_at: { type: [string, "null"], format: date-time }
+
+    ThemeConfig:
+      type: object
+      additionalProperties: false
+      properties:
+        background: { $ref: "#/components/schemas/HexColor" }
+        text_color: { $ref: "#/components/schemas/HexColor" }
+        accent_color:
+          allOf: [{ $ref: "#/components/schemas/HexColor" }]
+          description: Stored; not yet rendered on slides.
+        font_family: { type: string, maxLength: 64, pattern: "^[A-Za-z0-9 \\-]+$" }
+        logo_url:
+          type: string
+          format: uri
+          maxLength: 2048
+          pattern: "^https://"
+          description: Stored; not yet rendered on slides.
+        default_translation: { $ref: "#/components/schemas/Translation" }
+
+    ThemeCreate:
+      type: object
+      required: [external_theme_id, church_name]
+      properties:
+        external_theme_id: { $ref: "#/components/schemas/ExternalId" }
+        church_name: { type: string, minLength: 1, maxLength: 200 }
+        config: { $ref: "#/components/schemas/ThemeConfig" }
+
+    Theme:
+      type: object
+      required: [theme_id, external_theme_id, church_name, config, created_at, updated_at]
+      properties:
+        theme_id: { type: string, format: uuid }
+        external_theme_id: { $ref: "#/components/schemas/ExternalId" }
+        church_name: { type: string }
+        config: { $ref: "#/components/schemas/ThemeConfig" }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    SessionCreate:
+      type: object
+      required: [external_user_id]
+      properties:
+        external_user_id:
+          $ref: "#/components/schemas/ExternalId"
+        deck_id:
+          type: string
+          format: uuid
+          description: Open this deck after sign-in. Must belong to this pastor.
+        return_url:
+          type: string
+          maxLength: 2048
+          description: https URL on an allowlisted host. Enables "Approve and send back".
+
+    Session:
+      type: object
+      required: [url, expires_at, expires_in]
+      properties:
+        url: { type: string, format: uri, description: Single-use sign-in link. Redirect the pastor immediately. }
+        expires_at: { type: string, format: date-time }
+        expires_in: { type: integer, const: 300 }
+
+    Point:
+      type: object
+      required: [heading]
+      properties:
+        heading: { type: string, minLength: 1, maxLength: 200 }
+        refs:
+          type: array
+          maxItems: 20
+          default: []
+          items: { type: string, minLength: 3, maxLength: 100, examples: ["Romans 8:28", "Galatians 5:16-17, 22-25"] }
+        body: { type: string, maxLength: 4000, description: Accepted; not yet rendered on slides. }
+
+    DeckCreate:
+      type: object
+      required: [external_user_id, title]
+      description: Exactly one of `points` or `raw_text`.
+      properties:
+        external_user_id: { $ref: "#/components/schemas/ExternalId" }
+        title: { type: string, minLength: 1, maxLength: 200 }
+        scripture_ref: { type: string, minLength: 3, maxLength: 100, description: Main passage; shown before the first point. }
+        service_date: { type: string, format: date, description: "YYYY-MM-DD. Defaults to today." }
+        translation:
+          allOf: [{ $ref: "#/components/schemas/Translation" }]
+          description: Defaults to the theme's default_translation, then NIV.
+        theme_id: { type: string, maxLength: 128, description: SSP theme_id or your external_theme_id. Defaults to the seat's theme. }
+        big_idea: { type: string, maxLength: 500 }
+        points: { type: array, minItems: 1, maxItems: 30, items: { $ref: "#/components/schemas/Point" } }
+        raw_text: { type: string, minLength: 1, maxLength: 200000 }
+      anyOf:
+        - required: [points]
+        - required: [raw_text]
+      not:
+        required: [points, raw_text]
+
+    DeckStatus:
+      type: string
+      enum: [queued, generating, ready, failed]
+
+    DeckQueued:
+      type: object
+      required: [deck_id, status, source, poll_after_ms]
+      properties:
+        deck_id: { type: string, format: uuid }
+        status: { type: string, const: queued }
+        source: { type: string, enum: [points, raw_text] }
+        poll_after_ms: { type: integer, const: 3000 }
+
+    Completeness:
+      type: object
+      required: [score, total_points, points_with_slides, total_refs, resolved_refs, unresolved_verses, points_without_slides, formula]
+      properties:
+        score:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: (points_with_slides + resolved_refs) / (total_points + total_refs), clamped to 0..1, rounded to 2 places; 1.0 when the denominator is 0.
+        total_points: { type: integer, minimum: 0 }
+        points_with_slides: { type: integer, minimum: 0 }
+        total_refs: { type: integer, minimum: 0 }
+        resolved_refs: { type: integer, minimum: 0 }
+        unresolved_verses: { type: array, items: { type: string } }
+        points_without_slides: { type: array, items: { type: string } }
+        formula: { type: string }
+
+    Deck:
+      type: object
+      required: [deck_id, status, slide_count, completeness, thumbnails, approved_at, created_at, error, poll_after_ms]
+      properties:
+        deck_id: { type: string, format: uuid }
+        status: { $ref: "#/components/schemas/DeckStatus" }
+        slide_count: { type: integer, minimum: 0 }
+        completeness:
+          oneOf:
+            - $ref: "#/components/schemas/Completeness"
+            - type: "null"
+          description: null until the deck is ready.
+        thumbnails:
+          type: array
+          items: { type: string, format: uri }
+          description: Signed thumbnail URLs. Currently always empty.
+        approved_at: { type: [string, "null"], format: date-time, description: Set when the pastor clicks "Approve and send back". }
+        created_at: { type: string, format: date-time }
+        error: { type: [string, "null"], description: Set when status is failed. }
+        poll_after_ms: { type: [integer, "null"], description: 3000 while working; null once ready or failed. }
+
+    ExportCreate:
+      type: object
+      required: [formats]
+      properties:
+        formats:
+          type: array
+          minItems: 1
+          maxItems: 3
+          uniqueItems: true
+          items: { type: string, enum: [pro7, pptx, pdf] }
+          description: "`pdf` is reserved and currently rejected with 422."
+
+    ExportQueued:
+      type: object
+      required: [export_id, deck_id, status, poll_after_ms]
+      properties:
+        export_id: { type: string, format: uuid }
+        deck_id: { type: string, format: uuid }
+        status: { type: string, const: queued }
+        poll_after_ms: { type: integer, const: 5000 }
+
+    ExportFile:
+      type: object
+      required: [format, url, bytes, expires_at]
+      properties:
+        format: { type: string, enum: [pro7, pptx, pdf] }
+        url: { type: string, format: uri, description: Signed download URL (7 days). A pro7 file is a .probundle. }
+        bytes: { type: integer, minimum: 0 }
+        expires_at: { type: string, format: date-time }
+
+    Export:
+      type: object
+      required: [export_id, deck_id, status, files, error, poll_after_ms]
+      properties:
+        export_id: { type: string, format: uuid }
+        deck_id: { type: string, format: uuid }
+        status: { $ref: "#/components/schemas/DeckStatus" }
+        files: { type: array, items: { $ref: "#/components/schemas/ExportFile" } }
+        error: { type: [string, "null"] }
+        poll_after_ms: { type: [integer, "null"], description: 5000 while working; null once ready or failed. }

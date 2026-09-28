@@ -1,0 +1,6 @@
+{
+  "imports": {
+    "@/integrations/supabase/client": "./parity_supabase_stub.ts",
+    "@/": "../../../../../src/"
+  }
+}

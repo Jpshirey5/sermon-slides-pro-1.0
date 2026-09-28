@@ -2,6 +2,13 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 
+function constantTimeEquals(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
 // ESV is license-restricted. Only callers whose organization is entitled
 // (accounts.can_use_esv) may receive ESV text, regardless of what the UI sends.
 async function callerCanUseEsv(req: Request): Promise<boolean> {
@@ -18,11 +25,21 @@ async function callerCanUseEsv(req: Request): Promise<boolean> {
       auth: { persistSession: false, autoRefreshToken: false },
     });
 
-    const { data: userData, error: userError } = await admin.auth.getUser(token);
-    if (userError || !userData?.user) return false;
+    // Server-to-server lookups (the partner API generating a deck for a pastor)
+    // present the service role key and name the user; entitlement is still
+    // checked against that user's own account.
+    let userId: string | null = null;
+    const onBehalfOf = req.headers.get("x-ssp-on-behalf-of-user") ?? "";
+    if (onBehalfOf && constantTimeEquals(token, serviceRoleKey)) {
+      userId = /^[0-9a-f-]{36}$/i.test(onBehalfOf) ? onBehalfOf : null;
+    } else {
+      const { data: userData, error: userError } = await admin.auth.getUser(token);
+      userId = userError ? null : userData?.user?.id ?? null;
+    }
+    if (!userId) return false;
 
     const { data: accountId } = await admin.rpc("get_user_account_id", {
-      _user_id: userData.user.id,
+      _user_id: userId,
     });
     if (!accountId) return false;
 
