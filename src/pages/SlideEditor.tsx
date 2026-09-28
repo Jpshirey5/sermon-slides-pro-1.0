@@ -3,7 +3,7 @@ import { Link, useParams, useLocation, useNavigate } from "react-router-dom";
 import { motion, Reorder, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { BookOpen, ArrowLeft, Download, Play, GripVertical, Plus, Type, Palette, ChevronLeft, ChevronRight, Trash2, AlignVerticalSpaceAround, Undo2, Redo2, Copy, Check, Cloud, BookMarked, Pencil, Sparkles, Printer } from "lucide-react";
+import { BookOpen, ArrowLeft, Download, Play, GripVertical, Plus, Type, Palette, ChevronLeft, ChevronRight, Trash2, AlignVerticalSpaceAround, Undo2, Redo2, Copy, Check, Cloud, BookMarked, Pencil, Sparkles, Printer, Send } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { BackgroundPicker } from "@/components/BackgroundPicker";
 import { exportToPowerPoint, SlideData } from "@/lib/export-pptx";
@@ -26,6 +26,7 @@ import { logError, trackEvent } from "@/lib/monitoring";
 import ProductTour, { type ProductTourStep } from "@/components/ProductTour";
 import { generateSlidesFromPresentation } from "@/lib/slide-generation";
 import { calculateValueMetrics, formatTimeSaved } from "@/lib/value-metrics";
+import { approvePartnerDeck, clearPartnerHandoff, readPartnerHandoff } from "@/lib/partner-handoff";
 
 // Microsoft Word standard fonts - alphabetically ordered
 const fonts = ["Arial", "Arial Black", "Book Antiqua", "Calibri", "Cambria", "Candara", "Century Gothic", "Comic Sans MS", "Consolas", "Constantia", "Corbel", "Courier New", "Franklin Gothic Medium", "Garamond", "Georgia", "Gill Sans MT", "Impact", "Lucida Console", "Lucida Sans Unicode", "Palatino Linotype", "Segoe UI", "Tahoma", "Times New Roman", "Trebuchet MS", "Verdana"];
@@ -135,6 +136,13 @@ const SlideEditor = () => {
 
   const [showExportModal, setShowExportModal] = useState(false);
   const [showUpsellModal, setShowUpsellModal] = useState(false);
+  const [isSendingBack, setIsSendingBack] = useState(false);
+  // Shown only when this tab arrived through a partner handoff that carried a
+  // return URL, and only on the deck it was opened for.
+  const partnerHandoff = useMemo(() => readPartnerHandoff(), []);
+  const canSendBackToPartner = Boolean(
+    user && id && partnerHandoff?.canReturn && (!partnerHandoff.deckId || partnerHandoff.deckId === id),
+  );
 
   // Undo/Redo history
   const [history, setHistory] = useState<SlideData[][]>([defaultSlides]);
@@ -608,6 +616,30 @@ const SlideEditor = () => {
     }
   };
 
+  const handleApproveAndSendBack = async () => {
+    if (!id || !partnerHandoff) return;
+    setIsSendingBack(true);
+    try {
+      // Flush any pending autosave so the partner gets exactly what is on screen.
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+      const serializedSlides = JSON.stringify(slides);
+      if (serializedSlides !== lastSavedSlidesRef.current) {
+        await saveEditorSlidesToDb(id, slides);
+        lastSavedSlidesRef.current = serializedSlides;
+      }
+      const redirectUrl = await approvePartnerDeck(id);
+      trackEvent("partner_deck_approved", { sermonId: id });
+      clearPartnerHandoff();
+      window.location.assign(redirectUrl);
+    } catch (error) {
+      logError(error, { scope: "partner_approve", sermonId: id });
+      toast.error("Couldn't send the deck back", {
+        description: error instanceof Error ? error.message : "Please try again.",
+      });
+      setIsSendingBack(false);
+    }
+  };
+
   const handlePrintPdf = async () => {
     const validation = validateSlidesForExport(slides);
     if (!validation.isValid) {
@@ -1048,6 +1080,19 @@ const SlideEditor = () => {
                   {isExporting ? "Exporting..." : "Export"}
                 </span>
               </Button>
+              {canSendBackToPartner && (
+                <Button
+                  variant="hero"
+                  disabled={isSendingBack}
+                  onClick={handleApproveAndSendBack}
+                  title={`Approve this deck and return to ${partnerHandoff?.partnerName}`}
+                >
+                  <Send className="w-4 h-4" />
+                  <span className="hidden sm:inline">
+                    {isSendingBack ? "Sending..." : "Approve and send back"}
+                  </span>
+                </Button>
+              )}
             </div>
           </div>
         </div>

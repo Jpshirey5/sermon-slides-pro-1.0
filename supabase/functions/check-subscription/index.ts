@@ -146,10 +146,38 @@ serve(async (req) => {
     // Check if account already has a stripe_customer_id
     const { data: account } = await supabaseClient
       .from("accounts")
-      .select("stripe_customer_id, subscription_status, signup_status, is_beta_user, beta_started_at, beta_trial_ends_at, beta_plan_tier")
+      .select("stripe_customer_id, subscription_status, signup_status, is_beta_user, beta_started_at, beta_trial_ends_at, beta_plan_tier, partner_billing_active, partner_plan_tier")
       .eq("id", accountId)
       .single();
     const betaInfo = getBetaInfo(account);
+
+    // Partner-billed accounts (provisioned through the Partner API) are paid for
+    // by the partner. They report as subscribed without a Stripe subscription;
+    // an account's own live Stripe subscription still takes precedence below.
+    const partnerBilledResponse = async () => {
+      const partnerTier = account?.partner_plan_tier || "core";
+      logStep("Partner-billed account", { accountId, partnerTier });
+      await supabaseClient
+        .from("accounts")
+        .update({ plan_tier: partnerTier, subscription_status: "active", signup_status: "active" })
+        .eq("id", accountId);
+      return new Response(JSON.stringify({
+        subscribed: true,
+        product_id: null,
+        price_id: null,
+        billing_interval: null,
+        plan_label: "Partner",
+        plan_tier: partnerTier,
+        subscription_end: null,
+        cancel_at_period_end: false,
+        subscription_status: "active",
+        signup_status: "active",
+        ...betaInfo,
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      });
+    };
 
     const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
     let customerId = account?.stripe_customer_id;
@@ -167,6 +195,9 @@ serve(async (req) => {
 
     if (!customerId) {
       logStep("No Stripe customer found");
+      if (account?.partner_billing_active) {
+        return await partnerBilledResponse();
+      }
       if (betaInfo.beta_trial_active) {
         await supabaseClient
           .from("accounts")
@@ -320,6 +351,8 @@ serve(async (req) => {
           subscription_period_end: subscriptionEnd,
         })
         .eq("id", accountId);
+    } else if (account?.partner_billing_active) {
+      return await partnerBilledResponse();
     } else if (betaInfo.beta_trial_active) {
       logStep("Active beta trial found");
       planTier = betaInfo.beta_plan_tier;

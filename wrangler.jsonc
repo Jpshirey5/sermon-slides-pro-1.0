@@ -6,8 +6,14 @@
   "observability": {
     "enabled": true
   },
+  "vars": {
+    // Public project URL; the worker proxies Partner API routes to its edge functions.
+    "SUPABASE_URL": "https://hqtcgynnnghxihvykrin.supabase.co"
+  },
   "assets": {
     "directory": "./dist",
-    "not_found_handling": "single-page-application"
+    "not_found_handling": "single-page-application",
+    // SPA fallback would otherwise answer these with index.html before the worker runs.
+    "run_worker_first": ["/api/partner/*", "/handoff"]
   }
 }
