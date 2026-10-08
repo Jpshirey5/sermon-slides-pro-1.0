@@ -5,6 +5,8 @@ import { deleteStoredBackground, isStorageBackground } from "@/lib/background-as
 import { getPrimaryCampus } from "@/lib/campuses";
 import { generateSlidesFromPresentation } from "@/lib/slide-generation";
 import { calculateValueMetrics, type PresentationValueMetrics } from "@/lib/value-metrics";
+import { lookupScripture } from "@/lib/scripture-api";
+import { hydrateScriptureText, type ScriptureLookup, stripScriptureText } from "@/lib/scripture-storage";
 
 export type SlideStyle = "minimal" | "balanced" | "speaker-friendly";
 export type ThemeStyle = "clean" | "bold" | "scripture-focused";
@@ -87,6 +89,8 @@ interface SlidesWrapper {
 
 export interface EditorPresentationState {
   id: string;
+  /** Passages whose text could not be loaded, as "John 3:16 (NIV)". */
+  scriptureMissing?: string[];
   title: string;
   series?: string | null;
   campusId?: string | null;
@@ -186,7 +190,22 @@ function readGuestSermons(): Record<string, GuestSermonRow> {
 
 function writeGuestSermons(store: Record<string, GuestSermonRow>) {
   if (typeof window === "undefined") return;
-  localStorage.setItem(GUEST_SERMONS_STORAGE_KEY, JSON.stringify(store));
+  // Guest drafts follow the same rule as saved sermons: references, not text.
+  const stripped = Object.fromEntries(
+    Object.entries(store).map(([id, row]) => [id, { ...row, slides: stripScriptureText(row.slides) }]),
+  );
+  localStorage.setItem(GUEST_SERMONS_STORAGE_KEY, JSON.stringify(stripped));
+}
+
+// Verse text is never stored (see src/lib/scripture-storage.ts). Loading a
+// sermon fetches it fresh through scripture-lookup.
+const lookupForHydration: ScriptureLookup = async (reference, translation) => {
+  const result = await lookupScripture(reference, translation);
+  return result && !result.error && result.text ? { text: result.text, verses: result.verses } : null;
+};
+
+async function hydrateSlides(slides: any): Promise<{ slides: any; missing: string[] }> {
+  return hydrateScriptureText(slides, lookupForHydration);
 }
 
 function mapRowToPresentation(row: GuestSermonRow): SermonPresentation {
@@ -333,7 +352,7 @@ function saveGuestPresentation(presentation: SermonPresentation): string {
     id: presentation.id,
     title: presentation.title,
     scripture_reference: presentation.scripture_reference || null,
-    slides: wrapper as any,
+    slides: stripScriptureText(wrapper) as any,
     created_at: existing?.created_at || now,
     updated_at: now,
   };
@@ -523,7 +542,7 @@ export async function savePresentation(presentation: SermonPresentation): Promis
           existing?.campus_id && resolvedCampusId && existing.campus_id !== resolvedCampusId
             ? null
             : existing?.former_campus_name || null,
-        slides: wrapper as any,
+        slides: stripScriptureText(wrapper) as any,
         scripture_reference: presentation.scripture_reference || null,
       })
       .eq('id', presentation.id);
@@ -544,7 +563,7 @@ export async function savePresentation(presentation: SermonPresentation): Promis
         presentation_date: presentation.presentationDate || presentation.date || null,
         campus_id: resolvedCampusId,
         former_campus_name: presentation.formerCampusName || null,
-        slides: wrapper as any,
+        slides: stripScriptureText(wrapper) as any,
         scripture_reference: presentation.scripture_reference || null,
         creation_mode: presentation.creationMode || 'structured_builder',
       })
@@ -579,7 +598,7 @@ export async function savePresentationWithSlides(
       id: presentation.id,
       title: presentation.title,
       scripture_reference: presentation.scripture_reference || null,
-      slides: wrapper as any,
+      slides: stripScriptureText(wrapper) as any,
       created_at: existing?.created_at || now,
       updated_at: now,
     };
@@ -607,7 +626,7 @@ export async function savePresentationWithSlides(
           existing.campus_id && resolvedCampusId && existing.campus_id !== resolvedCampusId
             ? null
             : existing.former_campus_name || null,
-        slides: wrapper as any,
+        slides: stripScriptureText(wrapper) as any,
         scripture_reference: presentation.scripture_reference || null,
       })
       .eq("id", presentation.id);
@@ -629,7 +648,7 @@ export async function savePresentationWithSlides(
       presentation_date: presentation.presentationDate || presentation.date || null,
       campus_id: resolvedCampusId,
       former_campus_name: presentation.formerCampusName || null,
-      slides: wrapper as any,
+      slides: stripScriptureText(wrapper) as any,
       scripture_reference: presentation.scripture_reference || null,
       creation_mode: presentation.creationMode || 'structured_builder',
     })
@@ -658,7 +677,8 @@ export async function duplicateMostRecentPresentationAsStartingPoint(): Promise<
   if (error || !data) return null;
 
   const source = data.find((row) => countSlides(row.slides) > 0 && extractFormData(row.slides));
-  const formData = source ? extractFormData(source.slides) : undefined;
+  // Slides are generated from verse text, which is not stored; fetch it fresh.
+  const formData = source ? extractFormData((await hydrateSlides(source.slides)).slides) : undefined;
   if (!source || !formData) return null;
 
   const today = getLocalDateKey();
@@ -726,7 +746,9 @@ export async function getPresentation(id: string): Promise<SermonPresentation | 
   const access = await getPresentationAccessContext();
   if (!access.isAuthenticated) {
     const guestRow = readGuestSermons()[id];
-    return guestRow ? mapRowToPresentation(guestRow) : undefined;
+    if (!guestRow) return undefined;
+    const hydrated = await hydrateSlides(guestRow.slides);
+    return mapRowToPresentation({ ...guestRow, slides: hydrated.slides });
   }
 
   const { data, error } = await supabase
@@ -737,8 +759,12 @@ export async function getPresentation(id: string): Promise<SermonPresentation | 
 
   if (error || !data) {
     const guestRow = readGuestSermons()[id];
-    return guestRow ? mapRowToPresentation(guestRow) : undefined;
+    if (!guestRow) return undefined;
+    const hydrated = await hydrateSlides(guestRow.slides);
+    return mapRowToPresentation({ ...guestRow, slides: hydrated.slides });
   }
+
+  const hydrated = await hydrateSlides(data.slides);
 
   return {
     id: data.id,
@@ -751,7 +777,7 @@ export async function getPresentation(id: string): Promise<SermonPresentation | 
     slides: countSlides(data.slides),
     lastModified: new Date(data.updated_at).toLocaleDateString(),
     scripture_reference: data.scripture_reference || undefined,
-    data: extractFormData(data.slides),
+    data: extractFormData(hydrated.slides),
   };
 }
 
@@ -761,6 +787,7 @@ export async function getEditorPresentationState(id: string): Promise<EditorPres
     const guestRow = readGuestSermons()[id];
     if (!guestRow) return undefined;
 
+    const hydrated = await hydrateSlides(guestRow.slides);
     return {
       id: guestRow.id,
       title: guestRow.title,
@@ -768,8 +795,9 @@ export async function getEditorPresentationState(id: string): Promise<EditorPres
       campusId: null,
       campusName: null,
       formerCampusName: null,
-      formData: extractFormData(guestRow.slides),
-      editorSlides: extractEditorSlides(guestRow.slides),
+      formData: extractFormData(hydrated.slides),
+      editorSlides: extractEditorSlides(hydrated.slides),
+      scriptureMissing: hydrated.missing,
       createdAt: guestRow.created_at,
       updatedAt: guestRow.updated_at,
       presentationDate: resolvePresentationDate(guestRow.slides, guestRow.created_at),
@@ -787,6 +815,7 @@ export async function getEditorPresentationState(id: string): Promise<EditorPres
     const guestRow = readGuestSermons()[id];
     if (!guestRow) return undefined;
 
+    const hydrated = await hydrateSlides(guestRow.slides);
     return {
       id: guestRow.id,
       title: guestRow.title,
@@ -794,8 +823,9 @@ export async function getEditorPresentationState(id: string): Promise<EditorPres
       campusId: null,
       campusName: null,
       formerCampusName: null,
-      formData: extractFormData(guestRow.slides),
-      editorSlides: extractEditorSlides(guestRow.slides),
+      formData: extractFormData(hydrated.slides),
+      editorSlides: extractEditorSlides(hydrated.slides),
+      scriptureMissing: hydrated.missing,
       createdAt: guestRow.created_at,
       updatedAt: guestRow.updated_at,
       presentationDate: resolvePresentationDate(guestRow.slides, guestRow.created_at),
@@ -808,6 +838,8 @@ export async function getEditorPresentationState(id: string): Promise<EditorPres
     data.campus_id ? [data.campus_id] : []
   );
 
+  const hydrated = await hydrateSlides(data.slides);
+
   return {
     id: data.id,
     title: data.title,
@@ -815,8 +847,9 @@ export async function getEditorPresentationState(id: string): Promise<EditorPres
     campusId: data.campus_id || null,
     campusName: data.campus_id ? campusNamesById.get(data.campus_id) || null : null,
     formerCampusName: data.former_campus_name || null,
-    formData: extractFormData(data.slides),
-    editorSlides: extractEditorSlides(data.slides),
+    formData: extractFormData(hydrated.slides),
+    editorSlides: extractEditorSlides(hydrated.slides),
+    scriptureMissing: hydrated.missing,
     createdAt: data.created_at,
     updatedAt: data.updated_at,
     presentationDate: resolvePresentationDate(data.slides, data.created_at, data.presentation_date),
@@ -826,14 +859,15 @@ export async function getEditorPresentationState(id: string): Promise<EditorPres
 
 // Save editor slides (the visual slide array) to the sermons table, preserving form data
 export async function saveEditorSlides(sermonId: string, slides: any[]): Promise<void> {
-  const nextSerializedSlides = serializeEditorSlides(slides);
+  // Compare what would be stored, so freshly loaded verse text alone never triggers a save.
+  const nextSerializedSlides = serializeEditorSlides(stripScriptureText(slides));
   const access = await getPresentationAccessContext();
   if (!access.isAuthenticated) {
     const store = readGuestSermons();
     const existing = store[sermonId];
     if (!existing) return;
     const existingEditorSlides = extractEditorSlides(existing.slides);
-    if (serializeEditorSlides(existingEditorSlides) === nextSerializedSlides) {
+    if (serializeEditorSlides(stripScriptureText(existingEditorSlides)) === nextSerializedSlides) {
       return;
     }
     const existingFormData = extractFormData(existing.slides);
@@ -859,7 +893,7 @@ export async function saveEditorSlides(sermonId: string, slides: any[]): Promise
     .maybeSingle();
 
   const existingEditorSlides = existing ? extractEditorSlides(existing.slides) : null;
-  if (serializeEditorSlides(existingEditorSlides) === nextSerializedSlides) {
+  if (serializeEditorSlides(stripScriptureText(existingEditorSlides)) === nextSerializedSlides) {
     return;
   }
 
@@ -872,7 +906,7 @@ export async function saveEditorSlides(sermonId: string, slides: any[]): Promise
 
   const { error } = await supabase
     .from('sermons')
-    .update({ slides: wrapper as any })
+    .update({ slides: stripScriptureText(wrapper) as any })
     .eq('id', sermonId);
 
   if (error) console.error('Failed to save editor slides:', error);

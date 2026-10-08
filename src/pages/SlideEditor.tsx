@@ -8,6 +8,9 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { BackgroundPicker } from "@/components/BackgroundPicker";
 import type { SlideData } from "@/lib/slides/types";
 import { getOrCreateServiceForSermon } from "@/lib/services";
+import { lookupScripture } from "@/lib/scripture-api";
+import { isReadableReference, splitTranslationTag } from "@/lib/scripture-storage";
+import { splitEvenly } from "../../supabase/functions/_shared/presenter/slides.ts";
 import { SubscriptionUpsellModal } from "@/components/SubscriptionUpsellModal";
 import { toast } from "sonner";
 import { getEditorPresentationState, SermonPresentation, saveEditorSlides as saveEditorSlidesToDb } from "@/lib/presentations";
@@ -184,6 +187,11 @@ const SlideEditor = () => {
         if (presentationState) {
           setPresentationTitle(presentationState.title);
           setPresentationFormData(presentationState.formData || null);
+          if (presentationState.scriptureMissing?.length) {
+            toast.warning("Some scripture could not load", {
+              description: `${presentationState.scriptureMissing.join(", ")}. Check the internet connection, or the reference and translation.`,
+            });
+          }
 
           const generatedPresentation: SermonPresentation | null = presentationState.formData
               ? {
@@ -672,7 +680,7 @@ const SlideEditor = () => {
   };
 
   // Inline text editing
-  const handleContentChange = (field: 'title' | 'subtitle' | 'scripture' | 'reference', value: string) => {
+  const handleContentChange = (field: 'title' | 'subtitle' | 'reference', value: string) => {
     setSlides(slides.map((slide, index) => index === selectedSlide ? {
       ...slide,
       content: {
@@ -680,6 +688,53 @@ const SlideEditor = () => {
         [field]: value
       }
     } : slide));
+  };
+
+  // Scripture slides are tied to a reference; their text is fetched, never typed.
+  // When a reference changes, every slide in the same passage (consecutive
+  // slides that shared the old reference) moves to the new one and gets fresh text.
+  const referenceAtFocusRef = useRef<string | null>(null);
+  const [loadingScripture, setLoadingScripture] = useState(false);
+
+  const handleReferenceFocus = () => {
+    referenceAtFocusRef.current = slides[selectedSlide]?.content.reference ?? "";
+  };
+
+  const handleReferenceCommit = async () => {
+    const index = selectedSlide;
+    const previous = referenceAtFocusRef.current ?? "";
+    referenceAtFocusRef.current = null;
+    const slide = slides[index];
+    if (!slide || slide.type !== "scripture") return;
+    const reference = (slide.content.reference || "").trim();
+
+    // The group is the run of scripture slides around this one that shared the old reference.
+    const same = (i: number) => slides[i]?.type === "scripture" && (i === index || (previous !== "" && slides[i].content.reference === previous));
+    let start = index;
+    let end = index;
+    while (start > 0 && same(start - 1)) start--;
+    while (end + 1 < slides.length && same(end + 1)) end++;
+
+    if (!isReadableReference(reference)) {
+      setSlides((current) => current.map((s, i) => (i >= start && i <= end ? { ...s, content: { ...s.content, reference, scripture: undefined } } : s)));
+      if (reference) toast.error("We could not read that reference", { description: "Try a form like John 3:16-18 (NIV)." });
+      return;
+    }
+
+    const { base, tag } = splitTranslationTag(reference);
+    const translation = tag || presentationFormData?.translation?.toUpperCase() || "KJV";
+    setLoadingScripture(true);
+    const result = await lookupScripture(base, translation);
+    setLoadingScripture(false);
+    const text = result && !result.error ? result.text : "";
+    if (!text) toast.error("Could not load that passage", { description: result?.errorMessage || "Please try again." });
+    const chunks = text ? splitEvenly(text, end - start + 1) : [];
+    const quote = !presentationFormData?.proPresenterMode;
+    setSlides((current) => current.map((s, i) => {
+      if (i < start || i > end) return s;
+      const chunk = chunks[i - start];
+      return { ...s, content: { ...s.content, reference, scripture: chunk ? (quote ? `"${chunk}"` : chunk) : undefined } };
+    }));
   };
 
   // Apply line spacing to ALL slides
@@ -699,8 +754,7 @@ const SlideEditor = () => {
       content: {
         title: type === 'title' ? 'New Title' : type === 'point' ? 'New Point' : '',
         subtitle: '',
-        scripture: type === 'scripture' ? 'Enter scripture text...' : '',
-        reference: type === 'scripture' ? 'Book 1:1' : ''
+        reference: ''
       },
       background: currentSlide.background,
       backgroundImage: currentSlide.backgroundImage,
@@ -1188,15 +1242,19 @@ const SlideEditor = () => {
                 }} placeholder="Enter subtitle..." />
                   </>}
                 {currentSlide.type === "scripture" && <>
-                    <textarea value={currentSlide.content.scripture || ""} onChange={e => handleContentChange('scripture', e.target.value)} className="text-base md:text-xl italic bg-transparent border-none outline-none text-center w-full resize-none focus:ring-2 focus:ring-white/30 rounded-lg px-2 py-1 min-h-[80px]" style={{
+                    {/* Verse text comes from the translation and cannot be typed over. Change the reference to change the verses. */}
+                    <p className="text-base md:text-xl italic text-center w-full px-2 py-1 min-h-[80px] whitespace-pre-wrap" style={{
                   fontFamily: currentSlide.fontFamily,
                   color: currentSlide.textColor,
                   lineHeight: currentSlide.lineSpacing || 1.5,
-                  marginBottom: `${(currentSlide.lineSpacing || 1.5) * 0.5}rem`
-                }} placeholder="Enter scripture text..." />
-                    <input type="text" value={currentSlide.content.reference || ""} onChange={e => handleContentChange('reference', e.target.value)} className="text-xs md:text-sm opacity-70 bg-transparent border-none outline-none text-right w-full focus:ring-2 focus:ring-white/30 rounded-lg px-2 py-1" style={{
+                  marginBottom: `${(currentSlide.lineSpacing || 1.5) * 0.5}rem`,
+                  opacity: currentSlide.content.scripture ? 1 : 0.6
+                }} title="Scripture text comes from the translation. Change the reference to change the verses.">
+                      {loadingScripture ? "Loading scripture..." : currentSlide.content.scripture || "Type a reference below, like John 3:16 (NIV), to bring in the verse."}
+                    </p>
+                    <input type="text" aria-label="Scripture reference" value={currentSlide.content.reference || ""} onFocus={handleReferenceFocus} onChange={e => handleContentChange('reference', e.target.value)} onBlur={() => void handleReferenceCommit()} onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} className="text-xs md:text-sm opacity-70 bg-transparent border-none outline-none text-right w-full focus:ring-2 focus:ring-white/30 rounded-lg px-2 py-1" style={{
                   color: currentSlide.textColor
-                }} placeholder="Reference" />
+                }} placeholder="Reference, like John 3:16 (NIV)" />
                   </>}
                 {currentSlide.type === "blank" && <p className="text-muted-foreground text-sm">Blank Slide</p>}
               </div>
