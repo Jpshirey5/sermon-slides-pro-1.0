@@ -3,13 +3,11 @@ import { Link, useParams, useLocation, useNavigate } from "react-router-dom";
 import { motion, Reorder, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { BookOpen, ArrowLeft, Download, Play, GripVertical, Plus, Type, Palette, ChevronLeft, ChevronRight, Trash2, AlignVerticalSpaceAround, Undo2, Redo2, Copy, Check, Cloud, BookMarked, Pencil, Sparkles, Printer, Send } from "lucide-react";
+import { BookOpen, ArrowLeft, MonitorPlay, Play, GripVertical, Plus, Type, Palette, ChevronLeft, ChevronRight, Trash2, AlignVerticalSpaceAround, Undo2, Redo2, Copy, Check, Cloud, BookMarked, Pencil, Sparkles, Send } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { BackgroundPicker } from "@/components/BackgroundPicker";
-import { exportToPowerPoint, SlideData } from "@/lib/export-pptx";
-import { exportToPdf } from "@/lib/export-pdf";
-import { exportAsProBundle, validateSlidesForExport } from "@/services/proPresenterExport";
-import { ExportOptionsModal } from "@/components/ExportOptionsModal";
+import type { SlideData } from "@/lib/slides/types";
+import { getOrCreateServiceForSermon } from "@/lib/services";
 import { SubscriptionUpsellModal } from "@/components/SubscriptionUpsellModal";
 import { toast } from "sonner";
 import { getEditorPresentationState, SermonPresentation, saveEditorSlides as saveEditorSlidesToDb } from "@/lib/presentations";
@@ -122,8 +120,7 @@ const SlideEditor = () => {
   const [selectedSlide, setSelectedSlide] = useState(0);
   const [selectedSlides, setSelectedSlides] = useState<Set<number>>(new Set([0]));
   const [isPreviewMode, setIsPreviewMode] = useState(false);
-  const [isExporting, setIsExporting] = useState(false);
-  const [isPrinting, setIsPrinting] = useState(false);
+  const [isOpeningPresenter, setIsOpeningPresenter] = useState(false);
   const [presentationTitle, setPresentationTitle] = useState("New Presentation");
   const [isDragging, setIsDragging] = useState(false);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
@@ -134,7 +131,6 @@ const SlideEditor = () => {
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastSavedSlidesRef = useRef(JSON.stringify(defaultSlides));
 
-  const [showExportModal, setShowExportModal] = useState(false);
   const [showUpsellModal, setShowUpsellModal] = useState(false);
   const [isSendingBack, setIsSendingBack] = useState(false);
   // Shown only when this tab arrived through a partner handoff that carried a
@@ -149,7 +145,6 @@ const SlideEditor = () => {
   const [historyIndex, setHistoryIndex] = useState(0);
   const isUndoRedoRef = useRef(false);
   const isInitialLoadRef = useRef(true);
-  const upsellSessionKey = id && id !== "new" ? `export_upsell_seen:${id}` : null;
   const valueMetrics = useMemo(
     () => calculateValueMetrics({ slideCount: slides.length, slides, formData: presentationFormData }),
     [presentationFormData, slides],
@@ -157,25 +152,13 @@ const SlideEditor = () => {
   const editorBackPath = subscription.subscribed ? "/dashboard" : "/";
   const editorBackLabel = subscription.subscribed ? "Dashboard" : "Home";
 
-  // Shown after a guest (no account) successfully exports for free, prompting
-  // them to create an account for Core/Team access. Export has already
-  // completed by the time this modal is shown, so dismissing it just closes
-  // the dialog -- there's nothing left to "continue" to.
-  const handleDismissUpsell = () => {
-    if (upsellSessionKey) {
-      sessionStorage.setItem(upsellSessionKey, "true");
-    }
-    setShowUpsellModal(false);
-  };
+  // Presenting is for signed-in churches with an active plan. Guests who click
+  // Present see the plans instead.
+  const handleDismissUpsell = () => setShowUpsellModal(false);
 
   const handleUpsellSelectPlan = (planId: SubscriptionPlanId) => {
     const plan = getPlanById(planId);
     if (!plan) return;
-    if (upsellSessionKey) {
-      sessionStorage.setItem(upsellSessionKey, "true");
-    }
-
-    // This modal only shows for guests (no account), so always route to signup.
     editorNavigate(`/signup?${new URLSearchParams({ priceId: plan.priceId }).toString()}`);
   };
 
@@ -517,102 +500,40 @@ const SlideEditor = () => {
     setIsDragging(false);
     setDragOverIndex(null);
   }, []);
-  // Handle export button click - export is free and immediate for every
-  // user, guest or subscribed. There is no payment gate.
-  const handleExportButtonClick = () => {
+  // Present opens this sermon in the presenter, inside a service. Scripture is
+  // fetched fresh by the presenter, never from the slides saved here.
+  const handlePresent = async () => {
     if (!id || id === "new") {
-      trackEvent("export_blocked_unsaved");
-      toast.error("Please save your presentation first");
+      toast.error("Save your presentation first");
       return;
     }
-
-    trackEvent("export_modal_opened", {
-      sermonId: id,
-      source: subscription.subscribed ? "subscription" : "guest",
-    });
-    trackEvent("pre_export_modal_viewed", {
-      sermonId: id,
-      source: subscription.subscribed ? "subscription" : "guest",
-      slideCount: valueMetrics.slideCount,
-      scripturePassageCount: valueMetrics.scripturePassageCount,
-    });
-    setShowExportModal(true);
-  };
-  
-  const handleExport = async (format: "pptx" | "probundle") => {
-    // Validate slides before export
-    const validation = validateSlidesForExport(slides);
-    if (!validation.isValid) {
-      trackEvent("export_validation_failed", {
-        sermonId: id || "unknown",
-        format,
-        errorCount: validation.errors.length,
-      });
-      toast.error("Cannot export", {
-        description: validation.errors.join(' ')
-      });
+    if (!user || !subscription.subscribed) {
+      trackEvent("present_upsell_shown", { sermonId: id });
+      setShowUpsellModal(true);
       return;
     }
-    
-    setIsExporting(true);
+    setIsOpeningPresenter(true);
     try {
-      trackEvent("export_started", {
-        sermonId: id || "unknown",
-        format,
-        slideCount: slides.length,
+      // Flush any pending autosave so the presenter shows exactly what is on screen.
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+      const serializedSlides = JSON.stringify(slides);
+      if (serializedSlides !== lastSavedSlidesRef.current) {
+        await saveEditorSlidesToDb(id, slides);
+        lastSavedSlidesRef.current = serializedSlides;
+      }
+      const serviceId = await getOrCreateServiceForSermon({
+        id,
+        title: presentationTitle,
+        presentationDate: presentationFormData?.date ?? null,
       });
-      if (subscription.subscribed) {
-        trackEvent("subscribed_export_started", {
-          sermonId: id || "unknown",
-          format,
-          slideCount: slides.length,
-        });
-      }
-      if (format === "pptx") {
-        await exportToPowerPoint(slides, presentationTitle);
-        toast.success("PowerPoint file exported successfully!", {
-          description: `${slides.length} slides exported to ${presentationTitle}.pptx`
-        });
-      } else if (format === "probundle") {
-        await exportAsProBundle(slides, presentationTitle);
-        toast.success("ProPresenter file exported successfully!", {
-          description: `${slides.length} slides exported to ${presentationTitle}.probundle`
-        });
-      }
-      trackEvent("export_succeeded", {
-        sermonId: id || "unknown",
-        format,
-        slideCount: slides.length,
-      });
-      setShowExportModal(false);
-
-      // Guest (no account) just exported for free -- offer to create a
-      // Core/Team account, once per sermon per session.
-      const shouldShowUpsell =
-        !user &&
-        upsellSessionKey &&
-        sessionStorage.getItem(upsellSessionKey) !== "true";
-      if (shouldShowUpsell) {
-        sessionStorage.setItem(upsellSessionKey, "true");
-        setShowUpsellModal(true);
-      }
+      trackEvent("present_opened", { sermonId: id, source: "editor", slideCount: slides.length });
+      editorNavigate(`/present/${serviceId}`);
     } catch (error) {
-      logError(error, {
-        scope: "editor_export",
-        sermonId: id || "unknown",
-        format,
-        slideCount: slides.length,
+      logError(error, { scope: "editor_present", sermonId: id });
+      toast.error("Could not open the presenter", {
+        description: error instanceof Error ? error.message : "Please try again.",
       });
-      trackEvent("export_failed", {
-        sermonId: id || "unknown",
-        format,
-      });
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      toast.error("Export failed", {
-        description: `Could not export presentation: ${errorMessage}. Please try again.`
-      });
-    } finally {
-      setIsExporting(false);
+      setIsOpeningPresenter(false);
     }
   };
 
@@ -637,47 +558,6 @@ const SlideEditor = () => {
         description: error instanceof Error ? error.message : "Please try again.",
       });
       setIsSendingBack(false);
-    }
-  };
-
-  const handlePrintPdf = async () => {
-    const validation = validateSlidesForExport(slides);
-    if (!validation.isValid) {
-      toast.error("Cannot print", {
-        description: validation.errors.join(' '),
-      });
-      return;
-    }
-
-    setIsPrinting(true);
-    try {
-      trackEvent("pdf_print_started", {
-        sermonId: id || "unknown",
-        slideCount: slides.length,
-      });
-      await exportToPdf(slides, presentationTitle);
-      toast.success("PDF ready to print", {
-        description: `${slides.length} slides saved to ${presentationTitle}.pdf`,
-      });
-      trackEvent("pdf_print_succeeded", {
-        sermonId: id || "unknown",
-        slideCount: slides.length,
-      });
-    } catch (error) {
-      logError(error, {
-        scope: "editor_print_pdf",
-        sermonId: id || "unknown",
-        slideCount: slides.length,
-      });
-      trackEvent("pdf_print_failed", {
-        sermonId: id || "unknown",
-      });
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-      toast.error("Could not create PDF", {
-        description: `${errorMessage}. Please try again.`,
-      });
-    } finally {
-      setIsPrinting(false);
     }
   };
 
@@ -708,14 +588,9 @@ const SlideEditor = () => {
       description: "Open the full-screen preview to step through what the congregation will see, slide by slide.",
     },
     {
-      targetId: "editor-print-pdf-button",
-      title: "Print to PDF",
-      description: "Export a printable PDF — one slide per page — for handouts or speaker notes outside of ProPresenter or PowerPoint.",
-    },
-    {
-      targetId: "editor-export-button",
-      title: "Export when ready",
-      description: "Export PowerPoint or ProPresenter once the presentation is ready for Sunday.",
+      targetId: "editor-present-button",
+      title: "Present on Sunday",
+      description: "Present opens this sermon in the presenter. Put it on the projector and run it right from Sermon Slide Pro.",
     },
     {
       title: "Tour complete",
@@ -1068,16 +943,10 @@ const SlideEditor = () => {
                 <Play className="w-4 h-4" />
                 <span className="hidden sm:inline">Preview</span>
               </Button>
-              <Button variant="outline" disabled={isPrinting} onClick={handlePrintPdf} data-tour-id="editor-print-pdf-button">
-                <Printer className="w-4 h-4" />
+              <Button variant="hero" disabled={isOpeningPresenter} onClick={handlePresent} data-tour-id="editor-present-button">
+                <MonitorPlay className="w-4 h-4" />
                 <span className="hidden sm:inline">
-                  {isPrinting ? "Preparing..." : "Print PDF"}
-                </span>
-              </Button>
-              <Button variant="hero" disabled={isExporting} onClick={handleExportButtonClick} data-tour-id="editor-export-button">
-                <Download className="w-4 h-4" />
-                <span className="hidden sm:inline">
-                  {isExporting ? "Exporting..." : "Export"}
+                  {isOpeningPresenter ? "Opening..." : "Present"}
                 </span>
               </Button>
               {canSendBackToPartner && (
@@ -1430,14 +1299,6 @@ const SlideEditor = () => {
         </main>
       </div>
       
-      {/* Export Options Modal */}
-      <ExportOptionsModal
-        isOpen={showExportModal}
-        onClose={() => setShowExportModal(false)}
-        onExport={handleExport}
-        isExporting={isExporting}
-        valueMetrics={valueMetrics}
-      />
       <SubscriptionUpsellModal
         isOpen={showUpsellModal}
         onDismiss={handleDismissUpsell}

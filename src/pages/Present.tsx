@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { resolveBackgroundImages } from "@/lib/background-assets";
+import { trackEvent } from "@/lib/monitoring";
 import { holdSessionWhilePresenting } from "@/lib/session-security";
 import type { BundleFetchError, Invoke } from "@/presenter/core/bundle-client";
 import {
@@ -128,6 +129,12 @@ const Present = () => {
   useEffect(() => {
     if (bundle) document.title = `Presenting: ${bundle.service.title}`;
   }, [bundle]);
+
+  // One event per presenter session, for the admin reports. No scripture.
+  const loaded = session.load.kind === "ready";
+  useEffect(() => {
+    if (loaded) trackEvent("presenter_session_started", { serviceId, itemCount: bundle?.items.length ?? 0 });
+  }, [loaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const outputUrl = `/present/${serviceId}/output?channel=${encodeURIComponent(session.nonce)}`;
 

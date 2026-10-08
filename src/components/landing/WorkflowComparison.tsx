@@ -14,11 +14,11 @@ import { trackEvent } from "@/lib/monitoring";
 
 const manualWorkflows = [
   {
-    key: "powerpoint",
-    title: "PowerPoint Workflow",
+    key: "by-hand",
+    title: "Building Slides by Hand",
     icon: Presentation,
     steps: [
-      "Open PowerPoint",
+      "Open your slide software",
       "Create slides one by one",
       "Paste each scripture manually",
       "Format every slide",
@@ -27,17 +27,17 @@ const manualWorkflows = [
     footer: "Time consuming and repetitive.",
   },
   {
-    key: "propresenter",
-    title: "ProPresenter Workflow",
+    key: "handoff",
+    title: "Getting Them to the Booth",
     icon: Monitor,
     steps: [
-      "Open ProPresenter",
-      "Create slides one by one",
-      "Paste each scripture manually",
-      "Format every slide",
-      "Adjust layouts and re-do it next week",
+      "Save the file and send it to the media team",
+      "Copy it onto the booth computer",
+      "Fix fonts and layouts that moved",
+      "Re-type last-minute changes",
+      "Hope nothing breaks on Sunday morning",
     ],
-    footer: "Manual slide building every week.",
+    footer: "Files to move around every week.",
   },
 ] as const;
 
@@ -52,20 +52,20 @@ const proWorkflows = [
       "Enter your points and verse references",
       "We auto-pull the scripture text",
       "Generate the full slide deck",
-      "Export to PowerPoint or ProPresenter",
+      "Present it from Sermon Slide Pro",
     ],
   },
   {
     key: "quick",
     title: "Quick Build",
-    tagline: "Drop in an outline or manuscript — done in under 2 minutes.",
+    tagline: "Drop in an outline or manuscript. Done in under 2 minutes.",
     icon: UploadCloud,
     steps: [
       "Drag in your outline or manuscript",
       "We pull out every point and scripture reference",
       "Full deck built in under 2 minutes",
       "Edit anything you'd like to tweak",
-      "Export to PowerPoint or ProPresenter",
+      "Present it from Sermon Slide Pro",
     ],
     badge: "New",
   },
@@ -93,13 +93,13 @@ const WorkflowComparison = () => {
           className="mx-auto max-w-3xl text-center"
         >
           <span className="text-accent font-medium text-sm uppercase tracking-wider">
-            Two ways to build — both included in every plan
+            Two ways to build, both included in every plan
           </span>
           <h2 className="font-serif text-3xl sm:text-4xl md:text-5xl font-bold text-foreground mt-3 mb-4">
             Build your sermon your way, in a fraction of the time.
           </h2>
           <p className="text-lg text-muted-foreground">
-            Go point-by-point with the Structured Builder, or drop in a manuscript and let Quick Build do it for you in under two minutes. Both export straight to PowerPoint or ProPresenter.
+            Go point-by-point with the Structured Builder, or drop in a manuscript and let Quick Build do it for you in under two minutes. Either way, you present it on Sunday from the same place you built it.
           </p>
         </motion.div>
 
@@ -153,7 +153,7 @@ const WorkflowComparison = () => {
               The Sermon Slide Pro Workflow
             </h3>
             <p className="mt-2 text-sm text-muted-foreground">
-              Pick the flow that fits how you write — both are included in every paid plan.
+              Pick the flow that fits how you write. Both are included in every paid plan.
             </p>
 
             <div className="mt-6 grid gap-4 md:grid-cols-2">
@@ -196,10 +196,10 @@ const WorkflowComparison = () => {
 
             <div className="mt-7 rounded-2xl bg-gradient-to-r from-primary/10 to-accent/10 p-4">
               <p className="font-serif text-xl font-semibold text-foreground">
-                One platform, two workflows — both in every pricing tier.
+                One platform, two workflows, both in every pricing tier.
               </p>
               <p className="mt-1 text-sm text-muted-foreground">
-                PowerPoint and ProPresenter are powerful tools. Sermon Slide Pro gets your slides ready for them in minutes, not hours.
+                Write it, build it, and present it in one place. No files to move, nothing to re-format in the booth.
               </p>
             </div>
 

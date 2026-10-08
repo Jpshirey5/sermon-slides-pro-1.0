@@ -4,7 +4,7 @@ import { Star } from "lucide-react";
 const testimonials = [
   {
     quote:
-      "Sermon Slide Pro has transformed our Sunday services. What used to take hours now takes minutes. The ProPresenter export is flawless.",
+      "Sermon Slide Pro has transformed our Sunday services. What used to take hours now takes minutes.",
     author: "John Shirey",
     role: "Worship Pastor, Bell Shoals Church",
     avatar: "JS",

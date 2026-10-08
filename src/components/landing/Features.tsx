@@ -1,7 +1,7 @@
 import { motion } from "framer-motion";
 import {
   Wand2,
-  FileDown,
+  MonitorPlay,
   Palette,
   BookOpen,
   Share2,
@@ -17,16 +17,16 @@ const features = [
       "Enter your sermon points and scriptures. We'll create beautiful, structured slides automatically.",
   },
   {
-    icon: FileDown,
-    title: "Export Anywhere",
+    icon: MonitorPlay,
+    title: "Present From Here",
     description:
-      "Build your deck first, then export to PowerPoint (.pptx) or ProPresenter (.probundle).",
+      "Run the whole service from Sermon Slide Pro: sermon slides, readings, and logo screens on the projector, with no files to move around.",
   },
   {
     icon: BookOpen,
     title: "Scripture Integration",
     description:
-      "Search any Bible translation worldwide. Verses are formatted and styled automatically.",
+      "Type a reference and the verse comes in for you, formatted and styled, with the translation's copyright line on every slide.",
   },
   {
     icon: Palette,
@@ -80,8 +80,8 @@ const Features = () => {
             <span className="text-gradient">Powerful Presentations</span>
           </h2>
           <p className="text-lg text-muted-foreground">
-            Built specifically for ministry leaders. Speed up sermon slide
-            creation before PowerPoint or ProPresenter.
+            Built specifically for ministry leaders. Write the sermon, build
+            the slides, and present on Sunday, all in one place.
           </p>
         </motion.div>
 

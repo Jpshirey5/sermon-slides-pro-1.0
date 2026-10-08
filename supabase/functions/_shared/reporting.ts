@@ -24,11 +24,11 @@ export type UsageMetrics = {
   presentationsInWindow: number;
   buildModeSplit: { quickBuild: number; structuredBuilder: number; unknown: number };
   activeOrgs: number;
-  exports: { started: number; succeeded: number };
+  presenter: { sessions: number; churches: number };
   quickBuildUploads: { success: number; partial: number; failed: number };
   quickBuildAccuracy: QuickBuildAccuracyRow[];
   dailyPresentations: { date: string; presentations: number }[];
-  notes: { exports: string };
+  notes: { presenter: string };
 };
 
 export type SignupChurnMetrics = {
@@ -94,11 +94,11 @@ export const computeUsageMetrics = async (options: {
       .gte("created_at", startIso)
       .lte("created_at", endIso),
   );
-  const exportsQuery = applyExcluded(
+  const presenterQuery = applyExcluded(
     supabaseAdmin
       .from("telemetry_events")
-      .select("name")
-      .in("name", ["export_started", "export_succeeded"])
+      .select("name, account_id")
+      .eq("name", "presenter_session_started")
       .gte("created_at", startIso)
       .lte("created_at", endIso),
   );
@@ -121,10 +121,10 @@ export const computeUsageMetrics = async (options: {
   const [
     { count: totalPresentations },
     { data: windowRows },
-    { data: exportRows },
+    { data: presenterRows },
     { data: quickBuildRows },
     { data: parseRows },
-  ] = await Promise.all([totalQuery, windowQuery, exportsQuery, quickBuildQuery, parsesQuery]);
+  ] = await Promise.all([totalQuery, windowQuery, presenterQuery, quickBuildQuery, parsesQuery]);
 
   const buildModeSplit = { quickBuild: 0, structuredBuilder: 0, unknown: 0 };
   const activeOrgIds = new Set<string>();
@@ -139,11 +139,9 @@ export const computeUsageMetrics = async (options: {
     else buildModeSplit.unknown += 1;
   }
 
-  const exports = { started: 0, succeeded: 0 };
-  for (const row of exportRows || []) {
-    if (row.name === "export_started") exports.started += 1;
-    else if (row.name === "export_succeeded") exports.succeeded += 1;
-  }
+  const presenterChurches = new Set<string>();
+  for (const row of presenterRows || []) if (row.account_id) presenterChurches.add(row.account_id);
+  const presenter = { sessions: (presenterRows || []).length, churches: presenterChurches.size };
 
   const quickBuildUploads = { success: 0, partial: 0, failed: 0 };
   const versionKey = (value: unknown) => clean(value) || "v1 (pre-tracking)";
@@ -225,13 +223,13 @@ export const computeUsageMetrics = async (options: {
     presentationsInWindow: (windowRows || []).length,
     buildModeSplit,
     activeOrgs: activeOrgIds.size,
-    exports,
+    presenter,
     quickBuildUploads,
     quickBuildAccuracy,
     dailyPresentations,
     notes: {
-      exports:
-        "Export counts come from telemetry_events, which has a 30-day retention; windows older than 30 days may undercount.",
+      presenter:
+        "Presenter counts come from telemetry_events, which has a 30-day retention; windows older than 30 days may undercount.",
     },
   };
 };

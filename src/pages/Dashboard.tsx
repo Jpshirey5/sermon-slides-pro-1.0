@@ -21,7 +21,6 @@ import {
   FileText,
   Search,
   X,
-  Download,
   RefreshCw,
   CheckSquare,
   AlertTriangle,
@@ -46,8 +45,6 @@ import {
   shouldDeferDashboardMessages,
   subscribeToDeferredDashboardMessages,
 } from "@/lib/product-tour";
-import { ExportOptionsModal } from "@/components/ExportOptionsModal";
-import { exportPresentationsAsZip } from "@/lib/bulk-export";
 import { getEnterpriseCampusFilterOptions, type CampusFilterOption } from "@/lib/campuses";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -143,8 +140,6 @@ const Dashboard = () => {
   const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedPresentationIds, setSelectedPresentationIds] = useState<Set<string>>(new Set());
-  const [showBulkExportModal, setShowBulkExportModal] = useState(false);
-  const [isBulkExporting, setIsBulkExporting] = useState(false);
   const [isDuplicatingLastPresentation, setIsDuplicatingLastPresentation] = useState(false);
   const [showTourCompletionPrompt, setShowTourCompletionPrompt] = useState(false);
   const [activeDeletionRequest, setActiveDeletionRequest] = useState<AccountDeletionRequest | null>(null);
@@ -696,33 +691,10 @@ const Dashboard = () => {
   const handleCancelSelection = () => {
     setSelectionMode(false);
     setSelectedPresentationIds(new Set());
-    setShowBulkExportModal(false);
   };
 
   const handleSelectAllLoaded = () => {
     setSelectedPresentationIds(new Set(presentations.map((presentation) => presentation.id)));
-  };
-
-  const handleBulkExport = async (format: "pptx" | "probundle") => {
-    setIsBulkExporting(true);
-    try {
-      const result = await exportPresentationsAsZip(Array.from(selectedPresentationIds), format);
-      toast.success(`Exported ${result.exportedCount} presentation${result.exportedCount === 1 ? "" : "s"} to zip.`);
-      if (result.failed.length > 0) {
-        toast.error("Some presentations were skipped.", {
-          description: result.failed.map((failure) => `${failure.title}: ${failure.reason}`).join(" "),
-        });
-      }
-      setShowBulkExportModal(false);
-      handleCancelSelection();
-    } catch (error) {
-      logError(error, { scope: "dashboard_bulk_export", format, selectedCount: selectedPresentationIds.size });
-      toast.error("Bulk export failed", {
-        description: error instanceof Error ? error.message : "Please try again.",
-      });
-    } finally {
-      setIsBulkExporting(false);
-    }
   };
 
   const handleBulkDelete = async () => {
@@ -810,7 +782,7 @@ const Dashboard = () => {
       ? [{
           targetId: "dashboard-select-button",
           title: "Select multiple presentations",
-          description: "Enter selection mode to export several presentations at once or delete the ones you no longer need.",
+          description: "Enter selection mode to delete several presentations at once.",
         }]
       : []),
     {
@@ -1044,8 +1016,8 @@ const Dashboard = () => {
                 </h2>
                 <p className="text-muted-foreground text-sm mb-6 max-w-xl">
                   {hasPresentations
-                    ? "Jump back into the creator to build a new deck before exporting to PowerPoint or ProPresenter."
-                    : "Create the deck in minutes, then export it into your existing workflow."}
+                    ? "Jump back into the creator to build your next sermon, then present it from Services on Sunday."
+                    : "Build the deck in minutes, then present it on Sunday right from Sermon Slide Pro."}
                 </p>
                 <div className="flex flex-col justify-center gap-3 sm:flex-row">
                   <Link to="/dashboard/create" state={createPresentationState}>
@@ -1179,7 +1151,7 @@ const Dashboard = () => {
                       <p className="text-sm text-foreground">
                         {hasSelectedPresentations
                           ? `${selectedPresentationIds.size} presentation${selectedPresentationIds.size === 1 ? "" : "s"} selected`
-                          : "Select presentations to bulk delete or export."}
+                          : "Select presentations to delete."}
                       </p>
                       <div className="flex flex-wrap items-center gap-2">
                         <Button variant="outline" size="sm" onClick={handleSelectAllLoaded}>
@@ -1193,17 +1165,6 @@ const Dashboard = () => {
                         >
                           Delete Selected
                         </Button>
-                        {subscription.subscribed && (
-                        <Button
-                          variant="hero"
-                          size="sm"
-                          onClick={() => setShowBulkExportModal(true)}
-                          disabled={!hasSelectedPresentations}
-                        >
-                          <Download className="w-4 h-4" />
-                          Export Selected
-                        </Button>
-                        )}
                         <Button variant="ghost" size="sm" onClick={handleCancelSelection}>
                           Cancel Selection
                         </Button>
@@ -1326,7 +1287,7 @@ const Dashboard = () => {
           steps={dashboardTourSteps}
           onNavigate={navigate}
           introTitle="Welcome to Sermon Slide Pro"
-          introDescription="We'll walk through setting up your defaults, creating, reviewing, editing, and exporting your first presentation."
+          introDescription="We'll walk through setting up your defaults, creating, reviewing, editing, and presenting your first presentation."
           introStartLabel="Start Guided Tour"
         />
       )}
@@ -1421,15 +1382,6 @@ const Dashboard = () => {
           )}
         </DialogContent>
       </Dialog>
-      <ExportOptionsModal
-        isOpen={showBulkExportModal}
-        onClose={() => setShowBulkExportModal(false)}
-        onExport={handleBulkExport}
-        isExporting={isBulkExporting}
-        title="Export Selected Presentations"
-        description="Choose one format for all selected presentations. They will be packaged into a single zip file."
-        exportingLabel="Preparing zip export..."
-      />
     </>
   );
 };

@@ -14,7 +14,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { getPresentation, savePresentationWithSlides, type SermonPresentation } from "@/lib/presentations";
 import { generateSlidesFromPresentation } from "@/lib/slide-generation";
-import type { SlideData } from "@/lib/export-pptx";
+import type { SlideData } from "@/lib/slides/types";
 import { logError, trackEvent } from "@/lib/monitoring";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";

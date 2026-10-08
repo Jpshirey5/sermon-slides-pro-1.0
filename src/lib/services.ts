@@ -187,6 +187,33 @@ export function moveItem(ids: readonly string[], index: number, direction: -1 | 
   return next;
 }
 
+/**
+ * The service to open when a pastor clicks Present on a sermon: the most
+ * recently updated service that already has this sermon in it, or a new
+ * one-item service named after the sermon.
+ */
+export async function getOrCreateServiceForSermon(sermon: { id: string; title: string; presentationDate?: string | null }): Promise<string> {
+  const accountId = await requireAccountId();
+  const { data: existing, error } = await supabase
+    .from("service_items")
+    .select("service_id, services!inner(id, archived_at, updated_at)")
+    .eq("account_id", accountId)
+    .eq("sermon_id", sermon.id)
+    .is("services.archived_at", null)
+    .order("updated_at", { ascending: false, referencedTable: "services" })
+    .limit(1);
+  fail("look up services for this sermon", error);
+  if (existing && existing.length > 0) return existing[0].service_id;
+
+  const serviceId = await createService({
+    title: sermon.title.trim() || "Sunday Service",
+    serviceDate: sermon.presentationDate ?? null,
+    defaultTranslationId: null,
+  });
+  await addServiceItem({ id: serviceId, accountId, items: [] }, { type: "sermon", sermonId: sermon.id });
+  return serviceId;
+}
+
 export async function listSermonOptions(): Promise<SermonOption[]> {
   const accountId = await requireAccountId();
   const { data, error } = await supabase

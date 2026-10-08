@@ -56,8 +56,8 @@ const Hero = () => {
             transition={{ duration: 0.5, delay: 0.2 }}
             className="text-lg sm:text-xl text-muted-foreground max-w-3xl mx-auto mb-10"
           >
-            Create the deck in minutes, then export it into your existing
-            PowerPoint or ProPresenter workflow.
+            Build the deck in minutes, then present it on Sunday right from
+            Sermon Slide Pro.
           </motion.p>
 
           <motion.div

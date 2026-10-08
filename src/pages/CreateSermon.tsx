@@ -136,7 +136,7 @@ const CreateSermon = () => {
     });
   }, [editId, isFromDashboard]);
 
-  // Pay-per-export guests land here from the landing page. Explain that this is
+  // Guests land here from the landing page. Explain that this is
   // the manual Structured Builder, and that AI Quick Build requires an account.
   useEffect(() => {
     if (isFromDashboard || user || editId) return;

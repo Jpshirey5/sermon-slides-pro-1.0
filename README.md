@@ -1,6 +1,6 @@
 # Sermon Slide Pro
 
-Sermon Slide Pro is a React and Vite application for building sermon presentations with guided onboarding, scripture lookup, slide editing, subscription management, and export workflows.
+Sermon Slide Pro is a React and Vite application for building sermon presentations with guided onboarding, scripture lookup, slide editing, subscription management, and an in-app presenter for running the service on Sunday.
 
 This repository contains the web app, the supporting Supabase configuration, and the edge functions used for billing, account operations, and supporting services.
 
@@ -24,7 +24,7 @@ This repository contains the web app, the supporting Supabase configuration, and
 - Sermon creation flow with title, translation, points, and verse lookup
 - Slide editor and saved presentation dashboard
 - Subscription management and Stripe checkout handoff
-- Export-related services for PowerPoint and ProPresenter
+- In-app presenter: services, an operator view, and a projector window (see `docs/presenter.md`)
 
 ## Getting Started
 
@@ -233,7 +233,7 @@ Operational requirements:
 
 - `src/pages` route-level screens such as landing, dashboard, auth, creator, and editor
 - `src/components` shared UI, onboarding, layout, and feature components
-- `src/lib` application utilities for exports, monitoring, product tours, auth helpers, pricing, and data flows
+- `src/lib` application utilities for services, monitoring, product tours, auth helpers, pricing, and data flows
 - `src/contexts` shared state providers such as authentication
 - `supabase/functions` edge functions for checkout, subscription checks, invites, telemetry, and supporting integrations
 - `supabase/migrations` database migration history

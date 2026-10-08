@@ -14,7 +14,7 @@ type TierFeatures = {
 const FREE_TIER_FEATURES: readonly string[] = [
   "No account or payment required",
   "Full manual sermon builder",
-  "Unlimited free exports",
+  "Build and preview your slides in the editor",
   "Great for trying things out before you subscribe",
 ];
 
@@ -22,10 +22,10 @@ const FEATURES_BY_TIER: Record<"core" | "team", TierFeatures> = {
   core: {
     items: [
       "Up to 3 users",
-      "AI Quick Builder — 25 shared generations/month",
+      "AI Quick Builder, 25 shared generations a month",
       "Unlimited presentation creation",
-      "Unlimited PowerPoint and ProPresenter exports",
-      "No watermark — clean, unbranded slides on every export",
+      "Present your whole service from Sermon Slide Pro",
+      "No watermark on your slides",
       "Saved presentations and editing history",
       "Scripture lookup and weekly sermon workflow",
       "Best for small church teams",
@@ -35,7 +35,7 @@ const FEATURES_BY_TIER: Record<"core" | "team", TierFeatures> = {
     inheritsFromLabel: "Everything in Core, plus:",
     items: [
       "Up to 10 users",
-      "AI Quick Builder — 150 shared generations/month",
+      "AI Quick Builder, 150 shared generations a month",
       "Built for larger ministries and multi-role teams",
       "Built to support multi-campus teams",
       "Best for growing churches and larger teams",
@@ -76,7 +76,7 @@ const Pricing = () => {
           </h2>
           <p className="text-lg text-muted-foreground">
             Try it free with our manual builder, or subscribe to unlock AI Quick Build and the right collaboration
-            access for your team. Core and higher remove the watermark for clean, unbranded slides on every export.
+            access for your team. Core and higher let you present on Sunday and remove the watermark.
           </p>
         </motion.div>
 

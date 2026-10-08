@@ -94,9 +94,9 @@ const buildEmail = (options: {
         row("Active organizations", String(usage.activeOrgs)),
         row("Quick Build share", `${quickPct}% (${split.quickBuild} of ${attributed})`),
         row("Quick Build / Structure / Unattributed", `${split.quickBuild} / ${split.structuredBuilder} / ${split.unknown}`),
-        row("Exports (succeeded / started)", `${usage.exports.succeeded} / ${usage.exports.started}`),
+        row("Presenter sessions (churches)", `${usage.presenter.sessions} (${usage.presenter.churches})`),
       ].join(""))}
-      <p style="color:#9ca3af;font-size:11px;">${escapeHtml(usage.notes.exports)}</p>
+      <p style="color:#9ca3af;font-size:11px;">${escapeHtml(usage.notes.presenter)}</p>
 
       <p style="margin-top:28px;">
         <a href="${reportsUrl}" style="background:#4f46e5;color:#ffffff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:600;">Open live dashboard</a>
@@ -127,7 +127,7 @@ const buildEmail = (options: {
     `  Active organizations: ${usage.activeOrgs}`,
     `  Quick Build share: ${quickPct}%`,
     `  Quick / Structure / Unattributed: ${split.quickBuild} / ${split.structuredBuilder} / ${split.unknown}`,
-    `  Exports succeeded/started: ${usage.exports.succeeded} / ${usage.exports.started}`,
+    `  Presenter sessions (churches): ${usage.presenter.sessions} (${usage.presenter.churches})`,
     "",
     `Dashboard: ${reportsUrl}`,
   ].join("\n");

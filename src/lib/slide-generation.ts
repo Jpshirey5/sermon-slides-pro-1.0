@@ -1,5 +1,5 @@
 import type { SermonPresentation } from "@/lib/presentations";
-import type { SlideData } from "@/lib/export-pptx";
+import type { SlideData } from "@/lib/slides/types";
 import { formatScriptureReferenceForDisplay, splitVerseText } from "@/lib/scripture-api";
 import { formatDateOnlyForDisplay } from "@/lib/date-format";
 

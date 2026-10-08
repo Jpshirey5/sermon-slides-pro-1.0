@@ -14,18 +14,18 @@ export function SubscriptionUpsellModal({
   onSelectPlan,
 }: SubscriptionUpsellModalProps) {
   const featureHighlights: Record<string, string> = {
-    core: "Up to 3 users • AI Quick Build • 25 shared generations/month",
-    team: "Up to 10 users • Multi-campus • 150 shared generations/month",
+    core: "Up to 3 users, AI Quick Build, 25 shared generations a month",
+    team: "Up to 10 users, multi-campus, 150 shared generations a month",
   };
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onDismiss()}>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Your export is ready — want more?</DialogTitle>
+          <DialogTitle>Present on Sunday with Sermon Slide Pro</DialogTitle>
           <DialogDescription>
-            You just exported for free with the manual builder. Create an account on Core or Team to unlock AI Quick
-            Build, saved presentations, and team collaboration.
+            Presenting is part of Core and Team. Create an account to put your slides on the projector right from
+            Sermon Slide Pro, plus AI Quick Build, saved presentations, and team collaboration.
           </DialogDescription>
         </DialogHeader>
 

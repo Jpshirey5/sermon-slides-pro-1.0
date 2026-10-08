@@ -7,7 +7,7 @@ const sections = [
     title: "Information We Collect",
     body: [
       "We collect information you provide directly to us, such as your name, email address, organization name, church role, account details, support requests, team-invite details, and any content you create or store inside Sermon Slide Pro.",
-      "When you subscribe or purchase an export, payment and billing details are processed by Stripe. We do not store full payment card information directly inside the application.",
+      "When you subscribe, payment and billing details are processed by Stripe. We do not store full payment card information directly inside the application.",
       "We also collect limited technical and usage information needed to operate and improve the platform, including session information, device/browser details, route activity, and product telemetry that helps us understand feature usage and errors.",
     ],
   },
@@ -36,7 +36,7 @@ const sections = [
   {
     title: "User Content",
     body: [
-      "Presentations, sermon outlines, scripture selections, exported slide data, and other content you create in the platform remain your content. We process and store that content only to provide the service, support expected product functionality, respond to support issues, and comply with legal obligations.",
+      "Presentations, sermon outlines, scripture selections, slide data, and other content you create in the platform remain your content. We process and store that content only to provide the service, support expected product functionality, respond to support issues, and comply with legal obligations.",
       "We do not claim ownership of your sermon content solely because it is stored or processed through Sermon Slide Pro.",
     ],
   },
@@ -126,7 +126,7 @@ export default function PrivacyPolicy() {
               <p className="mt-4 text-base text-muted-foreground sm:text-lg">
                 This Privacy Policy explains how Boosted Technology Co., LLC, a Florida limited liability
                 company (“Boosted Technology Co., LLC,” “we,” “us,” or “our”), collects, uses, stores, and
-                shares information when you use Sermon Slide Pro — our website, applications, exports,
+                shares information when you use Sermon Slide Pro — our website, applications, presenter,
                 subscriptions, support flows, and related services. Sermon Slide Pro is a product of
                 Boosted Technology Co., LLC.
               </p>

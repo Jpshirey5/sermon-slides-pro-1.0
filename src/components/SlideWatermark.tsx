@@ -1,9 +1,8 @@
 // Watermark overlay for slide previews.
-// "preview" — large, bold, tiled diagonal mark shown before payment that makes the
-//   slide clearly unusable as an exported deck.
-// "brand" — small, subtle brand mark in the bottom corner shown after a one-time
-//   export is unlocked. Pro and higher subscriptions remove the watermark entirely,
-//   so this component is simply not rendered for subscribers.
+// "preview": large, bold, tiled diagonal mark shown before payment.
+// "brand": small, subtle brand mark in the bottom corner.
+// Paid subscriptions remove the watermark entirely, so this component is not
+// rendered for subscribers.
 
 export type SlideWatermarkVariant = "preview" | "brand";
 export type SlideWatermarkSize = "thumb" | "full";

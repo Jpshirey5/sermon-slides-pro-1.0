@@ -19,7 +19,7 @@ const sections = [
   {
     title: "Use of the Service",
     body: [
-      "Sermon Slide Pro is provided to help users create, manage, and export sermon slide content and related presentation materials.",
+      "Sermon Slide Pro is provided to help users create, manage, and present sermon slide content and related presentation materials.",
       "You agree not to use the service in a way that is unlawful, abusive, fraudulent, harmful, or that interferes with the availability, security, or proper operation of the platform.",
       "You may not attempt to reverse engineer, scrape, automate, disrupt, or gain unauthorized access to the service, its infrastructure, or other customer data.",
     ],
@@ -27,17 +27,17 @@ const sections = [
   {
     title: "Customer Content",
     body: [
-      "You retain ownership of the content you create, upload, or store in Sermon Slide Pro, including sermon outlines, slide text, exported presentation data, and related materials.",
+      "You retain ownership of the content you create, upload, or store in Sermon Slide Pro, including sermon outlines, slide text, presentation data, and related materials.",
       "You grant us the limited rights necessary to host, process, back up, transmit, and display your content solely to operate and improve the service, provide support, and comply with legal obligations.",
       "You are responsible for ensuring that you have the rights and permissions necessary to use the content you place into the platform.",
     ],
   },
   {
-    title: "Subscriptions, Payments, and Exports",
+    title: "Subscriptions and Payments",
     body: [
       "Certain features require a paid subscription or one-time payment. Payment processing is handled through Stripe.",
       "Subscriptions may renew automatically unless canceled in accordance with the product’s cancellation flow. If a subscription is canceled, access may continue through the end of the current paid term where applicable.",
-      "One-time export purchases and subscriptions are subject to the pricing, billing interval, and checkout terms shown at the time of purchase.",
+      "Subscriptions are subject to the pricing, billing interval, and checkout terms shown at the time of purchase.",
     ],
   },
   {
@@ -122,13 +122,13 @@ export default function TermsAndConditions() {
                 Florida limited liability company (“Boosted Technology Co., LLC,” “we,” “us,” or “our”).
                 Sermon Slide Pro is a product of Boosted Technology Co., LLC. These Terms describe the
                 rules and expectations that apply when you use Sermon Slide Pro’s website, subscriptions,
-                exports, support channels, and related services.
+                presenter, support channels, and related services.
               </p>
             </div>
 
             <div className="mt-10 grid gap-5 md:grid-cols-3">
               {[
-                { icon: CreditCard, title: "Subscriptions and price", text: "Paid plans, one-time exports, and billing flows are governed by the pricing shown at checkout." },
+                { icon: CreditCard, title: "Subscriptions and price", text: "Paid plans and billing flows are governed by the pricing shown at checkout." },
                 { icon: ShieldAlert, title: "Responsible use", text: "Use of the platform must remain lawful, secure, and respectful of the service and other users." },
                 { icon: Scale, title: "Content and rights", text: "You keep ownership of your content while granting only the rights needed to operate the service." },
               ].map((item) => {
