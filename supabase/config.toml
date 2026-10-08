@@ -77,3 +77,14 @@ verify_jwt = false
 
 [functions.partner-approve]
 verify_jwt = false
+
+# Presenter endpoints. Sign-in is checked in code with getClaims (see
+# _shared/presenter/http.ts), the same way check-subscription does it.
+[functions.service-bundle]
+verify_jwt = false
+
+[functions.presenter-status]
+verify_jwt = false
+
+[functions.fums-report]
+verify_jwt = false
