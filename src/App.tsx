@@ -20,6 +20,10 @@ import AuthConfirm from "./pages/AuthConfirm";
 import PartnerHandoff from "./pages/PartnerHandoff";
 import ConfirmEmailChange from "./pages/ConfirmEmailChange";
 import Dashboard from "./pages/Dashboard";
+import Services from "./pages/Services";
+import ServiceBuilder from "./pages/ServiceBuilder";
+import Present from "./pages/Present";
+import PresentOutput from "./pages/PresentOutput";
 import Account from "./pages/Account";
 import ExitSurvey from "./pages/ExitSurvey";
 import CheckoutRedirect from "./pages/CheckoutRedirect";
@@ -92,6 +96,11 @@ const App = () => (
               <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
               <Route path="/dashboard/create" element={<ProtectedRoute><CreateSermon /></ProtectedRoute>} />
               <Route path="/dashboard/create/review/:id" element={<ProtectedRoute><SermonReview /></ProtectedRoute>} />
+              <Route path="/dashboard/services" element={<ProtectedRoute><Services /></ProtectedRoute>} />
+              <Route path="/dashboard/services/:id" element={<ProtectedRoute><ServiceBuilder /></ProtectedRoute>} />
+              <Route path="/present/:serviceId" element={<ProtectedRoute><Present /></ProtectedRoute>} />
+              {/* The projector window holds no data; it only shows frames the signed-in operator sends. */}
+              <Route path="/present/:serviceId/output" element={<PresentOutput />} />
               
               <Route path="/account" element={<ProtectedRoute allowUnsubscribed><Account /></ProtectedRoute>} />
               <Route path="/contact" element={<Contact />} />

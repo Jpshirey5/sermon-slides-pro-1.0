@@ -859,6 +859,126 @@ export type Database = {
           },
         ]
       }
+      bible_translations: {
+        Row: {
+          copyright_full: string | null
+          copyright_short: string | null
+          created_at: string
+          id: string
+          is_public_domain: boolean
+          language: string
+          name: string
+          provider: string
+          provider_bible_id: string | null
+          requires_entitlement: boolean
+          status: string
+          status_changed_at: string | null
+          status_reason: string | null
+          updated_at: string
+        }
+        Insert: { [_ in never]: never }
+        Update: { [_ in never]: never }
+        Relationships: []
+      }
+      service_items: {
+        Row: {
+          account_id: string
+          created_at: string
+          id: string
+          item_type: string
+          label: string | null
+          payload: Json
+          payload_version: number
+          position: number
+          sermon_id: string | null
+          service_id: string
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          created_at?: string
+          id?: string
+          item_type: string
+          label?: string | null
+          payload?: Json
+          payload_version?: number
+          position: number
+          sermon_id?: string | null
+          service_id: string
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          created_at?: string
+          id?: string
+          item_type?: string
+          label?: string | null
+          payload?: Json
+          payload_version?: number
+          position?: number
+          sermon_id?: string | null
+          service_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "service_items_service_id_fkey"
+            columns: ["service_id"]
+            isOneToOne: false
+            referencedRelation: "services"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_items_sermon_id_fkey"
+            columns: ["sermon_id"]
+            isOneToOne: false
+            referencedRelation: "sermons"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      services: {
+        Row: {
+          account_id: string
+          archived_at: string | null
+          campus_id: string | null
+          created_at: string
+          created_by_user_id: string | null
+          default_translation_id: string | null
+          id: string
+          logo_path: string | null
+          service_date: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          account_id: string
+          archived_at?: string | null
+          campus_id?: string | null
+          created_at?: string
+          created_by_user_id?: string | null
+          default_translation_id?: string | null
+          id?: string
+          logo_path?: string | null
+          service_date?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string
+          archived_at?: string | null
+          campus_id?: string | null
+          created_at?: string
+          created_by_user_id?: string | null
+          default_translation_id?: string | null
+          id?: string
+          logo_path?: string | null
+          service_date?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       support_requests: {
         Row: {
           account_id: string | null
@@ -1112,6 +1232,10 @@ export type Database = {
           name: string
           updated_at: string
         }
+      }
+      reorder_service_items: {
+        Args: { p_service_id: string; p_item_ids: string[] }
+        Returns: undefined
       }
       set_primary_campus: {
         Args: { _campus_id: string }

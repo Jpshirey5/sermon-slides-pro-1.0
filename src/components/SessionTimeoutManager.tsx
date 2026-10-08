@@ -8,15 +8,18 @@ import {
   STORAGE_LAST_ACTIVITY_KEY,
   STORAGE_FORCED_LOGOUT_KEY,
   isInactivityExpired,
+  isPresentingHoldActive,
+  isProjectorWindowPath,
   resetSessionInactivityTracking,
   setStoredLogoutReason,
 } from "@/lib/session-security";
 
 const SessionTimeoutManager = () => {
   const { user, signOut } = useAuth();
-  const userId = user?.id;
   const navigate = useNavigate();
   const location = useLocation();
+  // No idle timer on the projector window (see isProjectorWindowPath).
+  const userId = isProjectorWindowPath(location.pathname) ? undefined : user?.id;
   const [warningOpen, setWarningOpen] = useState(false);
   const [secondsRemaining, setSecondsRemaining] = useState(Math.ceil(WARNING_MS / 1000));
   const lastActivityRef = useRef(Date.now());
@@ -92,6 +95,13 @@ const SessionTimeoutManager = () => {
     document.addEventListener("visibilitychange", handleVisibility);
 
     const interval = window.setInterval(async () => {
+      // Presenting counts as activity (see holdSessionWhilePresenting).
+      if (isPresentingHoldActive()) {
+        lastActivityRef.current = Date.now();
+        sessionStorage.setItem(STORAGE_LAST_ACTIVITY_KEY, String(lastActivityRef.current));
+        setWarningOpen(false);
+        return;
+      }
       const remainingMs = getRemainingMs();
 
       if (remainingMs <= WARNING_MS && remainingMs > 0) {

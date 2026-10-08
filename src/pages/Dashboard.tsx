@@ -9,6 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import {
   BookOpen,
   LifeBuoy,
+  MonitorPlay,
   LogOut,
   Presentation,
   Plus,
@@ -848,6 +849,12 @@ const Dashboard = () => {
                 </span>
               </Link>
               <div className="flex items-center gap-2">
+                <Link to="/dashboard/services">
+                  <Button variant="ghost" size="sm">
+                    <MonitorPlay className="w-4 h-4" />
+                    <span className="hidden sm:inline">Services</span>
+                  </Button>
+                </Link>
                 <Button variant="ghost" size="sm" onClick={() => setShowSupportDialog(true)} data-tour-id="dashboard-contact-support">
                   <LifeBuoy className="w-4 h-4" />
                   <span className="hidden sm:inline">Contact Support</span>
