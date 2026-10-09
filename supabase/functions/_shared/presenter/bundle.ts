@@ -18,17 +18,18 @@ import {
   passageKey,
   planScriptureItem,
   planSermon,
+  planSong,
   renderSlot,
   type ResolvedText,
   type SlideSlot,
 } from "./slides.ts";
 import type { PresenterStore, ServiceItemRow } from "./store.ts";
-import type { BundleItem, BundleTranslation, PresenterSlide, ServiceBundle } from "./types.ts";
+import { STAGE_TEMPLATES, type BundleItem, type BundleTranslation, type PresenterSlide, type ServiceBundle, type StageTemplate } from "./types.ts";
 
 export const LIMITS = {
   maxItems: 200,
   maxVerses: 300,
-  perUserPerMinute: 20,
+  perUserPerMinute: 60,
   perAccountPerDay: 300,
 };
 
@@ -58,6 +59,24 @@ interface PlannedItem {
   slots: SlideSlot[];
 }
 
+const DEFAULT_STAGE_TEMPLATE: Record<BundleItem["type"], StageTemplate> = {
+  song: "worship",
+  sermon: "message",
+  scripture: "simple",
+  logo: "simple",
+  blank: "simple",
+  credits: "simple",
+};
+
+/** Stage settings from the item payload, falling back to the default for its type. */
+export function stageSettings(type: BundleItem["type"], payload: unknown): BundleItem["stage"] {
+  const p = (payload && typeof payload === "object" ? payload : {}) as { stage_template?: unknown; timer_seconds?: unknown };
+  const template = STAGE_TEMPLATES.includes(p.stage_template as StageTemplate) ? (p.stage_template as StageTemplate) : DEFAULT_STAGE_TEMPLATE[type];
+  const t = p.timer_seconds;
+  const timer = typeof t === "number" && Number.isInteger(t) && t > 0 && t <= 6 * 60 * 60 ? t : null;
+  return { template, timer_seconds: timer };
+}
+
 export async function buildServiceBundle(
   deps: BundleDeps,
   request: { userId: string; serviceId: string },
@@ -70,7 +89,8 @@ export async function buildServiceBundle(
   if (!service || !(await store.isMember(request.userId, service.account_id))) {
     return { ok: false, status: 404, error: "not_found" };
   }
-  if (!accountCanPresent(await store.getAccountPlan(service.account_id), now)) {
+  const plan = await store.getAccountPlan(service.account_id);
+  if (!accountCanPresent(plan, now)) {
     return { ok: false, status: 403, error: "plan_required" };
   }
   const userOk = await store.rateTake(`user:${request.userId}`, minuteBucket("bundle", now), limits.perUserPerMinute);
@@ -85,6 +105,8 @@ export async function buildServiceBundle(
   const fallback = service.default_translation_id || FALLBACK_TRANSLATION;
   const sermonIds = [...new Set(rows.map((r) => r.sermon_id).filter((id): id is string => Boolean(id)))];
   const sermons = new Map((await store.getSermons(sermonIds, service.account_id)).map((s) => [s.id, s]));
+  const songIds = [...new Set(rows.map((r) => r.song_id).filter((id): id is string => Boolean(id)))];
+  const songs = new Map((await store.getSongs(songIds, service.account_id)).map((s) => [s.id, s]));
 
   const planned: PlannedItem[] = rows.map((row) => {
     switch (row.item_type) {
@@ -102,6 +124,18 @@ export async function buildServiceBundle(
       }
       case "scripture":
         return { row, type: "scripture", label: row.label || "Scripture", slots: planScriptureItem(row.id, row.payload, fallback) };
+      case "song": {
+        const song = row.song_id ? songs.get(row.song_id) : undefined;
+        if (!song) {
+          return {
+            row,
+            type: "song",
+            label: row.label || "Song",
+            slots: [{ kind: "static", slide: { id: `${row.id}:missing`, kind: "missing", missing_reason: "song_deleted", style: BLACK } }],
+          };
+        }
+        return { row, type: "song", label: row.label || song.title, slots: planSong(row.id, song, plan?.ccli_license_number ?? null) };
+      }
       case "logo":
         return { row, type: "logo", label: row.label || "Logo", slots: [{ kind: "static", slide: { id: row.id, kind: "logo", style: BLACK } }] };
       default:
@@ -164,6 +198,9 @@ export async function buildServiceBundle(
       label: item.label,
       expires_at: earliestExpiry(expiries)?.toISOString() ?? null,
       translation_ids: [...used].sort(),
+      stage: stageSettings(item.type, item.row.payload),
+      sermon_id: item.row.sermon_id,
+      song_id: item.row.song_id ?? null,
       slides,
     };
   });
@@ -181,6 +218,7 @@ export async function buildServiceBundle(
       label: "Scripture credits",
       expires_at: null,
       translation_ids: notices.map((n) => n.translation_id),
+      stage: stageSettings("credits", null),
       slides: [{ id: `${service.id}:credits`, kind: "credits", notices, style: BLACK }],
     });
   }

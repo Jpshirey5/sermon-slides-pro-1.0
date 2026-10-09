@@ -5,6 +5,7 @@
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2.57.2";
 import type { AccountPlanFields } from "./access.ts";
 import type { TranslationStatus } from "../scripture/expiry.ts";
+import type { SongRow } from "./slides.ts";
 
 export interface ServiceRow {
   id: string;
@@ -21,6 +22,7 @@ export interface ServiceItemRow {
   position: number;
   item_type: string;
   sermon_id: string | null;
+  song_id?: string | null;
   payload: unknown;
   label: string | null;
 }
@@ -40,6 +42,8 @@ export interface PresenterStore {
   getItems(serviceId: string): Promise<ServiceItemRow[]>;
   /** Only sermons that belong to `accountId`. */
   getSermons(ids: readonly string[], accountId: string): Promise<SermonRow[]>;
+  /** Only songs that belong to `accountId`. */
+  getSongs(ids: readonly string[], accountId: string): Promise<SongRow[]>;
   rateTake(key: string, bucket: string, limit: number): Promise<boolean>;
   getRevocationEpoch(): Promise<number>;
   getTranslationStatuses(): Promise<{ id: string; status: TranslationStatus }[]>;
@@ -95,7 +99,7 @@ export function createSupabasePresenterStore(admin: SupabaseClient): PresenterSt
     async getAccountPlan(accountId) {
       const { data, error } = await admin
         .from("accounts")
-        .select("subscription_status, is_beta_user, beta_trial_ends_at, partner_billing_active")
+        .select("subscription_status, is_beta_user, beta_trial_ends_at, partner_billing_active, ccli_license_number")
         .eq("id", accountId)
         .maybeSingle();
       if (error) fail("account", error);
@@ -105,7 +109,7 @@ export function createSupabasePresenterStore(admin: SupabaseClient): PresenterSt
     async getItems(serviceId) {
       const { data, error } = await admin
         .from("service_items")
-        .select("id, position, item_type, sermon_id, payload, label")
+        .select("id, position, item_type, sermon_id, song_id, payload, label")
         .eq("service_id", serviceId)
         .order("position", { ascending: true });
       if (error) fail("items", error);
@@ -121,6 +125,17 @@ export function createSupabasePresenterStore(admin: SupabaseClient): PresenterSt
         .in("id", ids as string[]);
       if (error) fail("sermons", error);
       return (data as SermonRow[] | null) ?? [];
+    },
+
+    async getSongs(ids, accountId) {
+      if (ids.length === 0) return [];
+      const { data, error } = await admin
+        .from("songs")
+        .select("id, title, author, ccli_song_number, copyright, source, sections, arrangement")
+        .eq("account_id", accountId)
+        .in("id", ids as string[]);
+      if (error) fail("songs", error);
+      return (data as SongRow[] | null) ?? [];
     },
 
     async rateTake(key, bucket, limit) {

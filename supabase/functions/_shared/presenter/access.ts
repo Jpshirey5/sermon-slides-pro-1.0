@@ -7,6 +7,8 @@ export interface AccountPlanFields {
   is_beta_user?: boolean | null;
   beta_trial_ends_at?: string | null;
   partner_billing_active?: boolean | null;
+  /** Shown in song credit lines. */
+  ccli_license_number?: string | null;
 }
 
 /**
