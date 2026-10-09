@@ -19,6 +19,8 @@ import {
   planScriptureItem,
   planSermon,
   planSong,
+  planCustomSlides,
+  planVideo,
   renderSlot,
   type ResolvedText,
   type SlideSlot,
@@ -62,6 +64,8 @@ interface PlannedItem {
 const DEFAULT_STAGE_TEMPLATE: Record<BundleItem["type"], StageTemplate> = {
   song: "worship",
   sermon: "message",
+  slides: "simple",
+  video: "video",
   scripture: "simple",
   logo: "simple",
   blank: "simple",
@@ -107,6 +111,8 @@ export async function buildServiceBundle(
   const sermons = new Map((await store.getSermons(sermonIds, service.account_id)).map((s) => [s.id, s]));
   const songIds = [...new Set(rows.map((r) => r.song_id).filter((id): id is string => Boolean(id)))];
   const songs = new Map((await store.getSongs(songIds, service.account_id)).map((s) => [s.id, s]));
+  const mediaIds = [...new Set(rows.map((r) => r.media_id).filter((id): id is string => Boolean(id)))];
+  const media = new Map((await store.getMedia(mediaIds, service.account_id)).map((m) => [m.id, m]));
 
   const planned: PlannedItem[] = rows.map((row) => {
     switch (row.item_type) {
@@ -135,6 +141,20 @@ export async function buildServiceBundle(
           };
         }
         return { row, type: "song", label: row.label || song.title, slots: planSong(row.id, song, plan?.ccli_license_number ?? null) };
+      }
+      case "slides":
+        return { row, type: "slides", label: row.label || "Slides", slots: planCustomSlides(row.id, row.payload) };
+      case "video": {
+        const m = row.media_id ? media.get(row.media_id) : undefined;
+        if (!m) {
+          return {
+            row,
+            type: "video",
+            label: row.label || "Video",
+            slots: [{ kind: "static", slide: { id: `${row.id}:missing`, kind: "missing", missing_reason: "video_deleted", style: BLACK } }],
+          };
+        }
+        return { row, type: "video", label: row.label || m.file_name, slots: planVideo(row.id, m, row.payload) };
       }
       case "logo":
         return { row, type: "logo", label: row.label || "Logo", slots: [{ kind: "static", slide: { id: row.id, kind: "logo", style: BLACK } }] };
@@ -201,6 +221,7 @@ export async function buildServiceBundle(
       stage: stageSettings(item.type, item.row.payload),
       sermon_id: item.row.sermon_id,
       song_id: item.row.song_id ?? null,
+      media_id: item.row.media_id ?? null,
       slides,
     };
   });

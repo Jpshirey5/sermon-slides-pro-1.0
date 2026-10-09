@@ -15,7 +15,21 @@ export interface SlideStyle {
   fontSize?: number | null;
 }
 
-export type PresenterSlideKind = "title" | "point" | "scripture" | "lyrics" | "blank" | "logo" | "credits" | "missing";
+export type PresenterSlideKind = "title" | "point" | "scripture" | "lyrics" | "graphic" | "video" | "blank" | "logo" | "credits" | "missing";
+
+/** What happens when a video reaches its end. */
+export type VideoEndAction = "hold" | "clear" | "next";
+
+export interface SlideVideo {
+  media_id: string;
+  /** Path in the private service-media bucket; the operator turns it into a playable URL. */
+  storage_path: string;
+  duration_seconds: number | null;
+  loop: boolean;
+  end_action: VideoEndAction;
+  /** Resolved playable URL, filled in by the operator before a frame is sent. */
+  src?: string;
+}
 
 /** Stage display layouts. Each item picks one; the operator can switch live. */
 export type StageTemplate = "worship" | "message" | "video" | "simple";
@@ -46,12 +60,17 @@ export interface PresenterSlide {
   credit?: string;
   /** Speaker notes. Shown on the stage display only, never on the main screen. */
   notes?: string;
-  /** Sermon slides only: where this slide comes from, so the workspace can edit it. */
-  source?: { sermon_id: string; slide_indexes: number[] };
+  /**
+   * Where this slide comes from, so the workspace can edit it: a sermon's
+   * editor slides, or a custom Slides item's own list.
+   */
+  source?: { sermon_id?: string; item_id?: string; slide_indexes: number[] };
+  /** Video slides only. */
+  video?: SlideVideo;
   style: SlideStyle;
 }
 
-export type BundleItemType = "sermon" | "scripture" | "song" | "blank" | "logo" | "credits";
+export type BundleItemType = "sermon" | "scripture" | "song" | "slides" | "video" | "blank" | "logo" | "credits";
 
 export interface BundleItem {
   id: string;
@@ -65,6 +84,7 @@ export interface BundleItem {
   stage: { template: StageTemplate; timer_seconds: number | null };
   sermon_id?: string | null;
   song_id?: string | null;
+  media_id?: string | null;
   slides: PresenterSlide[];
 }
 

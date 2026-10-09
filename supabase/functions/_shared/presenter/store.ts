@@ -5,7 +5,7 @@
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2.57.2";
 import type { AccountPlanFields } from "./access.ts";
 import type { TranslationStatus } from "../scripture/expiry.ts";
-import type { SongRow } from "./slides.ts";
+import type { MediaRow, SongRow } from "./slides.ts";
 
 export interface ServiceRow {
   id: string;
@@ -23,6 +23,7 @@ export interface ServiceItemRow {
   item_type: string;
   sermon_id: string | null;
   song_id?: string | null;
+  media_id?: string | null;
   payload: unknown;
   label: string | null;
 }
@@ -44,6 +45,8 @@ export interface PresenterStore {
   getSermons(ids: readonly string[], accountId: string): Promise<SermonRow[]>;
   /** Only songs that belong to `accountId`. */
   getSongs(ids: readonly string[], accountId: string): Promise<SongRow[]>;
+  /** Only media that belongs to `accountId`. */
+  getMedia(ids: readonly string[], accountId: string): Promise<MediaRow[]>;
   rateTake(key: string, bucket: string, limit: number): Promise<boolean>;
   getRevocationEpoch(): Promise<number>;
   getTranslationStatuses(): Promise<{ id: string; status: TranslationStatus }[]>;
@@ -109,7 +112,7 @@ export function createSupabasePresenterStore(admin: SupabaseClient): PresenterSt
     async getItems(serviceId) {
       const { data, error } = await admin
         .from("service_items")
-        .select("id, position, item_type, sermon_id, song_id, payload, label")
+        .select("id, position, item_type, sermon_id, song_id, media_id, payload, label")
         .eq("service_id", serviceId)
         .order("position", { ascending: true });
       if (error) fail("items", error);
@@ -136,6 +139,17 @@ export function createSupabasePresenterStore(admin: SupabaseClient): PresenterSt
         .in("id", ids as string[]);
       if (error) fail("songs", error);
       return (data as SongRow[] | null) ?? [];
+    },
+
+    async getMedia(ids, accountId) {
+      if (ids.length === 0) return [];
+      const { data, error } = await admin
+        .from("service_media")
+        .select("id, storage_path, file_name, duration_seconds")
+        .eq("account_id", accountId)
+        .in("id", ids as string[]);
+      if (error) fail("media", error);
+      return (data as MediaRow[] | null) ?? [];
     },
 
     async rateTake(key, bucket, limit) {

@@ -5,7 +5,7 @@ import type { PGlite } from "npm:@electric-sql/pglite@0.5.8";
 import type { FumsEventRow, PresenterStore, ServiceItemRow, ServiceRow, SermonRow } from "../store.ts";
 import type { AccountPlanFields } from "../access.ts";
 import type { TranslationStatus } from "../../scripture/expiry.ts";
-import type { SongRow } from "../slides.ts";
+import type { MediaRow, SongRow } from "../slides.ts";
 
 const iso = (v: unknown) => (v instanceof Date ? v.toISOString() : v == null ? null : String(v));
 
@@ -37,7 +37,7 @@ export function createSqlPresenterStore(db: PGlite): PresenterStore {
     },
     async getItems(serviceId) {
       const { rows } = await db.query<ServiceItemRow>(
-        `select id, position, item_type, sermon_id, song_id, payload, label from public.service_items where service_id = $1 order by position`,
+        `select id, position, item_type, sermon_id, song_id, media_id, payload, label from public.service_items where service_id = $1 order by position`,
         [serviceId],
       );
       return rows;
@@ -53,6 +53,13 @@ export function createSqlPresenterStore(db: PGlite): PresenterStore {
       const { rows } = await db.query<SongRow>(
         `select id, title, author, ccli_song_number, copyright, source, sections, arrangement
          from public.songs where account_id = $1 and id = any($2)`,
+        [accountId, ids],
+      );
+      return rows;
+    },
+    async getMedia(ids, accountId) {
+      const { rows } = await db.query<MediaRow>(
+        `select id, storage_path, file_name, duration_seconds from public.service_media where account_id = $1 and id = any($2)`,
         [accountId, ids],
       );
       return rows;

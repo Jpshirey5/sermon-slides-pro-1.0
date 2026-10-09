@@ -419,3 +419,95 @@ export function planSong(itemId: string, song: SongRow, ccliLicense: string | nu
   });
   return slots;
 }
+
+// ── custom Slides items ─────────────────────────────────────────────────────
+
+export type CustomSlideKind = "title" | "text" | "graphic" | "blank";
+
+export interface CustomSlide {
+  id: string;
+  kind: CustomSlideKind;
+  title?: string;
+  body?: string;
+  background?: string;
+  backgroundImage?: string | null;
+  textColor?: string;
+  fontFamily?: string;
+  notes?: string;
+}
+
+const CUSTOM_KINDS: readonly CustomSlideKind[] = ["title", "text", "graphic", "blank"];
+const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
+
+/** Read the slides list stored on a Slides item, dropping anything malformed. */
+export function readCustomSlides(payload: unknown): CustomSlide[] {
+  const p = isObject(payload) ? payload : {};
+  if (!Array.isArray(p.slides)) return [];
+  return p.slides.filter(isObject).slice(0, 200).map((s, i) => ({
+    id: str(s.id) || `c${i}`,
+    kind: CUSTOM_KINDS.includes(s.kind as CustomSlideKind) ? (s.kind as CustomSlideKind) : "text",
+    title: str(s.title).slice(0, 300) || undefined,
+    body: str(s.body).slice(0, 2000) || undefined,
+    background: HEX_COLOR.test(str(s.background)) ? str(s.background) : undefined,
+    backgroundImage: str(s.backgroundImage) || null,
+    textColor: HEX_COLOR.test(str(s.textColor)) ? str(s.textColor) : undefined,
+    fontFamily: str(s.fontFamily).slice(0, 80) || undefined,
+    notes: str(s.notes).slice(0, 2000) || undefined,
+  }));
+}
+
+export function planCustomSlides(itemId: string, payload: unknown): SlideSlot[] {
+  return readCustomSlides(payload).map((s, i) => {
+    const style: SlideStyle = {
+      background: s.background ?? DEFAULT_STYLE.background,
+      backgroundImage: s.backgroundImage,
+      fontFamily: s.fontFamily ?? DEFAULT_STYLE.fontFamily,
+      textColor: s.textColor ?? DEFAULT_STYLE.textColor,
+      lineSpacing: DEFAULT_STYLE.lineSpacing,
+    };
+    const kind = s.kind === "text" ? "point" : s.kind;
+    return {
+      kind: "static" as const,
+      slide: {
+        id: `${itemId}:${s.id}`,
+        kind,
+        title: s.kind === "graphic" || s.kind === "blank" ? undefined : s.title,
+        subtitle: s.kind === "text" || s.kind === "title" ? s.body : undefined,
+        notes: s.notes,
+        source: { item_id: itemId, slide_indexes: [i] },
+        style,
+      },
+    };
+  });
+}
+
+// ── video items ─────────────────────────────────────────────────────────────
+
+export interface MediaRow {
+  id: string;
+  storage_path: string;
+  file_name: string;
+  duration_seconds: number | string | null;
+}
+
+export function planVideo(itemId: string, media: MediaRow, payload: unknown): SlideSlot[] {
+  const p = isObject(payload) ? payload : {};
+  const endAction = p.end_action === "clear" || p.end_action === "next" ? p.end_action : "hold";
+  const duration = media.duration_seconds === null ? null : Number(media.duration_seconds);
+  return [{
+    kind: "static",
+    slide: {
+      id: `${itemId}:video`,
+      kind: "video",
+      title: media.file_name,
+      video: {
+        media_id: media.id,
+        storage_path: media.storage_path,
+        duration_seconds: duration !== null && Number.isFinite(duration) ? duration : null,
+        loop: p.loop === true,
+        end_action: endAction,
+      },
+      style: { ...DEFAULT_STYLE, background: "#000000" },
+    },
+  }];
+}
