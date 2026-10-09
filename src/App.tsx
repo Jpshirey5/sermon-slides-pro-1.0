@@ -10,6 +10,9 @@ import CreateSermon from "./pages/CreateSermon";
 import SermonReview from "./pages/SermonReview";
 import SlideEditor from "./pages/SlideEditor";
 import Login from "./pages/Login";
+import DesktopLogin from "./pages/DesktopLogin";
+import { DesktopGate } from "@/desktop/DesktopGate";
+import { getDesktop } from "@/desktop/bridge";
 import SignUp from "./pages/SignUp";
 import SignupComplete from "./pages/SignupComplete";
 import SignupIncomplete from "./pages/SignupIncomplete";
@@ -72,12 +75,13 @@ const App = () => (
           <AuthProvider>
             <RecoveryRedirectHandler />
             <SessionTimeoutManager />
+            <DesktopGate>
             <Routes>
               <Route path="/" element={<Index />} />
               <Route path="/create" element={<CreateSermon />} />
               <Route path="/create/review/:id" element={<SermonReview />} />
               <Route path="/editor/:id" element={<SlideEditor />} />
-              <Route path="/login" element={<Login />} />
+              <Route path="/login" element={getDesktop() ? <DesktopLogin /> : <Login />} />
               <Route path="/signup" element={<SignUp />} />
               <Route path="/signup/complete" element={<SignupComplete />} />
               <Route path="/signup-incomplete" element={<ProtectedRoute allowUnsubscribed allowPendingCheckout><SignupIncomplete /></ProtectedRoute>} />
@@ -121,6 +125,7 @@ const App = () => (
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>
+            </DesktopGate>
           </AuthProvider>
         </BrowserRouter>
       </TooltipProvider>

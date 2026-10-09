@@ -60,4 +60,5 @@ Installers land in `desktop/release`. Without signing they still work, but Mac a
 
 - The app loads from `ssp://app`. Supabase functions only allow the website's origins, so for Supabase responses to our own pages, the app sets the allowed origin to `ssp://app` (see `src/cors.ts`). Nothing else is changed.
 - Signing in works the same as the website. The session lasts until the app is closed.
-- The app icon still uses Electron's default. Put `icon.icns` (Mac) and `icon.ico` (Windows) in `desktop/resources` to brand it.
+- The app icon is the landing page nav logo (gold circle, open book): `resources/icon.svg`, rendered to `resources/icon.png` (1024px). The installer tool makes the Mac and Windows icons from the PNG.
+- The desktop app opens to a sign-in screen only. Sign-up, password help, and legal pages open on the website in the browser; marketing and guest pages never show in the app (see `src/desktop/routes.ts` in the web app).

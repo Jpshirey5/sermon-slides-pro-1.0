@@ -18,6 +18,8 @@ import { chooseDisplay, type PresenterWindowKind, summarizeDisplays, validatePre
 const DEV_URL = process.env.SSP_DEV_URL?.replace(/\/$/, "") || null;
 const APP_URL = DEV_URL ?? ORIGIN;
 const WEB_ROOT = app.isPackaged ? path.join(process.resourcesPath, "web") : path.join(__dirname, "..", "web");
+// Packaged builds get their icon from the installer; running from source uses this one.
+const DEV_ICON = app.isPackaged ? undefined : path.join(__dirname, "..", "resources", "icon.png");
 
 protocol.registerSchemesAsPrivileged([
   { scheme: SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true, codeCache: true } },
@@ -64,6 +66,7 @@ function createMainWindow() {
     backgroundColor: "#0a0a0a",
     title: "Sermon Slide Pro",
     show: false,
+    ...(DEV_ICON ? { icon: DEV_ICON } : {}),
     webPreferences: secureWebPreferences(true),
   });
   guardNavigation(mainWindow);
@@ -73,7 +76,8 @@ function createMainWindow() {
     for (const w of presenterWindows.values()) if (!w.isDestroyed()) w.close();
     presenterWindows.clear();
   });
-  void mainWindow.loadURL(`${APP_URL}/dashboard`);
+  // Sign-in first; signed-in people are sent on to their dashboard.
+  void mainWindow.loadURL(`${APP_URL}/login`);
 }
 
 function openPresenterWindow(kind: PresenterWindowKind, pathWithQuery: string, displayId: unknown): boolean {
@@ -215,6 +219,7 @@ app.on("second-instance", () => {
 });
 
 app.whenReady().then(() => {
+  if (DEV_ICON && process.platform === "darwin") app.dock?.setIcon(DEV_ICON);
   // Expired offline copies are deleted on every launch.
   offlineCache.purgeExpired();
   if (!DEV_URL) serveApp();
