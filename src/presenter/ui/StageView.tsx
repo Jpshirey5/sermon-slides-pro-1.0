@@ -62,7 +62,7 @@ export function StageView({ frame, now, className = "" }: StageViewProps) {
           {frame.itemLabel}
           {frame.mainMode !== "live" && (
             <span className="ml-[1.5cqw] rounded bg-neutral-800 px-[0.8cqw] py-[0.2cqw] text-amber-300" style={{ fontSize: "1.4cqw" }}>
-              Main screen: {frame.mainMode === "black" ? "black" : "logo"}
+              Main screen: {frame.mainMode === "black" ? "cleared" : "logo"}
             </span>
           )}
         </p>

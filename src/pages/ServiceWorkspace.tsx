@@ -609,7 +609,7 @@ const ServiceWorkspace = () => {
         <aside className="flex w-[380px] shrink-0 flex-col gap-4 overflow-y-auto border-l border-neutral-800 p-3">
           <section aria-label="Main screen">
             <div className="flex items-center justify-between">
-              <p className={panelTitle}>Main screen{state.mode !== "live" && <span className="text-amber-400"> · {state.mode === "black" ? "black" : "logo"}</span>}</p>
+              <p className={panelTitle}>Main screen{state.mode !== "live" && <span className="text-amber-400"> · {state.mode === "black" ? "cleared" : "logo"}</span>}</p>
               <span className={`mb-2 flex items-center gap-1 text-[11px] ${projectorConnected ? "text-emerald-400" : "text-neutral-500"}`}>
                 <Radio className="h-3 w-3" /> {projectorConnected ? "Connected" : "Not open"}
               </span>
@@ -620,8 +620,8 @@ const ServiceWorkspace = () => {
             )}
             <div className="mt-2 grid grid-cols-5 gap-1.5">
               <Button size="sm" className={modeButton(false)} onClick={() => dispatch({ type: "prev" })} aria-label="Previous slide"><ChevronLeft className="h-4 w-4" /></Button>
-              <Button size="sm" className={modeButton(state.mode === "black")} onClick={() => dispatch({ type: "toggleBlack" })}>Black</Button>
               <Button size="sm" className={modeButton(state.mode === "logo")} onClick={() => dispatch({ type: "toggleLogo" })}>Logo</Button>
+              <Button size="sm" className={modeButton(state.mode === "black")} onClick={() => dispatch({ type: "toggleBlack" })}>Clear</Button>
               <Button size="sm" className={modeButton(false)} disabled={state.mode === "live"} onClick={() => dispatch({ type: "live" })}>Show</Button>
               <Button size="sm" className="bg-primary text-primary-foreground hover:bg-primary/90" onClick={() => dispatch({ type: "next" })} aria-label="Next slide"><ChevronRight className="h-4 w-4" /></Button>
             </div>

@@ -168,7 +168,9 @@ describe("ServiceWorkspace", () => {
     renderWorkspace();
     await screen.findByRole("navigation", { name: "Service order" });
     const main = screen.getByRole("region", { name: "Main screen" });
-    fireEvent.click(within(main).getByRole("button", { name: "Black" }));
+    const buttons = within(main).getAllByRole("button").map((b) => b.textContent || b.getAttribute("aria-label"));
+    expect(buttons).toEqual(["Previous slide", "Logo", "Clear", "Show", "Next slide"]);
+    fireEvent.click(within(main).getByRole("button", { name: "Clear" }));
     fireEvent.click(within(main).getByRole("button", { name: "Logo" }));
     fireEvent.click(within(main).getByRole("button", { name: "Next slide" }));
     expect(mocks.session.dispatch).toHaveBeenCalledWith({ type: "toggleBlack" });

@@ -57,7 +57,7 @@ describe("StageView", () => {
     for (const template of ["worship", "message", "video", "simple"] as const) {
       const { unmount } = render(<StageView frame={frame({ template, message: "Wrap up", mainMode: "black" })} now={NOW} />);
       expect(screen.getByText("Wrap up")).toBeInTheDocument();
-      expect(screen.getByText("Main screen: black")).toBeInTheDocument();
+      expect(screen.getByText("Main screen: cleared")).toBeInTheDocument();
       unmount();
     }
   });

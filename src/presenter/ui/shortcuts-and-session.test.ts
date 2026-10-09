@@ -11,6 +11,8 @@ describe("keyboard shortcuts", () => {
     expect(press("b").action).toEqual({ type: "toggleBlack" });
     expect(press("B").action).toEqual({ type: "toggleBlack" });
     expect(press(".").action).toEqual({ type: "toggleBlack" });
+    expect(press("c").action).toEqual({ type: "toggleBlack" });
+    expect(press("C").action).toEqual({ type: "toggleBlack" });
     expect(press("l").action).toEqual({ type: "toggleLogo" });
     expect(press("Escape").action).toEqual({ type: "live" });
     expect(press("x").action).toBeNull();
