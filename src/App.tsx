@@ -24,6 +24,7 @@ import Services from "./pages/Services";
 import ServiceBuilder from "./pages/ServiceBuilder";
 import Present from "./pages/Present";
 import PresentOutput from "./pages/PresentOutput";
+import PresentStage from "./pages/PresentStage";
 import Account from "./pages/Account";
 import ExitSurvey from "./pages/ExitSurvey";
 import CheckoutRedirect from "./pages/CheckoutRedirect";
@@ -101,6 +102,7 @@ const App = () => (
               <Route path="/present/:serviceId" element={<ProtectedRoute><Present /></ProtectedRoute>} />
               {/* The projector window holds no data; it only shows frames the signed-in operator sends. */}
               <Route path="/present/:serviceId/output" element={<PresentOutput />} />
+              <Route path="/present/:serviceId/stage" element={<PresentStage />} />
               
               <Route path="/account" element={<ProtectedRoute allowUnsubscribed><Account /></ProtectedRoute>} />
               <Route path="/contact" element={<Contact />} />

@@ -47,6 +47,7 @@ describe("session safety while presenting", () => {
   it("only the projector window path skips the idle timer", () => {
     expect(isProjectorWindowPath("/present/abc/output")).toBe(true);
     expect(isProjectorWindowPath("/present/abc/output/")).toBe(true);
+    expect(isProjectorWindowPath("/present/abc/stage")).toBe(true);
     expect(isProjectorWindowPath("/present/abc")).toBe(false);
     expect(isProjectorWindowPath("/dashboard")).toBe(false);
     expect(isProjectorWindowPath("/present/abc/output/extra")).toBe(false);

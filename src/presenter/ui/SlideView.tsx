@@ -50,6 +50,15 @@ function scriptureSize(text: string): string {
   return "2.3cqw";
 }
 
+/** Lyrics get larger type than scripture; fewer, shorter lines. */
+function lyricsSize(text: string): string {
+  const lines = text.split("\n").length;
+  const longest = Math.max(...text.split("\n").map((l) => l.length), 0);
+  if (lines <= 2 && longest < 32) return "5.6cqw";
+  if (lines <= 4 && longest < 40) return "4.6cqw";
+  return "3.6cqw";
+}
+
 function backgroundStyle(slide: PresenterSlide, images: ResolvedImages): { style: CSSProperties; hasImage: boolean } {
   const ref = slide.style.backgroundImage;
   const url = ref ? images[ref] ?? (ref.startsWith("data:") || ref.startsWith("https://") ? ref : undefined) : undefined;
@@ -93,6 +102,18 @@ function SlideBody({ slide }: { slide: PresenterSlide }) {
           <p className="absolute bottom-[2cqw] left-[4cqw] right-[4cqw] opacity-70" style={{ fontSize: "1.15cqw", lineHeight: 1.3 }}>
             {slide.attribution}
           </p>
+        </div>
+      );
+    case "lyrics":
+      return (
+        <div className="flex h-full w-full flex-col items-center justify-center text-center" style={text}>
+          <p className="whitespace-pre-line font-medium" style={{ fontSize: lyricsSize(slide.text ?? ""), lineHeight: 1.3 }}>{slide.text}</p>
+          {/* CCLI credit line, on the first slide of a song. */}
+          {slide.credit && (
+            <p className="absolute bottom-[2cqw] left-[4cqw] right-[4cqw] opacity-70" style={{ fontSize: "1.15cqw", lineHeight: 1.3 }}>
+              {slide.credit}
+            </p>
+          )}
         </div>
       );
     case "credits":

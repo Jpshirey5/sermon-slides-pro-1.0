@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { buildStageFrame, initialStageControls } from "@/presenter/core/stage";
 import { initialPresenterState, presenterReducer } from "@/presenter/core/state";
 import { makeBundle } from "@/presenter/core/test-fixtures";
 import type { PresenterSession } from "@/presenter/ui/usePresenterSession";
@@ -33,6 +34,12 @@ function session(over: Partial<PresenterSession> = {}): PresenterSession {
     fumsPending: 0,
     retry: vi.fn(),
     attachProjectorWindow: vi.fn(),
+    stage: initialStageControls,
+    stageFrame: buildStageFrame(state, initialStageControls),
+    dispatchStage: vi.fn(),
+    stageConnected: false,
+    attachStageWindow: vi.fn(),
+    reload: vi.fn(async () => true),
     endSession: vi.fn(),
     ...over,
   };

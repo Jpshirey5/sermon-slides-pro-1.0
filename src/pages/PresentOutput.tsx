@@ -41,7 +41,7 @@ const PresentOutput = () => {
         setSeq(0);
       }
     });
-    t.send({ type: "ready" });
+    t.send({ type: "ready", role: "main" });
     return () => {
       off();
       t.close();

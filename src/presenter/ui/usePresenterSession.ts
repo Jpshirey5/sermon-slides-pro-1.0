@@ -16,6 +16,7 @@ import {
 import { msUntilRefresh, pruneBundle } from "../core/expiry";
 import { createFumsQueue, type FumsQueue, type FumsQueueStorage } from "../core/fums-queue";
 import { currentSlide, initialPresenterState, nextSlide, outputFrame, type PresenterAction, presenterReducer } from "../core/state";
+import { buildStageFrame, initialStageControls, type StageAction, type StageControls, type StageFrame, stageReducer } from "../core/stage";
 import type { PresenterTransport } from "../core/transport";
 import type { OutputFrame, PresenterSlide, ServiceBundle } from "../core/types";
 
@@ -59,6 +60,14 @@ export interface PresenterSession {
   retry: () => void;
   /** Register the projector window we opened, so we notice when it closes. */
   attachProjectorWindow: (win: Window | null) => void;
+  /** Stage display: operator controls, the frame the stage window shows, and its window. */
+  stage: StageControls;
+  stageFrame: StageFrame;
+  dispatchStage: (action: StageAction) => void;
+  stageConnected: boolean;
+  attachStageWindow: (win: Window | null) => void;
+  /** Refetch the bundle quietly, for example after an edit. */
+  reload: () => Promise<boolean>;
   endSession: () => void;
 }
 
@@ -80,6 +89,8 @@ export function usePresenterSession(serviceId: string, deps: PresenterSessionDep
   const [images, setImages] = useState<Record<string, string>>({});
   const [tick, setTick] = useState(0);
   const [projectorConnected, setProjectorConnected] = useState(false);
+  const [stageConnected, setStageConnected] = useState(false);
+  const [stage, dispatchStage] = useReducer(stageReducer, initialStageControls);
   const [canPresent, setCanPresent] = useState(true);
   const [fumsPending, setFumsPending] = useState(0);
   const [attempt, setAttempt] = useState(0);
@@ -211,7 +222,10 @@ export function usePresenterSession(serviceId: string, deps: PresenterSessionDep
     const t = depsRef.current.createTransport(nonce);
     transport.current = t;
     const off = t.onMessage((message) => {
-      if (message.type === "ready") {
+      if (message.type === "ready" && message.role === "stage") {
+        setStageConnected(true);
+        t.send({ type: "stage", frame: lastStageFrame.current });
+      } else if (message.type === "ready") {
         setProjectorConnected(true);
         // A fresh projector has shown nothing yet.
         lastAckedSlideId.current = null;
@@ -236,6 +250,26 @@ export function usePresenterSession(serviceId: string, deps: PresenterSessionDep
     };
   }, [nonce]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── stage display ──
+  const stageFrame = useMemo(() => buildStageFrame(state, stage), [state, stage]);
+  const lastStageFrame = useRef<StageFrame>(stageFrame);
+  const stageKey = JSON.stringify(stageFrame);
+  useEffect(() => {
+    lastStageFrame.current = stageFrame;
+    transport.current?.send({ type: "stage", frame: stageFrame });
+  }, [stageKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Moving to an item with a countdown loads its length (it does not start it).
+  const currentItem = state.bundle?.items[state.cursor.item];
+  useEffect(() => {
+    if (currentItem?.stage.timer_seconds) dispatchStage({ type: "timerLoad", seconds: currentItem.stage.timer_seconds });
+  }, [currentItem?.id, currentItem?.stage.timer_seconds]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const stageWindow = useRef<Window | null>(null);
+  const attachStageWindow = useCallback((win: Window | null) => {
+    stageWindow.current = win;
+  }, []);
+
   // Send every change of what the projector should show.
   const frameKey = JSON.stringify(frame);
   useEffect(() => {
@@ -254,6 +288,10 @@ export function usePresenterSession(serviceId: string, deps: PresenterSessionDep
         projectorWindow.current = null;
         setProjectorConnected(false);
         lastAckedSlideId.current = null;
+      }
+      if (stageWindow.current?.closed) {
+        stageWindow.current = null;
+        setStageConnected(false);
       }
     }, 2000);
     return () => clearInterval(id);
@@ -275,7 +313,10 @@ export function usePresenterSession(serviceId: string, deps: PresenterSessionDep
     transport.current?.send({ type: "end" });
     projectorWindow.current?.close();
     projectorWindow.current = null;
+    stageWindow.current?.close();
+    stageWindow.current = null;
     setProjectorConnected(false);
+    setStageConnected(false);
   }, []);
 
   return {
@@ -293,6 +334,12 @@ export function usePresenterSession(serviceId: string, deps: PresenterSessionDep
     fumsPending,
     retry: () => setAttempt((a) => a + 1),
     attachProjectorWindow,
+    stage,
+    stageFrame,
+    dispatchStage,
+    stageConnected,
+    attachStageWindow,
+    reload: () => loadBundle(true),
     endSession,
   };
 }
