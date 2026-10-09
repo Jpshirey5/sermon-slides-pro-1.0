@@ -18,9 +18,6 @@ verify_jwt = false
 [functions.send-invite]
 verify_jwt = true
 
-[functions.esv-lookup]
-verify_jwt = false
-
 [functions.scripture-lookup]
 verify_jwt = false
 

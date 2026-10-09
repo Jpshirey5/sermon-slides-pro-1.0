@@ -1,9 +1,8 @@
 // Scripture references as structured data. Services store these, never text.
 //
-// The book names and the free-text parser match scripture-lookup/index.ts and
-// src/lib/scripture-api.ts. scripture-lookup keeps its own copy for now
-// (the Partner API depends on it); it moves onto this module when it is
-// hardened in a later step.
+// The book names and the free-text parser are shared by scripture-lookup, the
+// presenter endpoints, and the app (src/lib/scripture-storage.ts). The app's
+// picker list in src/lib/bible-books.ts must stay in sync with BOOK_ALIASES.
 
 export interface PassageRef {
   /** USFM book code, for example "JHN". */

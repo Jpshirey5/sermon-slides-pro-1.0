@@ -806,7 +806,7 @@ const CreateSermon = () => {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {getAvailableTranslations(canUseEsv).map((t) => (
+                      {getAvailableTranslations(canUseEsv, Boolean(user)).map((t) => (
                         <SelectItem key={t.code} value={t.code}>
                           <span className="font-medium">{t.code}</span>
                           <span className="text-muted-foreground ml-2">
