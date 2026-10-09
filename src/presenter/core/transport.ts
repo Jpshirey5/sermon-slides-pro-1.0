@@ -6,16 +6,19 @@
 // rendered frames, and the output tells the operator what it actually put on
 // screen, which is what triggers FUMS reporting.
 
+import type { StageFrame } from "./stage";
 import type { OutputFrame } from "./types";
 
 export type OperatorMessage =
   | { type: "frame"; seq: number; frame: OutputFrame }
+  /** For the stage display window. */
+  | { type: "stage"; frame: StageFrame }
   /** Sent when the operator closes the service. The output goes black. */
   | { type: "end" };
 
 export type OutputMessage =
-  /** Output opened and is ready for frames. */
-  | { type: "ready" }
+  /** A window opened and is ready. Main screen unless role says "stage". */
+  | { type: "ready"; role?: "main" | "stage" }
   /** A frame is on screen. */
   | { type: "displayed"; seq: number; slideId: string | null };
 
@@ -42,7 +45,7 @@ export function newChannelNonce(random: () => string = () => crypto.randomUUID()
 function isPresenterMessage(value: unknown): value is PresenterMessage {
   if (!value || typeof value !== "object") return false;
   const type = (value as { type?: unknown }).type;
-  return type === "frame" || type === "end" || type === "ready" || type === "displayed";
+  return type === "frame" || type === "stage" || type === "end" || type === "ready" || type === "displayed";
 }
 
 type ChannelCtor = new (name: string) => BroadcastChannel;

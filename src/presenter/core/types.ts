@@ -11,6 +11,7 @@ export type {
   PresenterStatus,
   ServiceBundle,
   SlideStyle,
+  StageTemplate,
 } from "../../../supabase/functions/_shared/presenter/types.ts";
 
 import type { PresenterSlide } from "../../../supabase/functions/_shared/presenter/types.ts";
