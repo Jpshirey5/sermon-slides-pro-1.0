@@ -29,11 +29,19 @@ Sermon Slide Pro presents sermons itself. There is no file export. Copyrighted t
 
 ## Deploying
 
-1. Apply the migration to Supabase.
-2. Deploy the edge functions `service-bundle`, `presenter-status`, and `fums-report`.
-3. Then push to GitHub so Cloudflare Pages builds the app. The app needs the tables first.
+Order matters. The app depends on the database and functions being there first.
 
-Secrets used: `BIBLE_API_KEY` (already set), `BIBLE_ID_*` (already set), and `FUMS_ENDPOINT` (set it once API.Bible confirms the FUMS endpoint; until then display events are recorded but not forwarded).
+1. Take a database backup.
+2. Apply the migration `20261008120000_add_presenter_services_and_scripture_cache.sql`.
+3. Deploy the edge functions `service-bundle`, `presenter-status`, `fums-report`, and the rewritten `scripture-lookup`.
+4. Remove the old public ESV proxy from Supabase: `supabase functions delete esv-lookup` (deleting the folder from the repo does not remove the deployed function).
+5. Push to GitHub so Cloudflare Pages builds the app.
+6. Run the backfill dry run, review it, then apply it:
+   `SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... deno run --allow-net --allow-env --allow-read scripts/strip-sermon-scripture.ts` (add `--apply` for the real run).
+
+Secrets used: `BIBLE_API_KEY` (already set), `BIBLE_ID_*` (already set), `ESV_API_KEY` (already set), and `FUMS_ENDPOINT` (set it once API.Bible confirms the FUMS endpoint; until then display events are recorded but not forwarded).
+
+After step 3, guests can look up public domain translations only (KJV, WEB, ASV). Copyrighted translations need a signed-in church account.
 
 ## Testing
 
