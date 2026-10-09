@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Sermon Slide Pro mark: the landing page nav logo's gold and open book, as a rounded square.
+       Gold matches --gradient-hero (hsl 40 92% 56% to hsl 36 88% 54%, 145deg);
+       the book is lucide "book-open" in --primary-foreground, half the square's width.
+       The square is 824px with 185px corners on a 1024px canvas, the standard app icon shape and margin. -->
+  <defs>
+    <linearGradient id="gold" x1="0.21" y1="0.09" x2="0.79" y2="0.91">
+      <stop offset="0" stop-color="#F6B128"/>
+      <stop offset="1" stop-color="#F19E22"/>
+    </linearGradient>
+  </defs>
+  <rect x="100" y="100" width="824" height="824" rx="185" ry="185" fill="url(#gold)"/>
+  <g transform="translate(306 306) scale(17.1667)" fill="none" stroke="#171A22" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 7v14"/>
+    <path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/>
+  </g>
+</svg>

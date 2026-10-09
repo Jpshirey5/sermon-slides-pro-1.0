@@ -5,7 +5,7 @@ import type { PresenterAction } from "../core/state";
 export const SHORTCUTS: { keys: string; action: string }[] = [
   { keys: "Right, Space, Page Down", action: "Next slide" },
   { keys: "Left, Page Up", action: "Previous slide" },
-  { keys: "B", action: "Black screen on or off" },
+  { keys: "C or B", action: "Clear the screen on or off" },
   { keys: "L", action: "Logo screen on or off" },
   { keys: "Esc", action: "Back to the current slide" },
   { keys: "Number, then Enter", action: "Go to that item" },
@@ -36,6 +36,8 @@ export function keyToAction(key: string, state: KeyState): { action: PresenterAc
     case "ArrowUp":
     case "PageUp":
       return { action: { type: "prev" }, digits: "" };
+    case "c":
+    case "C":
     case "b":
     case "B":
     case ".":

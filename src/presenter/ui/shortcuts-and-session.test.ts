@@ -11,6 +11,8 @@ describe("keyboard shortcuts", () => {
     expect(press("b").action).toEqual({ type: "toggleBlack" });
     expect(press("B").action).toEqual({ type: "toggleBlack" });
     expect(press(".").action).toEqual({ type: "toggleBlack" });
+    expect(press("c").action).toEqual({ type: "toggleBlack" });
+    expect(press("C").action).toEqual({ type: "toggleBlack" });
     expect(press("l").action).toEqual({ type: "toggleLogo" });
     expect(press("Escape").action).toEqual({ type: "live" });
     expect(press("x").action).toBeNull();
@@ -47,6 +49,7 @@ describe("session safety while presenting", () => {
   it("only the projector window path skips the idle timer", () => {
     expect(isProjectorWindowPath("/present/abc/output")).toBe(true);
     expect(isProjectorWindowPath("/present/abc/output/")).toBe(true);
+    expect(isProjectorWindowPath("/present/abc/stage")).toBe(true);
     expect(isProjectorWindowPath("/present/abc")).toBe(false);
     expect(isProjectorWindowPath("/dashboard")).toBe(false);
     expect(isProjectorWindowPath("/present/abc/output/extra")).toBe(false);

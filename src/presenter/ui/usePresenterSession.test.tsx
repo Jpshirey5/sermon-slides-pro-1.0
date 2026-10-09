@@ -7,7 +7,7 @@ import { makeBundle, T0 } from "../core/test-fixtures";
 import type { ServiceBundle } from "../core/types";
 import { STATUS_POLL_MS, usePresenterSession, type PresenterSessionDeps } from "./usePresenterSession";
 
-function setup(opts: { bundle?: ServiceBundle; bundleError?: number; status?: () => unknown } = {}) {
+function setup(opts: { bundle?: ServiceBundle; bundleError?: number; status?: () => unknown; offlineCache?: PresenterSessionDeps["offlineCache"] } = {}) {
   const bundle = opts.bundle ?? makeBundle();
   const [operatorSide, projectorSide] = createMemoryTransportPair();
   const received: PresenterMessage[] = [];
@@ -17,7 +17,7 @@ function setup(opts: { bundle?: ServiceBundle; bundleError?: number; status?: ()
 
   const invoke: Invoke = vi.fn(async (fn: string, body: unknown) => {
     if (fn === "service-bundle") {
-      return opts.bundleError
+      return opts.bundleError !== undefined
         ? { data: null, error: { status: opts.bundleError, message: "x" } }
         : { data: structuredClone(bundle), error: null };
     }
@@ -41,6 +41,7 @@ function setup(opts: { bundle?: ServiceBundle; bundleError?: number; status?: ()
     newNonce: () => "nonce",
     now: () => T0,
     onNotice: (n) => notices.push(n.message),
+    offlineCache: opts.offlineCache,
   };
   const hook = renderHook(() => usePresenterSession("svc", deps));
 
@@ -180,5 +181,58 @@ describe("usePresenterSession", () => {
     await waitFor(() => expect(hook.result.current.load.kind).toBe("ready"));
     hook.unmount();
     expect(received.at(-1)).toEqual({ type: "end" });
+  });
+});
+
+describe("usePresenterSession offline copy (desktop app)", () => {
+  const memoryCache = () => {
+    const store = new Map<string, ServiceBundle>();
+    return {
+      store,
+      save: vi.fn(async (id: string, b: ServiceBundle) => void store.set(id, structuredClone(b))),
+      load: vi.fn(async (id: string) => store.get(id) ?? null),
+      remove: vi.fn(async (id: string) => void store.delete(id)),
+    };
+  };
+
+  it("saves a copy every time the service loads", async () => {
+    const cache = memoryCache();
+    const { hook } = setup({ offlineCache: cache });
+    await waitFor(() => expect(hook.result.current.load.kind).toBe("ready"));
+    await waitFor(() => expect(cache.save).toHaveBeenCalledWith("svc", expect.objectContaining({ revocation_epoch: 1 })));
+    expect(hook.result.current.usingOfflineCopy).toBe(false);
+  });
+
+  it("with no internet, presents from the copy", async () => {
+    const cache = memoryCache();
+    cache.store.set("svc", makeBundle());
+    const { hook } = setup({ offlineCache: cache, bundleError: 0 });
+    await waitFor(() => expect(hook.result.current.load.kind).toBe("ready"));
+    expect(hook.result.current.usingOfflineCopy).toBe(true);
+    expect(hook.result.current.bundle?.items.length).toBe(6);
+  });
+
+  it("the copy still goes through expiry: expired scripture is removed", async () => {
+    vi.useRealTimers();
+    const cache = memoryCache();
+    const old = makeBundle({ bundle_expires_at: new Date(T0 - 1).toISOString() });
+    cache.store.set("svc", old);
+    const { hook } = setup({ offlineCache: cache, bundleError: 0 });
+    await waitFor(() => expect(hook.result.current.load.kind).toBe("ready"));
+    expect(JSON.stringify(hook.result.current.bundle)).not.toContain("Text of kjv-1");
+  });
+
+  it("losing access deletes the copy instead of using it", async () => {
+    const cache = memoryCache();
+    cache.store.set("svc", makeBundle());
+    const { hook } = setup({ offlineCache: cache, bundleError: 403 });
+    await waitFor(() => expect(hook.result.current.load).toEqual({ kind: "error", error: "plan_required" }));
+    expect(cache.remove).toHaveBeenCalledWith("svc");
+    expect(cache.store.has("svc")).toBe(false);
+  });
+
+  it("no copy and no internet is a plain network error", async () => {
+    const { hook } = setup({ offlineCache: memoryCache(), bundleError: 0 });
+    await waitFor(() => expect(hook.result.current.load).toEqual({ kind: "error", error: "network" }));
   });
 });

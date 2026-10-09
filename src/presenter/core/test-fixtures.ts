@@ -17,15 +17,18 @@ export const scripture = (id: string, translation: string, over: Partial<Present
 });
 
 /** logo, sermon (title + NIV scripture x2), empty item, KJV scripture, blank, credits */
+const stage = (template: "worship" | "message" | "video" | "simple", timer_seconds: number | null = null) => ({ template, timer_seconds });
+
 export function makeBundle(over: Partial<ServiceBundle> = {}): ServiceBundle {
   return {
     service: { id: "svc", title: "Sunday", service_date: "2026-10-11", logo_path: "logos/grace.png" },
     items: [
-      { id: "logo", type: "logo", label: "Logo", expires_at: null, translation_ids: [], slides: [{ id: "logo", kind: "logo", style }] },
+      { id: "logo", type: "logo", label: "Logo", expires_at: null, translation_ids: [], stage: stage("simple"), slides: [{ id: "logo", kind: "logo", style }] },
       {
         id: "sermon",
         type: "sermon",
         label: "Anchored",
+        stage: stage("message", 1800),
         expires_at: new Date(T0 + 20 * 24 * HOUR).toISOString(),
         translation_ids: ["NIV"],
         slides: [
@@ -34,20 +37,22 @@ export function makeBundle(over: Partial<ServiceBundle> = {}): ServiceBundle {
           scripture("niv-2", "NIV"),
         ],
       },
-      { id: "empty", type: "scripture", label: "Nothing", expires_at: null, translation_ids: [], slides: [] },
+      { id: "empty", type: "scripture", label: "Nothing", expires_at: null, translation_ids: [], stage: stage("simple"), slides: [] },
       {
         id: "reading",
         type: "scripture",
         label: "Reading",
+        stage: stage("simple"),
         expires_at: new Date(T0 + 20 * 24 * HOUR).toISOString(),
         translation_ids: ["KJV"],
         slides: [scripture("kjv-1", "KJV")],
       },
-      { id: "blank", type: "blank", label: "Blank", expires_at: null, translation_ids: [], slides: [{ id: "blank", kind: "blank", style }] },
+      { id: "blank", type: "blank", label: "Blank", expires_at: null, translation_ids: [], stage: stage("simple"), slides: [{ id: "blank", kind: "blank", style }] },
       {
         id: "credits",
         type: "credits",
         label: "Scripture credits",
+        stage: stage("simple"),
         expires_at: null,
         translation_ids: ["KJV", "NIV"],
         slides: [{

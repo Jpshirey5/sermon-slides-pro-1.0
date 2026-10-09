@@ -1,5 +1,5 @@
-import type { CSSProperties, SyntheticEvent } from "react";
-import { AlertTriangle } from "lucide-react";
+import type { CSSProperties, ReactNode, SyntheticEvent } from "react";
+import { AlertTriangle, Film } from "lucide-react";
 import type { OutputFrame, PresenterSlide } from "../core/types";
 
 /** Background images resolved to URLs by the operator, keyed by the slide's stored image ref. */
@@ -19,6 +19,10 @@ interface SlideViewProps {
   protectText?: boolean;
   /** Operator only: show a notice on missing slides instead of black. */
   showMissing?: boolean;
+  /** Playable video URLs by storage path (thumbnails show the first frame). */
+  videos?: Readonly<Record<string, string>>;
+  /** Replaces the default still video, for the windows that actually play it. */
+  renderVideo?: (slide: PresenterSlide) => ReactNode;
   className?: string;
 }
 
@@ -33,6 +37,8 @@ const MISSING_TEXT: Record<string, string> = {
   missing_copyright: "We could not load this translation's copyright notice, so it cannot be shown.",
   unreadable_reference: "We could not read this reference. Fix it in the editor.",
   sermon_deleted: "This sermon was deleted.",
+  song_deleted: "This song was deleted from your library.",
+  video_deleted: "This video was deleted from your library.",
   not_found: "We could not find this passage.",
 };
 
@@ -50,13 +56,29 @@ function scriptureSize(text: string): string {
   return "2.3cqw";
 }
 
+/** Lyrics get larger type than scripture; fewer, shorter lines. */
+function lyricsSize(text: string): string {
+  const lines = text.split("\n").length;
+  const longest = Math.max(...text.split("\n").map((l) => l.length), 0);
+  if (lines <= 2 && longest < 32) return "5.6cqw";
+  if (lines <= 4 && longest < 40) return "4.6cqw";
+  return "3.6cqw";
+}
+
 function backgroundStyle(slide: PresenterSlide, images: ResolvedImages): { style: CSSProperties; hasImage: boolean } {
   const ref = slide.style.backgroundImage;
-  const url = ref ? images[ref] ?? (ref.startsWith("data:") || ref.startsWith("https://") ? ref : undefined) : undefined;
+  const url = ref ? images[ref] ?? (/^(data:|https:|blob:|ssp:)/.test(ref) ? ref : undefined) : undefined;
   if (url) {
     return {
       hasImage: true,
-      style: { backgroundImage: `url("${url.replace(/"/g, "%22")}")`, backgroundSize: "cover", backgroundPosition: "center" },
+      // A graphic is shown whole on black; a background fills the slide.
+      style: {
+        backgroundImage: `url("${url.replace(/"/g, "%22")}")`,
+        backgroundSize: slide.kind === "graphic" ? "contain" : "cover",
+        backgroundPosition: "center",
+        backgroundRepeat: "no-repeat",
+        backgroundColor: slide.kind === "graphic" ? "#000" : undefined,
+      },
     };
   }
   return { hasImage: false, style: { background: slide.style.background || "#000" } };
@@ -95,6 +117,18 @@ function SlideBody({ slide }: { slide: PresenterSlide }) {
           </p>
         </div>
       );
+    case "lyrics":
+      return (
+        <div className="flex h-full w-full flex-col items-center justify-center text-center" style={text}>
+          <p className="whitespace-pre-line font-medium" style={{ fontSize: lyricsSize(slide.text ?? ""), lineHeight: 1.3 }}>{slide.text}</p>
+          {/* CCLI credit line, on the first slide of a song. */}
+          {slide.credit && (
+            <p className="absolute bottom-[2cqw] left-[4cqw] right-[4cqw] opacity-70" style={{ fontSize: "1.15cqw", lineHeight: 1.3 }}>
+              {slide.credit}
+            </p>
+          )}
+        </div>
+      );
     case "credits":
       return (
         <div className="w-full text-left" style={{ ...text, fontFamily: "Georgia, serif", color: "#FFFFFF" }}>
@@ -117,7 +151,7 @@ function SlideBody({ slide }: { slide: PresenterSlide }) {
  * One 16:9 slide, scaled to its container. Used by the projector window and
  * by every preview in the operator view, so both always look the same.
  */
-export function SlideView({ frame, images = {}, logoUrl, fallbackTitle, protectText = true, showMissing = false, className = "" }: SlideViewProps) {
+export function SlideView({ frame, images = {}, videos = {}, renderVideo, logoUrl, fallbackTitle, protectText = true, showMissing = false, className = "" }: SlideViewProps) {
   const guards = protectText
     ? { onCopy: block, onCut: block, onContextMenu: block, onDragStart: block }
     : {};
@@ -156,10 +190,29 @@ export function SlideView({ frame, images = {}, logoUrl, fallbackTitle, protectT
     );
   }
 
+  if (slide.kind === "video") {
+    const src = slide.video?.src ?? (slide.video ? videos[slide.video.storage_path] : undefined);
+    return (
+      <div className={`${base} flex items-center justify-center`} style={container} {...guards} aria-label={`Video: ${slide.title ?? ""}`}>
+        {renderVideo ? (
+          renderVideo(slide)
+        ) : src ? (
+          // A still of the opening frame for thumbnails and previews.
+          <video src={`${src}#t=0.5`} muted playsInline preload="metadata" className="h-full w-full object-contain" />
+        ) : (
+          <div className="flex flex-col items-center gap-[1cqw] text-neutral-400">
+            <Film style={{ width: "6cqw", height: "6cqw" }} aria-hidden />
+            <p className="max-w-[80cqw] truncate" style={{ fontSize: "2.4cqw" }}>{slide.title}</p>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   const bg = backgroundStyle(slide, images);
   return (
     <div className={`${base} flex items-center justify-center`} style={{ ...container, ...bg.style }} {...guards}>
-      {bg.hasImage && <div className="absolute inset-0 bg-black/40" />}
+      {bg.hasImage && slide.kind !== "graphic" && <div className="absolute inset-0 bg-black/40" />}
       <div className="relative flex h-full w-full items-center justify-center px-[7cqw] py-[5cqw]">
         <SlideBody slide={slide} />
       </div>

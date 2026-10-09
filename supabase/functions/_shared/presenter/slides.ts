@@ -43,6 +43,10 @@ export interface ScriptureSlot {
   /** One style per output slide for "fixed"; otherwise the first is reused. */
   styles: SlideStyle[];
   quote: boolean;
+  /** Speaker notes per output slide (fixed layout) or for the whole passage. */
+  notes?: (string | undefined)[];
+  /** Where the slides came from in the sermon, for editing. */
+  source?: { sermon_id: string; slide_indexes: number[] };
 }
 
 export interface StaticSlot {
@@ -115,12 +119,16 @@ function planFromEditorSlides(sermonId: string, slides: Json[], translation: str
       const reference = str(content.reference);
       // Consecutive slides with the same reference are one passage split up.
       const styles = [styleFrom(slide)];
+      const notes = [str(slide.notes) || undefined];
+      const indexes = [i];
       while (
         i + 1 < slides.length &&
         str(slides[i + 1].type) === "scripture" &&
         str((slides[i + 1].content as Json | undefined)?.reference) === reference
       ) {
         styles.push(styleFrom(slides[++i]));
+        notes.push(str(slides[i].notes) || undefined);
+        indexes.push(i);
       }
       out.push({
         kind: "scripture",
@@ -131,6 +139,8 @@ function planFromEditorSlides(sermonId: string, slides: Json[], translation: str
         layout: { kind: "fixed", slides: styles.length },
         styles,
         quote,
+        notes,
+        source: { sermon_id: sermonId, slide_indexes: indexes },
       });
       continue;
     }
@@ -142,6 +152,8 @@ function planFromEditorSlides(sermonId: string, slides: Json[], translation: str
         kind: type === "title" || type === "point" ? type : "blank",
         title: str(content.title) || undefined,
         subtitle: str(content.subtitle) || undefined,
+        notes: str(slide.notes) || undefined,
+        source: { sermon_id: sermonId, slide_indexes: [i] },
         style: styleFrom(slide),
       },
     });
@@ -272,6 +284,7 @@ function missingSlide(slot: ScriptureSlot, reason: string): PresenterSlide {
     reference: slot.ref ? `${formatReference(slot.ref)} (${slot.translation_id})` : slot.raw_reference || undefined,
     translation_id: slot.translation_id,
     missing_reason: reason,
+    ...(slot.source ? { source: slot.source } : {}),
     style: slot.styles[0] ?? DEFAULT_STYLE,
   };
 }
@@ -295,7 +308,9 @@ export function renderSlot(slot: SlideSlot, ctx: RenderContext): { slides: Prese
     attribution,
     translation_id: slot.translation_id,
     fums_tokens: tokens,
+    ...(slot.source ? { source: slot.source } : {}),
   };
+  const notesFor = (i: number) => slot.notes?.[Math.min(i, slot.notes.length - 1)] || undefined;
 
   if (slot.layout.kind === "verse_by_verse") {
     const bookChapter = formatReference(slot.ref).replace(/:.*$/, "");
@@ -305,6 +320,7 @@ export function renderSlot(slot: SlideSlot, ctx: RenderContext): { slides: Prese
         id: `${slot.id}:v${v.verse}`,
         text: wrap(v.text),
         reference: `${bookChapter}:${v.verse} (${slot.translation_id})`,
+        notes: notesFor(i),
         style: style(i),
       })),
       expires_at: resolved.expires_at,
@@ -322,8 +338,176 @@ export function renderSlot(slot: SlideSlot, ctx: RenderContext): { slides: Prese
       id: chunks.length > 1 ? `${slot.id}:c${i}` : slot.id,
       text: wrap(chunk),
       reference,
+      notes: notesFor(i),
       style: style(i),
     })),
     expires_at: resolved.expires_at,
   };
+}
+
+// ── songs ───────────────────────────────────────────────────────────────────
+
+export interface SongRow {
+  id: string;
+  title: string;
+  author: string | null;
+  ccli_song_number: string | null;
+  copyright: string | null;
+  source: "licensed" | "public_domain" | "original";
+  sections: unknown;
+  arrangement: unknown;
+}
+
+interface SongSection {
+  id: string;
+  label: string;
+  lyrics: string;
+}
+
+function readSections(raw: unknown): SongSection[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(isObject).map((s, i) => ({
+    id: str(s.id) || `s${i}`,
+    label: str(s.label) || `Section ${i + 1}`,
+    lyrics: str(s.lyrics),
+  }));
+}
+
+/** The order sections are sung in: the arrangement if set, otherwise as listed. */
+export function songOrder(song: Pick<SongRow, "sections" | "arrangement">): SongSection[] {
+  const sections = readSections(song.sections);
+  const byId = new Map(sections.map((s) => [s.id, s]));
+  const arrangement = Array.isArray(song.arrangement) ? song.arrangement.map((x) => str(x)).filter((id) => byId.has(id)) : [];
+  return arrangement.length ? arrangement.map((id) => byId.get(id)!) : sections;
+}
+
+/** Song credit line for the first slide, as CCLI asks churches to show. */
+export function songCredit(song: Pick<SongRow, "title" | "author" | "copyright" | "ccli_song_number" | "source">, ccliLicense: string | null): string {
+  const parts = [`"${song.title.trim()}"`];
+  if (song.author?.trim()) parts.push(song.author.trim());
+  if (song.source === "public_domain") {
+    parts.push("Public domain");
+  } else if (song.source === "original") {
+    if (song.copyright?.trim()) parts.push(song.copyright.trim());
+  } else {
+    if (song.copyright?.trim()) parts.push(song.copyright.trim());
+    if (song.ccli_song_number?.trim()) parts.push(`CCLI Song # ${song.ccli_song_number.trim()}`);
+    if (ccliLicense?.trim()) parts.push(`CCLI License # ${ccliLicense.trim()}`);
+  }
+  return parts.join(". ").replace(/\.\./g, ".") + ".";
+}
+
+/** One slide per stanza: a blank line in a section's lyrics starts a new slide. */
+export function planSong(itemId: string, song: SongRow, ccliLicense: string | null): SlideSlot[] {
+  const credit = songCredit(song, ccliLicense);
+  const slots: SlideSlot[] = [];
+  songOrder(song).forEach((section, sectionIndex) => {
+    const stanzas = section.lyrics.replace(/\r\n/g, "\n").split(/\n\s*\n/).map((t) => t.trim()).filter(Boolean);
+    stanzas.forEach((text, stanzaIndex) => {
+      slots.push({
+        kind: "static",
+        slide: {
+          id: `${itemId}:${sectionIndex}:${stanzaIndex}`,
+          kind: "lyrics",
+          text,
+          label: section.label,
+          ...(slots.length === 0 ? { credit } : {}),
+          style: DEFAULT_STYLE,
+        },
+      });
+    });
+  });
+  return slots;
+}
+
+// ── custom Slides items ─────────────────────────────────────────────────────
+
+export type CustomSlideKind = "title" | "text" | "graphic" | "blank";
+
+export interface CustomSlide {
+  id: string;
+  kind: CustomSlideKind;
+  title?: string;
+  body?: string;
+  background?: string;
+  backgroundImage?: string | null;
+  textColor?: string;
+  fontFamily?: string;
+  notes?: string;
+}
+
+const CUSTOM_KINDS: readonly CustomSlideKind[] = ["title", "text", "graphic", "blank"];
+const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
+
+/** Read the slides list stored on a Slides item, dropping anything malformed. */
+export function readCustomSlides(payload: unknown): CustomSlide[] {
+  const p = isObject(payload) ? payload : {};
+  if (!Array.isArray(p.slides)) return [];
+  return p.slides.filter(isObject).slice(0, 200).map((s, i) => ({
+    id: str(s.id) || `c${i}`,
+    kind: CUSTOM_KINDS.includes(s.kind as CustomSlideKind) ? (s.kind as CustomSlideKind) : "text",
+    title: str(s.title).slice(0, 300) || undefined,
+    body: str(s.body).slice(0, 2000) || undefined,
+    background: HEX_COLOR.test(str(s.background)) ? str(s.background) : undefined,
+    backgroundImage: str(s.backgroundImage) || null,
+    textColor: HEX_COLOR.test(str(s.textColor)) ? str(s.textColor) : undefined,
+    fontFamily: str(s.fontFamily).slice(0, 80) || undefined,
+    notes: str(s.notes).slice(0, 2000) || undefined,
+  }));
+}
+
+export function planCustomSlides(itemId: string, payload: unknown): SlideSlot[] {
+  return readCustomSlides(payload).map((s, i) => {
+    const style: SlideStyle = {
+      background: s.background ?? DEFAULT_STYLE.background,
+      backgroundImage: s.backgroundImage,
+      fontFamily: s.fontFamily ?? DEFAULT_STYLE.fontFamily,
+      textColor: s.textColor ?? DEFAULT_STYLE.textColor,
+      lineSpacing: DEFAULT_STYLE.lineSpacing,
+    };
+    const kind = s.kind === "text" ? "point" : s.kind;
+    return {
+      kind: "static" as const,
+      slide: {
+        id: `${itemId}:${s.id}`,
+        kind,
+        title: s.kind === "graphic" || s.kind === "blank" ? undefined : s.title,
+        subtitle: s.kind === "text" || s.kind === "title" ? s.body : undefined,
+        notes: s.notes,
+        source: { item_id: itemId, slide_indexes: [i] },
+        style,
+      },
+    };
+  });
+}
+
+// ── video items ─────────────────────────────────────────────────────────────
+
+export interface MediaRow {
+  id: string;
+  storage_path: string;
+  file_name: string;
+  duration_seconds: number | string | null;
+}
+
+export function planVideo(itemId: string, media: MediaRow, payload: unknown): SlideSlot[] {
+  const p = isObject(payload) ? payload : {};
+  const endAction = p.end_action === "clear" || p.end_action === "next" ? p.end_action : "hold";
+  const duration = media.duration_seconds === null ? null : Number(media.duration_seconds);
+  return [{
+    kind: "static",
+    slide: {
+      id: `${itemId}:video`,
+      kind: "video",
+      title: media.file_name,
+      video: {
+        media_id: media.id,
+        storage_path: media.storage_path,
+        duration_seconds: duration !== null && Number.isFinite(duration) ? duration : null,
+        loop: p.loop === true,
+        end_action: endAction,
+      },
+      style: { ...DEFAULT_STYLE, background: "#000000" },
+    },
+  }];
 }

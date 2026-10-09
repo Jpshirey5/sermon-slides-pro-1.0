@@ -81,11 +81,11 @@ export function isPresentingHoldActive(): boolean {
 }
 
 /**
- * The presenter's projector window holds no data and is never touched during
+ * The presenter's projector and stage windows hold no data and is never touched during
  * a service. It must not run the idle timer: a sign-out there would show a
  * warning on the big screen and sign the operator out too (the session is
  * shared between windows).
  */
 export function isProjectorWindowPath(pathname: string): boolean {
-  return /^\/present\/[^/]+\/output\/?$/.test(pathname);
+  return /^\/present\/[^/]+\/(output|stage)\/?$/.test(pathname);
 }

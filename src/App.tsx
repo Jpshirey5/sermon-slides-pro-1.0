@@ -2,7 +2,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useParams } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Index from "./pages/Index";
@@ -10,6 +10,9 @@ import CreateSermon from "./pages/CreateSermon";
 import SermonReview from "./pages/SermonReview";
 import SlideEditor from "./pages/SlideEditor";
 import Login from "./pages/Login";
+import DesktopLogin from "./pages/DesktopLogin";
+import { DesktopGate } from "@/desktop/DesktopGate";
+import { getDesktop } from "@/desktop/bridge";
 import SignUp from "./pages/SignUp";
 import SignupComplete from "./pages/SignupComplete";
 import SignupIncomplete from "./pages/SignupIncomplete";
@@ -21,9 +24,10 @@ import PartnerHandoff from "./pages/PartnerHandoff";
 import ConfirmEmailChange from "./pages/ConfirmEmailChange";
 import Dashboard from "./pages/Dashboard";
 import Services from "./pages/Services";
-import ServiceBuilder from "./pages/ServiceBuilder";
-import Present from "./pages/Present";
+import ServiceWorkspace from "./pages/ServiceWorkspace";
+import Songs from "./pages/Songs";
 import PresentOutput from "./pages/PresentOutput";
+import PresentStage from "./pages/PresentStage";
 import Account from "./pages/Account";
 import ExitSurvey from "./pages/ExitSurvey";
 import CheckoutRedirect from "./pages/CheckoutRedirect";
@@ -53,6 +57,12 @@ import AdminUsers from "./pages/admin/AdminUsers";
 
 const queryClient = new QueryClient();
 
+/** Old presenter links now open the service workspace, where services are run. */
+const PresentRedirect = () => {
+  const { serviceId = "" } = useParams();
+  return <Navigate to={`/dashboard/services/${serviceId}`} replace />;
+};
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <ErrorBoundary>
@@ -65,12 +75,13 @@ const App = () => (
           <AuthProvider>
             <RecoveryRedirectHandler />
             <SessionTimeoutManager />
+            <DesktopGate>
             <Routes>
               <Route path="/" element={<Index />} />
               <Route path="/create" element={<CreateSermon />} />
               <Route path="/create/review/:id" element={<SermonReview />} />
               <Route path="/editor/:id" element={<SlideEditor />} />
-              <Route path="/login" element={<Login />} />
+              <Route path="/login" element={getDesktop() ? <DesktopLogin /> : <Login />} />
               <Route path="/signup" element={<SignUp />} />
               <Route path="/signup/complete" element={<SignupComplete />} />
               <Route path="/signup-incomplete" element={<ProtectedRoute allowUnsubscribed allowPendingCheckout><SignupIncomplete /></ProtectedRoute>} />
@@ -97,10 +108,12 @@ const App = () => (
               <Route path="/dashboard/create" element={<ProtectedRoute><CreateSermon /></ProtectedRoute>} />
               <Route path="/dashboard/create/review/:id" element={<ProtectedRoute><SermonReview /></ProtectedRoute>} />
               <Route path="/dashboard/services" element={<ProtectedRoute><Services /></ProtectedRoute>} />
-              <Route path="/dashboard/services/:id" element={<ProtectedRoute><ServiceBuilder /></ProtectedRoute>} />
-              <Route path="/present/:serviceId" element={<ProtectedRoute><Present /></ProtectedRoute>} />
+              <Route path="/dashboard/services/:id" element={<ProtectedRoute><ServiceWorkspace /></ProtectedRoute>} />
+              <Route path="/dashboard/songs" element={<ProtectedRoute><Songs /></ProtectedRoute>} />
+              <Route path="/present/:serviceId" element={<PresentRedirect />} />
               {/* The projector window holds no data; it only shows frames the signed-in operator sends. */}
               <Route path="/present/:serviceId/output" element={<PresentOutput />} />
+              <Route path="/present/:serviceId/stage" element={<PresentStage />} />
               
               <Route path="/account" element={<ProtectedRoute allowUnsubscribed><Account /></ProtectedRoute>} />
               <Route path="/contact" element={<Contact />} />
@@ -112,6 +125,7 @@ const App = () => (
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>
+            </DesktopGate>
           </AuthProvider>
         </BrowserRouter>
       </TooltipProvider>

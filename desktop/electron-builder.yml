@@ -1,0 +1,41 @@
+# Installers for Mac and Windows. See desktop/README.md for signing and releases.
+appId: com.sermonslidepro.desktop
+productName: Sermon Slide Pro
+copyright: Copyright Boosted Technology Co., LLC
+directories:
+  output: release
+  buildResources: resources
+files:
+  - build/**
+  - package.json
+extraResources:
+  - from: web
+    to: web
+asar: true
+mac:
+  category: public.app-category.productivity
+  target:
+    - target: dmg
+      arch: [arm64, x64]
+    - target: zip
+      arch: [arm64, x64]
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  # Signing and notarizing use your Apple Developer ID. Set CSC_LINK,
+  # CSC_KEY_PASSWORD, APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID.
+  notarize: false
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  # Signing uses your Windows code signing certificate (WIN_CSC_LINK, WIN_CSC_KEY_PASSWORD).
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+publish:
+  provider: github
+  owner: Jpshirey5
+  repo: sermon-slides-pro-1.0
+  releaseType: release

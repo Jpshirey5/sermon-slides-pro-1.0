@@ -78,8 +78,9 @@ export function windowFeatures(display: DisplayInfo | null): string {
 }
 
 export const OUTPUT_WINDOW_NAME = "ssp-presenter-output";
+export const STAGE_WINDOW_NAME = "ssp-presenter-stage";
 
 /** Opens (or reuses) the output window. Returns null if a popup blocker stopped it. */
-export function openOutputWindow(win: WindowWithScreens, url: string, display: DisplayInfo | null): Window | null {
-  return win.open(url, OUTPUT_WINDOW_NAME, windowFeatures(display));
+export function openOutputWindow(win: WindowWithScreens, url: string, display: DisplayInfo | null, name: string = OUTPUT_WINDOW_NAME): Window | null {
+  return win.open(url, name, windowFeatures(display));
 }

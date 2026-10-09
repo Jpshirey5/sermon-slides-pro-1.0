@@ -5,6 +5,7 @@ import type { PGlite } from "npm:@electric-sql/pglite@0.5.8";
 import type { FumsEventRow, PresenterStore, ServiceItemRow, ServiceRow, SermonRow } from "../store.ts";
 import type { AccountPlanFields } from "../access.ts";
 import type { TranslationStatus } from "../../scripture/expiry.ts";
+import type { MediaRow, SongRow } from "../slides.ts";
 
 const iso = (v: unknown) => (v instanceof Date ? v.toISOString() : v == null ? null : String(v));
 
@@ -28,7 +29,7 @@ export function createSqlPresenterStore(db: PGlite): PresenterStore {
     },
     async getAccountPlan(accountId) {
       const { rows } = await db.query<AccountPlanFields & { beta_trial_ends_at: unknown }>(
-        `select subscription_status, is_beta_user, beta_trial_ends_at, partner_billing_active from public.accounts where id = $1`,
+        `select subscription_status, is_beta_user, beta_trial_ends_at, partner_billing_active, ccli_license_number from public.accounts where id = $1`,
         [accountId],
       );
       const r = rows[0];
@@ -36,7 +37,7 @@ export function createSqlPresenterStore(db: PGlite): PresenterStore {
     },
     async getItems(serviceId) {
       const { rows } = await db.query<ServiceItemRow>(
-        `select id, position, item_type, sermon_id, payload, label from public.service_items where service_id = $1 order by position`,
+        `select id, position, item_type, sermon_id, song_id, media_id, payload, label from public.service_items where service_id = $1 order by position`,
         [serviceId],
       );
       return rows;
@@ -44,6 +45,21 @@ export function createSqlPresenterStore(db: PGlite): PresenterStore {
     async getSermons(ids, accountId) {
       const { rows } = await db.query<SermonRow>(
         `select id, title, slides from public.sermons where account_id = $1 and id = any($2)`,
+        [accountId, ids],
+      );
+      return rows;
+    },
+    async getSongs(ids, accountId) {
+      const { rows } = await db.query<SongRow>(
+        `select id, title, author, ccli_song_number, copyright, source, sections, arrangement
+         from public.songs where account_id = $1 and id = any($2)`,
+        [accountId, ids],
+      );
+      return rows;
+    },
+    async getMedia(ids, accountId) {
+      const { rows } = await db.query<MediaRow>(
+        `select id, storage_path, file_name, duration_seconds from public.service_media where account_id = $1 and id = any($2)`,
         [accountId, ids],
       );
       return rows;
