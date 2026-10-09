@@ -4,10 +4,10 @@
 
 import { PGlite } from "npm:@electric-sql/pglite@0.5.8";
 
-export const MIGRATION_URL = new URL(
-  "../../../../migrations/20261008120000_add_presenter_services_and_scripture_cache.sql",
-  import.meta.url,
-);
+export const MIGRATION_URLS = [
+  "20261008120000_add_presenter_services_and_scripture_cache.sql",
+  "20261009120000_add_songs_and_stage_settings.sql",
+].map((name) => new URL(`../../../../migrations/${name}`, import.meta.url));
 
 // Mirrors the Supabase pieces the migration relies on. is_account_member and
 // update_updated_at_column match the first app migration.
@@ -65,6 +65,6 @@ export const createTestDatabase = async (beforeMigration?: (db: PGlite) => Promi
   const db = new PGlite();
   await db.exec(STUBS);
   if (beforeMigration) await beforeMigration(db);
-  await db.exec(await Deno.readTextFile(MIGRATION_URL));
+  for (const url of MIGRATION_URLS) await db.exec(await Deno.readTextFile(url));
   return db;
 };
