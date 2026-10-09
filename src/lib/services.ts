@@ -10,7 +10,8 @@ import {
   parseReference,
 } from "../../supabase/functions/_shared/scripture/references.ts";
 
-export type ServiceItemType = "sermon" | "scripture" | "blank" | "logo";
+export type ServiceItemType = "sermon" | "scripture" | "song" | "blank" | "logo";
+export type StageTemplateChoice = "worship" | "message" | "video" | "simple";
 export type ScriptureLayout = "passage" | "verse_by_verse";
 
 export interface ScripturePayload {
@@ -32,6 +33,7 @@ export interface ServiceItem {
   position: number;
   type: ServiceItemType;
   sermonId: string | null;
+  songId: string | null;
   label: string | null;
   payload: Record<string, unknown>;
 }
@@ -101,7 +103,7 @@ export async function getService(id: string): Promise<ServiceDetail | null> {
       .maybeSingle(),
     supabase
       .from("service_items")
-      .select("id, position, item_type, sermon_id, label, payload")
+      .select("id, position, item_type, sermon_id, song_id, label, payload")
       .eq("service_id", id)
       .order("position", { ascending: true }),
   ]);
@@ -120,6 +122,7 @@ export async function getService(id: string): Promise<ServiceDetail | null> {
       position: r.position,
       type: r.item_type as ServiceItemType,
       sermonId: r.sermon_id,
+      songId: r.song_id ?? null,
       label: r.label,
       payload: (r.payload && typeof r.payload === "object" && !Array.isArray(r.payload) ? r.payload : {}) as Record<string, unknown>,
     })),
@@ -145,7 +148,7 @@ export async function deleteService(id: string): Promise<void> {
 
 export async function addServiceItem(
   service: Pick<ServiceDetail, "id" | "accountId" | "items">,
-  item: { type: ServiceItemType; sermonId?: string | null; label?: string | null; payload?: Record<string, unknown> },
+  item: { type: ServiceItemType; sermonId?: string | null; songId?: string | null; label?: string | null; payload?: Record<string, unknown> },
 ): Promise<void> {
   const last = service.items.reduce((max, i) => Math.max(max, i.position), 0);
   const { error } = await supabase.from("service_items").insert({
@@ -154,6 +157,7 @@ export async function addServiceItem(
     position: last + POSITION_STEP,
     item_type: item.type,
     sermon_id: item.type === "sermon" ? item.sermonId ?? null : null,
+    song_id: item.type === "song" ? item.songId ?? null : null,
     label: item.label?.trim() || null,
     payload: (item.payload ?? {}) as never,
   });
@@ -166,6 +170,27 @@ export async function updateServiceItem(id: string, patch: { label?: string | nu
   if (patch.payload !== undefined) update.payload = patch.payload as never;
   const { error } = await supabase.from("service_items").update(update).eq("id", id);
   fail("save the item", error);
+}
+
+/**
+ * Save an item's stage display settings, keeping the rest of its payload.
+ * `template: null` follows the default for the item's type; `timerSeconds: null` clears the countdown.
+ */
+export async function setItemStageSettings(
+  item: Pick<ServiceItem, "id" | "payload">,
+  settings: { template?: StageTemplateChoice | null; timerSeconds?: number | null },
+): Promise<void> {
+  const payload: Record<string, unknown> = { ...item.payload };
+  if (settings.template !== undefined) {
+    if (settings.template) payload.stage_template = settings.template;
+    else delete payload.stage_template;
+  }
+  if (settings.timerSeconds !== undefined) {
+    const t = settings.timerSeconds;
+    if (t && Number.isFinite(t) && t > 0) payload.timer_seconds = Math.min(Math.round(t), 6 * 60 * 60);
+    else delete payload.timer_seconds;
+  }
+  await updateServiceItem(item.id, { payload });
 }
 
 export async function removeServiceItem(id: string): Promise<void> {

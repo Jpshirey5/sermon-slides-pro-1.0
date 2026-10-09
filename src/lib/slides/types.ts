@@ -14,4 +14,6 @@ export interface SlideData {
   textColor: string;
   lineSpacing?: number;
   fontSize?: number;
+  /** Speaker notes: shown on the stage display only. */
+  notes?: string;
 }

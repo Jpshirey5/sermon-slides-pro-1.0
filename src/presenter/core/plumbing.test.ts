@@ -108,6 +108,16 @@ describe("bundle client", () => {
     expect(await fetchBundle(invokeReturning({ data: { nope: 1 }, error: null }), "svc")).toEqual({ ok: false, error: "server" });
   });
 
+  it("fills in stage settings an older server does not send", async () => {
+    const old = makeBundle();
+    for (const item of old.items) delete (item as { stage?: unknown }).stage;
+    const result = await fetchBundle(invokeReturning({ data: old, error: null }), "svc");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.bundle.items[1].stage).toEqual({ template: "message", timer_seconds: null });
+    expect(result.bundle.items[0].stage).toEqual({ template: "simple", timer_seconds: null });
+  });
+
   it("status returns null on any failure so polling can just try again", async () => {
     const status = { revocation_epoch: 2, unavailable_translations: [], can_present: true, checked_at: "x" };
     expect(await fetchStatus(invokeReturning({ data: status, error: null }), "svc", ["KJV"])).toEqual(status);

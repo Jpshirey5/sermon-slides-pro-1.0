@@ -29,11 +29,24 @@ function looksLikeBundle(value: unknown): value is ServiceBundle {
   return Boolean(v && v.service && Array.isArray(v.items) && typeof v.bundle_expires_at === "string");
 }
 
+/** Fill in fields an older server may not send yet, so the presenter never crashes on them. */
+export function normalizeBundle(bundle: ServiceBundle): ServiceBundle {
+  return {
+    ...bundle,
+    items: bundle.items.map((item) => ({
+      ...item,
+      stage: item.stage ?? { template: item.type === "sermon" ? "message" : "simple", timer_seconds: null },
+      slides: Array.isArray(item.slides) ? item.slides : [],
+      translation_ids: Array.isArray(item.translation_ids) ? item.translation_ids : [],
+    })),
+  };
+}
+
 export async function fetchBundle(invoke: Invoke, serviceId: string): Promise<BundleFetch> {
   try {
     const res = await invoke("service-bundle", { service_id: serviceId });
     if (res.error) return { ok: false, error: classify(res.error.status) };
-    return looksLikeBundle(res.data) ? { ok: true, bundle: res.data } : { ok: false, error: "server" };
+    return looksLikeBundle(res.data) ? { ok: true, bundle: normalizeBundle(res.data) } : { ok: false, error: "server" };
   } catch {
     return { ok: false, error: "network" };
   }

@@ -535,7 +535,7 @@ const SlideEditor = () => {
         presentationDate: presentationFormData?.date ?? null,
       });
       trackEvent("present_opened", { sermonId: id, source: "editor", slideCount: slides.length });
-      editorNavigate(`/present/${serviceId}`);
+      editorNavigate(`/dashboard/services/${serviceId}`);
     } catch (error) {
       logError(error, { scope: "editor_present", sermonId: id });
       toast.error("Could not open the presenter", {

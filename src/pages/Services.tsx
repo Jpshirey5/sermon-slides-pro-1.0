@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { CalendarDays, Loader2, MonitorPlay, Plus } from "lucide-react";
+import { CalendarDays, ListMusic, Loader2, MonitorPlay, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -59,13 +59,21 @@ const Services = () => {
           <div>
             <h1 className="font-serif text-3xl font-semibold text-foreground">Services</h1>
             <p className="text-muted-foreground mt-1">
-              Put your sermon, scripture readings, and logo screens in order, then present the whole service from here.
+              Put your sermon, songs, readings, and logo screens in order, then run the whole service from here.
             </p>
           </div>
+          <div className="flex gap-2">
+          <Link to="/dashboard/songs">
+            <Button variant="outline">
+              <ListMusic className="w-4 h-4" />
+              Songs
+            </Button>
+          </Link>
           <Button variant="hero" onClick={() => setShowCreate(true)}>
             <Plus className="w-4 h-4" />
             New Service
           </Button>
+          </div>
         </div>
 
         {services === null ? (
@@ -97,9 +105,9 @@ const Services = () => {
                         {s.serviceDate ? formatDateOnlyForDisplay(s.serviceDate) : "No date"}
                       </p>
                     </Link>
-                    <Button variant="outline" size="sm" onClick={() => navigate(`/present/${s.id}`)}>
+                    <Button variant="outline" size="sm" onClick={() => navigate(`/dashboard/services/${s.id}`)}>
                       <MonitorPlay className="w-4 h-4" />
-                      Present
+                      Open
                     </Button>
                   </CardContent>
                 </Card>
