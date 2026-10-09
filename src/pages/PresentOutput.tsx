@@ -8,6 +8,7 @@ import { Maximize } from "lucide-react";
 import { createBroadcastTransport, type PresenterTransport } from "@/presenter/core/transport";
 import type { OutputFrame } from "@/presenter/core/types";
 import { SlideView } from "@/presenter/ui/SlideView";
+import { useFillsScreen } from "@/presenter/ui/useFillsScreen";
 
 const HIDE_CURSOR_AFTER_MS = 2500;
 
@@ -17,7 +18,7 @@ const PresentOutput = () => {
   const [frame, setFrame] = useState<OutputFrame>({ kind: "black" });
   const [seq, setSeq] = useState(0);
   const [connected, setConnected] = useState(false);
-  const [fullscreen, setFullscreen] = useState(Boolean(document.fullscreenElement));
+  const fullscreen = useFillsScreen();
   const [cursorHidden, setCursorHidden] = useState(false);
   const transport = useRef<PresenterTransport | null>(null);
 
@@ -57,12 +58,6 @@ const PresentOutput = () => {
     });
     return () => cancelAnimationFrame(id);
   }, [seq, frame]);
-
-  useEffect(() => {
-    const onChange = () => setFullscreen(Boolean(document.fullscreenElement));
-    document.addEventListener("fullscreenchange", onChange);
-    return () => document.removeEventListener("fullscreenchange", onChange);
-  }, []);
 
   // Hide the mouse pointer on the projector when it is not moving.
   useEffect(() => {

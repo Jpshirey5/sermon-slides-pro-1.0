@@ -8,6 +8,7 @@ import { Maximize } from "lucide-react";
 import type { StageFrame } from "@/presenter/core/stage";
 import { createBroadcastTransport, type PresenterTransport } from "@/presenter/core/transport";
 import { StageView } from "@/presenter/ui/StageView";
+import { useFillsScreen } from "@/presenter/ui/useFillsScreen";
 
 const EMPTY: StageFrame = {
   template: "simple",
@@ -26,7 +27,7 @@ const PresentStage = () => {
   const [frame, setFrame] = useState<StageFrame>(EMPTY);
   const [connected, setConnected] = useState(false);
   const [now, setNow] = useState(Date.now());
-  const [fullscreen, setFullscreen] = useState(Boolean(document.fullscreenElement));
+  const fullscreen = useFillsScreen();
   const transport = useRef<PresenterTransport | null>(null);
 
   useEffect(() => {
@@ -62,8 +63,6 @@ const PresentStage = () => {
   }, []);
 
   useEffect(() => {
-    const onChange = () => setFullscreen(Boolean(document.fullscreenElement));
-    document.addEventListener("fullscreenchange", onChange);
     const block = (e: Event) => e.preventDefault();
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && ["a", "c", "x", "p", "s"].includes(e.key.toLowerCase())) e.preventDefault();
@@ -72,8 +71,7 @@ const PresentStage = () => {
     document.addEventListener("contextmenu", block);
     window.addEventListener("keydown", onKey);
     return () => {
-      document.removeEventListener("fullscreenchange", onChange);
-      document.removeEventListener("copy", block);
+        document.removeEventListener("copy", block);
       document.removeEventListener("contextmenu", block);
       window.removeEventListener("keydown", onKey);
     };

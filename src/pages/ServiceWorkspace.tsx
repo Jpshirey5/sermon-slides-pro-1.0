@@ -56,6 +56,7 @@ import { PickerDialog } from "@/components/services/PickerDialog";
 import { ReadingDialog, type ReadingDraft } from "@/components/services/ReadingDialog";
 import { SlideEditDialog } from "@/components/services/SlideEditDialog";
 import { SongEditorDialog } from "@/components/services/SongEditorDialog";
+import { getDesktop } from "@/desktop/bridge";
 import { supabase } from "@/integrations/supabase/client";
 import { resolveBackgroundImages } from "@/lib/background-assets";
 import { formatDateOnlyForDisplay } from "@/lib/date-format";
@@ -92,7 +93,7 @@ import {
 import { createIndexedDbQueueStorage, getDeviceId } from "@/presenter/core/fums-queue";
 import { formatCountdown, STAGE_TEMPLATE_LABELS, STAGE_TEMPLATES, type StageTemplate, timerRemainingMs } from "@/presenter/core/stage";
 import { createBroadcastTransport, newChannelNonce } from "@/presenter/core/transport";
-import type { BundleItem, OutputFrame, PresenterSlide } from "@/presenter/core/types";
+import type { BundleItem, OutputFrame, PresenterSlide, ServiceBundle } from "@/presenter/core/types";
 import { missingText, SlideView } from "@/presenter/ui/SlideView";
 import { StageView } from "@/presenter/ui/StageView";
 import { SHORTCUTS, useKeyboardShortcuts } from "@/presenter/ui/useKeyboardShortcuts";
@@ -175,8 +176,22 @@ const ServiceWorkspace = () => {
   const [showNotices, setShowNotices] = useState(false);
   const [dragFrom, setDragFrom] = useState<number | null>(null);
 
+  const desktop = useMemo(() => getDesktop(), []);
   const deps = useMemo(() => ({
     invoke,
+    // Desktop app: keep an encrypted offline copy of the service for Sunday.
+    offlineCache: desktop
+      ? {
+        save: async (id: string, b: ServiceBundle) => {
+          await desktop.offlineCache.save(`service:${id}`, JSON.stringify(b), b.bundle_expires_at);
+        },
+        load: async (id: string) => {
+          const json = await desktop.offlineCache.load(`service:${id}`);
+          return json ? (JSON.parse(json) as ServiceBundle) : null;
+        },
+        remove: (id: string) => desktop.offlineCache.remove(`service:${id}`),
+      }
+      : undefined,
     createTransport: createBroadcastTransport,
     queueStorage: createIndexedDbQueueStorage(),
     deviceId: getDeviceId(),
@@ -184,9 +199,12 @@ const ServiceWorkspace = () => {
     newNonce: () => newChannelNonce(),
     onNotice: ({ kind, message }: { kind: string; message: string }) =>
       kind === "revoked" ? toast.warning(message, { duration: 10_000 }) : kind === "refresh_failed" ? undefined : toast(message),
-  }), []);
+  }), [desktop]);
 
   const session = usePresenterSession(serviceId, deps);
+
+  // Desktop app: it tells us when a presenter window is closed.
+  useEffect(() => desktop?.onPresenterClosed((kind) => session.windowClosed(kind)), [desktop]); // eslint-disable-line react-hooks/exhaustive-deps
   const { bundle, state, dispatch, frame, images, projectorConnected, stageConnected, stage, dispatchStage, stageFrame } = session;
   const live = projectorConnected || stageConnected;
 
@@ -295,6 +313,13 @@ const ServiceWorkspace = () => {
     setDisplays(null);
     const path = kind === "main" ? "output" : "stage";
     const url = `/present/${serviceId}/${path}?channel=${encodeURIComponent(session.nonce)}`;
+    if (desktop) {
+      // Desktop: a native full-screen window on the chosen screen.
+      void desktop.openPresenterWindow(kind, url, display?.id ?? null).then((ok) => {
+        if (!ok) toast.error("Could not open the window on that screen.");
+      });
+      return;
+    }
     const win = openOutputWindow(window, url, display, kind === "main" ? undefined : STAGE_WINDOW_NAME);
     if (!win) {
       toast.error("Your browser blocked the window. Allow pop-ups for this site, then try again.");
@@ -305,6 +330,10 @@ const ServiceWorkspace = () => {
     if (!display) toast("Drag the new window to its screen, then click Go full screen.");
   };
   const chooseScreen = async (kind: WindowKind) => {
+    if (desktop) {
+      const list = await desktop.listDisplays();
+      return list.length < 2 ? openWindow(kind, list[0] ?? null) : setDisplays({ kind, list });
+    }
     if (!supportsWindowManagement(window)) return openWindow(kind, null);
     const result = await listDisplays(window);
     if (!result.supported || result.displays.length < 2) return openWindow(kind, null);
@@ -391,7 +420,14 @@ const ServiceWorkspace = () => {
     <div className="fixed inset-0 flex flex-col bg-neutral-950 text-neutral-100">
       {/* ── top bar ── */}
       <header className="flex flex-wrap items-center gap-2 border-b border-neutral-800 px-3 py-2">
-        <Link to="/dashboard/services" onClick={() => session.endSession()}>
+        <Link
+          to="/dashboard/services"
+          onClick={() => {
+            session.endSession();
+            void desktop?.closePresenterWindow("main");
+            void desktop?.closePresenterWindow("stage");
+          }}
+        >
           <Button variant="ghost" size="sm" className="text-neutral-300 hover:bg-neutral-800 hover:text-white">
             <ArrowLeft className="h-4 w-4" /> Services
           </Button>
@@ -409,6 +445,11 @@ const ServiceWorkspace = () => {
         />
         <span className="mr-auto text-xs text-neutral-500">{service.serviceDate ? formatDateOnlyForDisplay(service.serviceDate) : ""}</span>
 
+        {session.usingOfflineCopy && (
+          <span className="rounded-md bg-sky-500/15 px-2 py-1 text-xs text-sky-300" title="This service was saved on this computer the last time it loaded">
+            Offline copy
+          </span>
+        )}
         {!online && (
           <span className="flex items-center gap-1.5 rounded-md bg-amber-500/15 px-2 py-1 text-xs text-amber-300">
             <WifiOff className="h-3.5 w-3.5" /> Offline. Still presenting what's loaded.

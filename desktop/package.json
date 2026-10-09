@@ -1,0 +1,30 @@
+{
+  "name": "sermon-slide-pro-desktop",
+  "productName": "Sermon Slide Pro",
+  "version": "1.0.0",
+  "description": "Sermon Slide Pro for presenting on Sunday",
+  "author": "Boosted Technology Co., LLC",
+  "license": "UNLICENSED",
+  "private": true,
+  "main": "build/main.js",
+  "scripts": {
+    "build:web": "cd .. && npx vite build && cd desktop && node scripts/copy-web.mjs",
+    "build:electron": "esbuild src/main.ts src/preload.ts --bundle --platform=node --format=cjs --target=node20 --external:electron --outdir=build",
+    "build": "npm run build:web && npm run build:electron",
+    "start": "npm run build && electron .",
+    "dev": "npm run build:electron && SSP_DEV_URL=http://localhost:8080 electron .",
+    "test": "vitest run",
+    "dist:mac": "npm run build && electron-builder --mac",
+    "dist:win": "npm run build && electron-builder --win",
+    "release": "npm run build && electron-builder --mac --win --publish always"
+  },
+  "devDependencies": {
+    "electron": "^44.7.0",
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.28.2",
+    "vitest": "^3.2.4"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
+  }
+}

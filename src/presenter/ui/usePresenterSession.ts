@@ -36,6 +36,15 @@ export interface PresenterSessionDeps {
   now?: () => number;
   /** For toasts: something changed that the operator should know. */
   onNotice?: (notice: { kind: "revoked" | "plan" | "refresh_failed"; message: string }) => void;
+  /**
+   * Desktop app only: an encrypted offline copy of the bundle, used when the
+   * service can't be loaded because there's no internet. See desktop/src/offline-cache.ts.
+   */
+  offlineCache?: {
+    save(serviceId: string, bundle: ServiceBundle): Promise<void>;
+    load(serviceId: string): Promise<ServiceBundle | null>;
+    remove(serviceId: string): Promise<void>;
+  };
 }
 
 export type LoadState =
@@ -68,6 +77,10 @@ export interface PresenterSession {
   attachStageWindow: (win: Window | null) => void;
   /** Refetch the bundle quietly, for example after an edit. */
   reload: () => Promise<boolean>;
+  /** True while presenting from the offline copy because the service couldn't be loaded. */
+  usingOfflineCopy: boolean;
+  /** Tell the session a presenter window closed (the desktop app reports this). */
+  windowClosed: (kind: "main" | "stage") => void;
   endSession: () => void;
 }
 
@@ -94,6 +107,7 @@ export function usePresenterSession(serviceId: string, deps: PresenterSessionDep
   const [canPresent, setCanPresent] = useState(true);
   const [fumsPending, setFumsPending] = useState(0);
   const [attempt, setAttempt] = useState(0);
+  const [usingOfflineCopy, setUsingOfflineCopy] = useState(false);
 
   const nonce = useMemo(() => deps.newNonce(), []); // eslint-disable-line react-hooks/exhaustive-deps
   const unavailable = useRef<Set<string>>(new Set());
@@ -128,12 +142,27 @@ export function usePresenterSession(serviceId: string, deps: PresenterSessionDep
   const loadBundle = useCallback(async (silent: boolean) => {
     if (!silent) setLoad({ kind: "loading" });
     const result = await fetchBundle(depsRef.current.invoke, serviceId);
+    const cache = depsRef.current.offlineCache;
     if (result.ok === true) {
       applyBundle(result.bundle);
       setLoad({ kind: "ready" });
+      setUsingOfflineCopy(false);
+      void cache?.save(serviceId, result.bundle).catch(() => undefined);
       return true;
     }
     const error = "error" in result ? result.error : "server";
+    // Lost access (plan ended, service deleted): the offline copy must not be used.
+    if (error === "plan_required" || error === "not_found") void cache?.remove(serviceId).catch(() => undefined);
+    // No internet (or the server is down): present from the offline copy if there is one.
+    if (cache && !bundleRef.current && (error === "network" || error === "server" || error === "rate_limited")) {
+      const copy = await cache.load(serviceId).catch(() => null);
+      if (copy) {
+        applyBundle(copy);
+        setLoad({ kind: "ready" });
+        setUsingOfflineCopy(true);
+        return false;
+      }
+    }
     // A failed background refresh keeps the current bundle. Pruning still
     // removes anything that expires, so nothing stale is ever shown.
     if (!silent || !bundleRef.current) setLoad({ kind: "error", error });
@@ -340,6 +369,17 @@ export function usePresenterSession(serviceId: string, deps: PresenterSessionDep
     stageConnected,
     attachStageWindow,
     reload: () => loadBundle(true),
+    usingOfflineCopy,
+    windowClosed: (kind) => {
+      if (kind === "main") {
+        projectorWindow.current = null;
+        setProjectorConnected(false);
+        lastAckedSlideId.current = null;
+      } else {
+        stageWindow.current = null;
+        setStageConnected(false);
+      }
+    },
     endSession,
   };
 }

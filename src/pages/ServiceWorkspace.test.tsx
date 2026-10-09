@@ -59,6 +59,8 @@ function makeSession(over: Partial<PresenterSession> = {}): PresenterSession {
     stageConnected: false,
     attachStageWindow: vi.fn(),
     reload: vi.fn(async () => true),
+    usingOfflineCopy: false,
+    windowClosed: vi.fn(),
     endSession: vi.fn(),
     ...over,
   };
