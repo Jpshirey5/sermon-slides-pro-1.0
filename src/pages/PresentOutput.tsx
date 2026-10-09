@@ -9,6 +9,8 @@ import { createBroadcastTransport, type PresenterTransport } from "@/presenter/c
 import type { OutputFrame } from "@/presenter/core/types";
 import { SlideView } from "@/presenter/ui/SlideView";
 import { useFillsScreen } from "@/presenter/ui/useFillsScreen";
+import { VideoPlayer } from "@/presenter/ui/VideoPlayer";
+import type { VideoCommand } from "@/presenter/core/video";
 
 const HIDE_CURSOR_AFTER_MS = 2500;
 
@@ -21,6 +23,8 @@ const PresentOutput = () => {
   const fullscreen = useFillsScreen();
   const [cursorHidden, setCursorHidden] = useState(false);
   const transport = useRef<PresenterTransport | null>(null);
+  // The playing video takes commands from the operator through this.
+  const videoController = useRef<((command: VideoCommand) => void) | null>(null);
 
   useEffect(() => {
     document.title = "Sermon Slide Pro output";
@@ -33,7 +37,9 @@ const PresentOutput = () => {
     }
     transport.current = t;
     const off = t.onMessage((m) => {
-      if (m.type === "frame") {
+      if (m.type === "video") {
+        videoController.current?.(m.command);
+      } else if (m.type === "frame") {
         setConnected(true);
         setFrame(m.frame);
         setSeq(m.seq);
@@ -104,7 +110,23 @@ const PresentOutput = () => {
     >
       {/* Letterbox the 16:9 slide inside whatever shape the projector is. */}
       <div className="w-full max-h-full" style={{ maxWidth: "calc(100vh * 16 / 9)" }}>
-        <SlideView frame={frame} logoUrl={null} fallbackTitle="" protectText />
+        <SlideView
+          frame={frame}
+          logoUrl={null}
+          fallbackTitle=""
+          protectText
+          renderVideo={(slide) => (
+            <VideoPlayer
+              slide={slide}
+              src={slide.video?.src}
+              mode="leader"
+              registerController={(c) => {
+                videoController.current = c;
+              }}
+              onStatus={(status) => transport.current?.send({ type: "videoState", status })}
+            />
+          )}
+        />
       </div>
 
       {!fullscreen && (

@@ -6,7 +6,7 @@
 //
 // Our own layout and visual design (see CLAUDE.md: no ProPresenter trade dress).
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
@@ -14,6 +14,9 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock,
+  Film,
+  LayoutGrid,
+  Upload,
   GripVertical,
   Image as ImageIcon,
   Keyboard,
@@ -56,6 +59,13 @@ import { PickerDialog } from "@/components/services/PickerDialog";
 import { ReadingDialog, type ReadingDraft } from "@/components/services/ReadingDialog";
 import { SlideEditDialog } from "@/components/services/SlideEditDialog";
 import { SongEditorDialog } from "@/components/services/SongEditorDialog";
+import { type AddKind as GridAddKind, SlideGrid } from "@/components/services/SlideGrid";
+import { VideoControls } from "@/components/services/VideoControls";
+import { classifyFile, fileProblem, formatDuration, listVideos, type MediaItem, uploadSlideImage, uploadVideo, videoUrl } from "@/lib/media";
+import { applyCustomSlideEdit, type CustomSlide, duplicateGroup, insertAt, moveGroup, newCustomSlide, newSermonSlide, type NewSermonSlideKind, removeGroup } from "@/lib/slide-ops";
+import type { SlideData } from "@/lib/slides/types";
+import { readCustomSlides } from "../../supabase/functions/_shared/presenter/slides.ts";
+import { VideoPlayer } from "@/presenter/ui/VideoPlayer";
 import { getDesktop } from "@/desktop/bridge";
 import { supabase } from "@/integrations/supabase/client";
 import { resolveBackgroundImages } from "@/lib/background-assets";
@@ -124,6 +134,8 @@ const ITEM_ICON: Record<BundleItem["type"], typeof Square> = {
   logo: ImageIcon,
   blank: Square,
   credits: ScrollText,
+  slides: LayoutGrid,
+  video: Film,
 };
 
 const asFrame = (slide: PresenterSlide | null): OutputFrame => (slide ? { kind: "slide", slide } : { kind: "black" });
@@ -150,7 +162,7 @@ export function slideCaption(slide: PresenterSlide): string {
 }
 
 type WindowKind = "main" | "stage";
-type AddKind = "sermon" | "song";
+type AddKind = "sermon" | "song" | "video";
 
 const ServiceWorkspace = () => {
   const { id: serviceId = "" } = useParams();
@@ -164,6 +176,13 @@ const ServiceWorkspace = () => {
 
   // dialogs
   const [picker, setPicker] = useState<AddKind | null>(null);
+  const [videoLibrary, setVideoLibrary] = useState<MediaItem[] | null>(null);
+  const [uploading, setUploading] = useState<string | null>(null);
+  const [busySlideId, setBusySlideId] = useState<string | null>(null);
+  const [videoSettings, setVideoSettings] = useState<{ item: ServiceItem; loop: boolean; endAction: "hold" | "clear" | "next" } | null>(null);
+  const videoInput = useRef<HTMLInputElement>(null);
+  const graphicInput = useRef<HTMLInputElement>(null);
+  const pendingGraphic = useRef<{ item: BundleItem; after: number | null } | null>(null);
   const [sermons, setSermons] = useState<SermonOption[] | null>(null);
   const [songs, setSongs] = useState<Song[] | null>(null);
   const [reading, setReading] = useState<{ itemId: string | null; draft: ReadingDraft | null } | null>(null);
@@ -196,6 +215,7 @@ const ServiceWorkspace = () => {
     queueStorage: createIndexedDbQueueStorage(),
     deviceId: getDeviceId(),
     resolveImages: resolveBackgroundImages,
+    resolveVideo: videoUrl,
     newNonce: () => newChannelNonce(),
     onNotice: ({ kind, message }: { kind: string; message: string }) =>
       kind === "revoked" ? toast.warning(message, { duration: 10_000 }) : kind === "refresh_failed" ? undefined : toast(message),
@@ -290,7 +310,8 @@ const ServiceWorkspace = () => {
   const openPicker = (kind: AddKind) => {
     setPicker(kind);
     if (kind === "sermon") listSermonOptions().then(setSermons).catch(() => setSermons([]));
-    else listSongs().then(setSongs).catch(() => setSongs([]));
+    else if (kind === "song") listSongs().then(setSongs).catch(() => setSongs([]));
+    else listVideos().then(setVideoLibrary).catch(() => setVideoLibrary([]));
   };
   const add = (item: Parameters<typeof addServiceItem>[1]) => {
     if (!service) return;
@@ -306,6 +327,123 @@ const ServiceWorkspace = () => {
     ids.splice(to, 0, moved);
     setDragFrom(null);
     void run("Could not reorder the service", () => reorderServiceItems(service.id, ids));
+  };
+
+  // ── slides inside a section: add, move, duplicate, delete, pictures ──
+
+  /** Change a section's slide list (a sermon's editor slides, or a Slides item's own list), then reload. */
+  const mutateSlides = (item: BundleItem, label: string, change: (list: Array<SlideData | CustomSlide>) => Array<SlideData | CustomSlide> | null) =>
+    run(label, async () => {
+      if (item.type === "sermon" && item.sermon_id) {
+        const sermon = await getEditorPresentationState(item.sermon_id);
+        if (!sermon?.editorSlides) throw new Error("This sermon has no editor slides yet. Open it in the sermon editor once, then try again.");
+        const next = change(sermon.editorSlides);
+        if (next) await saveEditorSlides(item.sermon_id, next as SlideData[]);
+      } else if (item.type === "slides") {
+        const row = serviceItem(item.id);
+        if (!row) throw new Error("This section changed. Reload and try again.");
+        const next = change(readCustomSlides(row.payload));
+        if (next) await updateServiceItem(row.id, { payload: { ...row.payload, slides: next } });
+      }
+    });
+
+  const groupOf = (item: BundleItem, slideIndex: number) => item.slides[slideIndex]?.source?.slide_indexes ?? [];
+
+  const addKindsFor = (item: BundleItem | undefined): GridAddKind[] => {
+    if (!item) return [];
+    if (item.type === "sermon" && item.sermon_id) return [{ kind: "title", label: "Title" }, { kind: "point", label: "Point" }, { kind: "scripture", label: "Scripture" }, { kind: "blank", label: "Blank" }];
+    if (item.type === "slides") return [{ kind: "title", label: "Title" }, { kind: "text", label: "Text" }, { kind: "graphic", label: "Graphic (picture)" }, { kind: "blank", label: "Blank" }];
+    return [];
+  };
+
+  const addSlide = (item: BundleItem, kind: string, after: number | null, extra: Partial<CustomSlide> = {}) => {
+    if (item.type === "slides" && kind === "graphic" && !extra.backgroundImage) {
+      pendingGraphic.current = { item, after };
+      graphicInput.current?.click();
+      return;
+    }
+    void mutateSlides(item, "Could not add the slide", (list) => {
+      const at = after === null ? list.length : Math.max(...groupOf(item, after)) + 1;
+      const fresh = item.type === "sermon"
+        ? newSermonSlide(kind as NewSermonSlideKind, (list[Math.max(0, at - 1)] as SlideData | undefined))
+        : newCustomSlide(kind as CustomSlide["kind"], extra);
+      return insertAt(list, at, [fresh]);
+    });
+  };
+
+  const moveSlide = (item: BundleItem, from: number, before: number) =>
+    void mutateSlides(item, "Could not move the slide", (list) => {
+      const target = before < item.slides.length ? groupOf(item, before)[0] ?? list.length : list.length;
+      return moveGroup(list, groupOf(item, from), target);
+    });
+
+  const duplicateSlide = (item: BundleItem, i: number) =>
+    void mutateSlides(item, "Could not duplicate the slide", (list) => duplicateGroup(list, groupOf(item, i)));
+
+  const deleteSlide = (item: BundleItem, i: number) => {
+    let previous: Array<SlideData | CustomSlide> | null = null;
+    void mutateSlides(item, "Could not delete the slide", (list) => {
+      previous = list;
+      return removeGroup(list, groupOf(item, i));
+    }).then(() => {
+      if (!previous) return;
+      const restore = previous;
+      toast("Slide deleted", { action: { label: "Undo", onClick: () => void mutateSlides(item, "Could not undo", () => restore) } });
+    });
+  };
+
+  const setSlidePicture = (item: BundleItem, i: number, ref: string | null) => {
+    const slide = item.slides[i];
+    if (!slide?.source) return;
+    void mutateSlides(item, ref ? "Could not set the background" : "Could not remove the picture", (list) => {
+      if (item.type === "slides") {
+        const r = applyCustomSlideEdit(list as CustomSlide[], slide.source!.slide_indexes[0], { backgroundImage: ref });
+        if (r.ok === false) throw new Error(r.reason);
+        return r.slides;
+      }
+      const expected = slide.kind === "missing" ? "missing" : (slide.kind as "title" | "point" | "scripture" | "blank");
+      const r = applySlideEdit(list as SlideData[], slide.source!.slide_indexes, expected as never, { backgroundImage: ref });
+      if (r.ok === false) throw new Error(r.reason);
+      return r.slides;
+    });
+  };
+
+  const dropImage = async (item: BundleItem, file: File, slideIndex: number | null) => {
+    const problem = fileProblem(file);
+    if (problem || classifyFile(file) !== "image") return void toast.error(problem ?? `${file.name} isn't a picture.`);
+    const target = slideIndex !== null ? item.slides[slideIndex] : null;
+    if (target && !target.source) return void toast("Pictures can be added to sermon slides and Slides sections. Songs and readings use the slide editor.");
+    if (!target && item.type !== "slides") return void toast("Drop the picture onto a slide to make it the background, or add a Slides section for graphics.");
+    setBusySlideId(target?.id ?? null);
+    setUploading(`Uploading ${file.name}`);
+    try {
+      const ref = await uploadSlideImage(file, serviceId, target?.id.replace(/[^A-Za-z0-9-]/g, "") || "graphic");
+      if (target && slideIndex !== null) setSlidePicture(item, slideIndex, ref);
+      else addSlide(item, "graphic", null, { backgroundImage: ref });
+    } catch (error) {
+      toast.error("Could not upload the picture", { description: (error as Error).message });
+    } finally {
+      setUploading(null);
+      setBusySlideId(null);
+    }
+  };
+
+  /** Upload a video to the library and add it to the service right after the section you're viewing. */
+  const addVideoFile = async (file: File) => {
+    const problem = fileProblem(file);
+    if (problem || classifyFile(file) !== "video") return void toast.error(problem ?? `${file.name} isn't a video.`);
+    if (!service) return;
+    setUploading(`Uploading ${file.name}. Large videos can take a few minutes.`);
+    try {
+      const mediaId = await uploadVideo(file);
+      const after = bundle?.items[viewItem]?.id;
+      await run("Could not add the video", () => addServiceItem(service, { type: "video", mediaId, afterItemId: serviceItem(after ?? "")?.id ?? null }));
+      toast.success("Video added");
+    } catch (error) {
+      toast.error("Could not upload the video", { description: (error as Error).message });
+    } finally {
+      setUploading(null);
+    }
   };
 
   // ── windows ──
@@ -343,8 +481,10 @@ const ServiceWorkspace = () => {
   // ── editing ──
   const editSlide = (item: BundleItem, slide: PresenterSlide) => {
     const row = serviceItem(item.id);
-    if (slide.source && (slide.kind === "title" || slide.kind === "point" || slide.kind === "scripture" || slide.kind === "missing")) {
+    if (slide.source && (slide.kind === "title" || slide.kind === "point" || slide.kind === "scripture" || slide.kind === "missing" || slide.kind === "graphic" || (slide.kind === "blank" && slide.source.item_id))) {
       setEditingSlide(slide);
+    } else if (item.type === "video" && row) {
+      setVideoSettings({ item: row, loop: row.payload.loop === true, endAction: row.payload.end_action === "clear" || row.payload.end_action === "next" ? row.payload.end_action : "hold" });
     } else if (item.type === "song" && item.song_id) {
       setSongEditor({ songId: item.song_id, addToService: false });
     } else if (item.type === "scripture" && row) {
@@ -359,6 +499,18 @@ const ServiceWorkspace = () => {
     const slide = editingSlide;
     if (!slide?.source) return;
     try {
+      if (slide.source.item_id) {
+        const row = serviceItem(slide.source.item_id);
+        if (!row) throw new Error("This section changed. Reload and try again.");
+        const r = applyCustomSlideEdit(readCustomSlides(row.payload), slide.source.slide_indexes[0], edit);
+        if (r.ok === false) throw new Error(r.reason);
+        await updateServiceItem(row.id, { payload: { ...row.payload, slides: r.slides } });
+        setEditingSlide(null);
+        await Promise.all([loadService(), session.reload()]);
+        toast.success("Slide saved");
+        return;
+      }
+      if (!slide.source.sermon_id) return;
       const sermon = await getEditorPresentationState(slide.source.sermon_id);
       if (!sermon?.editorSlides) throw new Error("This sermon has no editor slides yet. Open it in the editor first.");
       const expected = slide.kind === "missing" ? "missing" : (slide.kind as "title" | "point" | "scripture");
@@ -491,6 +643,8 @@ const ServiceWorkspace = () => {
                 <DropdownMenuItem onSelect={() => openPicker("song")}><Music className="h-4 w-4" /> Song</DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => setReading({ itemId: null, draft: null })}><BookOpen className="h-4 w-4" /> Reading</DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => add({ type: "logo" })}><ImageIcon className="h-4 w-4" /> Logo screen</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => add({ type: "slides", payload: { slides: [newCustomSlide("title")] }, label: "Slides", afterItemId: shownItem?.id ?? null })}><LayoutGrid className="h-4 w-4" /> Slides (welcome, announcements, graphics)</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => openPicker("video")}><Film className="h-4 w-4" /> Video</DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => add({ type: "blank" })}><Square className="h-4 w-4" /> Black screen</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -578,30 +732,33 @@ const ServiceWorkspace = () => {
                 )}
               </p>
             )}
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 2xl:grid-cols-4">
-              {shownItem?.slides.map((slide, i) => {
-                const isCursor = state.cursor.item === shownIndex && state.cursor.slide === i;
-                const isLive = isCursor && state.mode === "live";
-                return (
-                  <button
-                    key={slide.id}
-                    type="button"
-                    onClick={() => dispatch({ type: "goToSlide", item: shownIndex, slide: i })}
-                    onDoubleClick={() => editSlide(shownItem, slide)}
-                    className={`rounded-md p-1 text-left transition-colors ${isLive ? "bg-red-500/20 ring-2 ring-red-500" : isCursor ? "ring-2 ring-primary" : "ring-1 ring-neutral-800 hover:ring-neutral-600"}`}
-                    aria-label={`Slide ${i + 1}: ${slideCaption(slide)}`}
-                    aria-current={isCursor ? "true" : undefined}
-                  >
-                    <SlideView frame={asFrame(slide)} images={images} showMissing className="rounded" />
-                    <span className="mt-1 flex items-center gap-1.5 px-1 text-xs text-neutral-400">
-                      <span className="tabular-nums text-neutral-500">{i + 1}</span>
-                      <span className="truncate">{slideCaption(slide)}</span>
-                      {slide.notes && <StickyNote className="ml-auto h-3 w-3 shrink-0 text-amber-300" aria-label="Has speaker notes" />}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
+            {shownItem && (
+              <SlideGrid
+                slides={shownItem.slides}
+                itemIndex={shownIndex}
+                cursor={state.cursor}
+                live={state.mode === "live"}
+                images={images}
+                videos={session.videoUrls}
+                editable={addKindsFor(shownItem).length > 0 && !busy}
+                addKinds={addKindsFor(shownItem)}
+                acceptsGraphicDrop={shownItem.type === "slides"}
+                busySlideId={busySlideId}
+                caption={slideCaption}
+                onSelect={(i) => dispatch({ type: "goToSlide", item: shownIndex, slide: i })}
+                onEdit={(slide) => editSlide(shownItem, slide)}
+                onMove={(from, before) => moveSlide(shownItem, from, before)}
+                onAdd={(kind, after) => addSlide(shownItem, kind, after)}
+                onDuplicate={(i) => duplicateSlide(shownItem, i)}
+                onDelete={(i) => deleteSlide(shownItem, i)}
+                onRemovePicture={(i) => setSlidePicture(shownItem, i, null)}
+                onDropImage={(file, i) => void dropImage(shownItem, file, i)}
+                onDropVideo={(file) => void addVideoFile(file)}
+              />
+            )}
+            {uploading && (
+              <p className="mt-3 flex items-center gap-2 text-xs text-neutral-400"><Loader2 className="h-3.5 w-3.5 animate-spin" /> {uploading}</p>
+            )}
           </div>
         </main>
 
@@ -614,7 +771,20 @@ const ServiceWorkspace = () => {
                 <Radio className="h-3 w-3" /> {projectorConnected ? "Connected" : "Not open"}
               </span>
             </div>
-            <SlideView frame={frame} images={images} fallbackTitle={bundle.service.title} className="rounded-md ring-2 ring-red-500/70" />
+            <SlideView
+              frame={frame}
+              images={images}
+              videos={session.videoUrls}
+              renderVideo={(slide) =>
+                projectorConnected ? (
+                  <VideoPlayer slide={slide} src={session.videoUrls[slide.video?.media_id ?? ""]} mode="follower" follow={session.videoStatus} />
+                ) : (
+                  <VideoPlayer slide={slide} src={session.videoUrls[slide.video?.media_id ?? ""]} mode="leader" registerController={session.setLocalVideoPlayer} onStatus={session.reportLocalVideoStatus} />
+                )
+              }
+              fallbackTitle={bundle.service.title}
+              className="rounded-md ring-2 ring-red-500/70"
+            />
             {session.current?.kind === "missing" && (
               <p className="mt-2 rounded bg-amber-500/10 px-2 py-1.5 text-xs text-amber-300">{missingText(session.current.missing_reason)}</p>
             )}
@@ -626,6 +796,10 @@ const ServiceWorkspace = () => {
               <Button size="sm" className="bg-primary text-primary-foreground hover:bg-primary/90" onClick={() => dispatch({ type: "next" })} aria-label="Next slide"><ChevronRight className="h-4 w-4" /></Button>
             </div>
           </section>
+
+          {session.current?.kind === "video" && (
+            <VideoControls slide={session.current} status={session.videoStatus} now={now} onCommand={session.sendVideo} rehearsing={!projectorConnected} />
+          )}
 
           <section aria-label="Stage display controls">
             <div className="flex items-center justify-between">
@@ -726,7 +900,93 @@ const ServiceWorkspace = () => {
           else void session.reload();
         }}
       />
-      <SlideEditDialog slide={editingSlide} onSave={saveSlideEdit} onClose={() => setEditingSlide(null)} />
+      <SlideEditDialog
+        slide={editingSlide}
+        images={images}
+        onSave={saveSlideEdit}
+        onClose={() => setEditingSlide(null)}
+        onUploadImage={(file) => {
+          const problem = fileProblem(file);
+          if (problem || classifyFile(file) !== "image") return Promise.reject(new Error(problem ?? "Choose a PNG, JPG, WebP, or GIF picture."));
+          return uploadSlideImage(file, serviceId, editingSlide?.id.replace(/[^A-Za-z0-9-]/g, "") || "slide");
+        }}
+      />
+      <PickerDialog
+        open={picker === "video"}
+        title="Add a video"
+        description="Videos in your church's library. You can also drag a video file onto the slides area."
+        options={videoLibrary?.map((v) => ({ id: v.id, title: v.fileName, detail: v.durationSeconds ? formatDuration(v.durationSeconds) : undefined })) ?? null}
+        emptyText="No videos yet. Upload your first one."
+        onPick={(id) => { setPicker(null); add({ type: "video", mediaId: id, afterItemId: shownItem?.id ?? null }); }}
+        onClose={() => setPicker(null)}
+        footer={
+          <Button variant="outline" disabled={uploading !== null} onClick={() => videoInput.current?.click()}>
+            <Upload className="h-4 w-4" /> Upload video
+          </Button>
+        }
+      />
+      <input
+        ref={videoInput}
+        type="file"
+        accept="video/mp4,video/quicktime,video/webm"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          e.target.value = "";
+          if (file) { setPicker(null); void addVideoFile(file); }
+        }}
+      />
+      <input
+        ref={graphicInput}
+        type="file"
+        accept="image/png,image/jpeg,image/webp,image/gif"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          e.target.value = "";
+          const pending = pendingGraphic.current;
+          pendingGraphic.current = null;
+          if (file && pending) void dropImage(pending.item, file, null);
+        }}
+      />
+      <Dialog open={videoSettings !== null} onOpenChange={(o) => !o && setVideoSettings(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Video settings</DialogTitle>
+            <DialogDescription>What happens when this video finishes.</DialogDescription>
+          </DialogHeader>
+          {videoSettings && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="video-loop">Loop until I move on</Label>
+                <Switch id="video-loop" checked={videoSettings.loop} onCheckedChange={(v) => setVideoSettings({ ...videoSettings, loop: v })} />
+              </div>
+              <div className="space-y-1.5" role="radiogroup" aria-label="When it ends">
+                <Label>When it ends</Label>
+                {([["hold", "Stay on the last frame"], ["clear", "Clear the screen"], ["next", "Go to the next item"]] as const).map(([value, label]) => (
+                  <label key={value} className="flex items-center gap-2 text-sm">
+                    <input type="radio" name="video-end" disabled={videoSettings.loop} checked={videoSettings.endAction === value} onChange={() => setVideoSettings({ ...videoSettings, endAction: value })} />
+                    {label}
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setVideoSettings(null)}>Cancel</Button>
+            <Button
+              onClick={() => {
+                const v = videoSettings;
+                if (!v) return;
+                setVideoSettings(null);
+                void run("Could not save the video settings", () => updateServiceItem(v.item.id, { payload: { ...v.item.payload, loop: v.loop, end_action: v.endAction } }));
+              }}
+            >
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={countdownFor !== null} onOpenChange={(o) => !o && setCountdownFor(null)}>
         <DialogContent className="sm:max-w-sm">

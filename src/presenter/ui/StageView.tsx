@@ -34,7 +34,7 @@ function Countdown({ frame, now, size }: { frame: StageFrame; now: number; size:
   return (
     <div className="text-right">
       <p className="tabular-nums font-semibold" style={{ fontSize: size, lineHeight: 1, color: countdownColor(ms) }}>{formatCountdown(ms)}</p>
-      <p className="text-neutral-500" style={{ fontSize: "1.4cqw" }}>{frame.timer.startedAt === null ? "Countdown paused" : ms < 0 ? "Over time" : "Time left"}</p>
+      <p className="text-neutral-500" style={{ fontSize: "1.4cqw" }}>{frame.timerIsVideo ? (frame.timer.startedAt === null ? "Video paused" : "Video time left") : frame.timer.startedAt === null ? "Countdown paused" : ms < 0 ? "Over time" : "Time left"}</p>
     </div>
   );
 }
@@ -120,7 +120,9 @@ export function StageView({ frame, now, className = "" }: StageViewProps) {
             ) : (
               <p className="text-neutral-500" style={{ fontSize: "3cqw" }}>No countdown set for this item.</p>
             )}
-            <p className="text-neutral-400" style={{ fontSize: "2.2cqw" }}>{frame.timer ? (frame.timer.startedAt === null ? "Countdown paused" : "Time left") : ""}</p>
+            <p className="text-neutral-400" style={{ fontSize: "2.2cqw" }}>
+              {frame.timer ? (frame.timerIsVideo ? (frame.timer.startedAt === null ? "Video paused" : "Video time left") : frame.timer.startedAt === null ? "Countdown paused" : "Time left") : ""}
+            </p>
           </div>
         )}
 

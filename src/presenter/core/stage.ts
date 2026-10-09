@@ -11,6 +11,7 @@
 import { STAGE_TEMPLATES, type StageTemplate } from "../../../supabase/functions/_shared/presenter/types.ts";
 import { currentSlide, nextSlide, type PresenterState } from "./state";
 import type { OutputMode, PresenterSlide } from "./types";
+import { type VideoStatus, videoTimer } from "./video";
 
 export { STAGE_TEMPLATES };
 export type { StageTemplate };
@@ -128,6 +129,8 @@ export interface StageFrame {
   notes: string | null;
   /** The stage window ticks the countdown itself from this. */
   timer: TimerState | null;
+  /** True when the countdown is a video's remaining time rather than the operator's timer. */
+  timerIsVideo?: boolean;
   message: string | null;
   /** What the main screen is doing, so the stage can say "Main screen is black". */
   mainMode: OutputMode;
@@ -145,6 +148,10 @@ export function stageText(slide: PresenterSlide | null): StageText | null {
       return slide.title ? { text: slide.title, caption: slide.subtitle || undefined } : null;
     case "credits":
       return { text: "Scripture credits" };
+    case "video":
+      return { text: slide.title ?? "Video", caption: "Video" };
+    case "graphic":
+      return { text: "Graphic" };
     case "logo":
       return { text: "Logo" };
     case "blank":
@@ -154,11 +161,26 @@ export function stageText(slide: PresenterSlide | null): StageText | null {
   }
 }
 
-export function buildStageFrame(state: PresenterState, controls: StageControls): StageFrame {
+export function buildStageFrame(state: PresenterState, controls: StageControls, video?: VideoStatus | null): StageFrame {
   const item = state.bundle?.items[state.cursor.item] ?? null;
   const template = controls.templateOverride ?? item?.stage.template ?? "simple";
   const current = currentSlide(state);
   const showTimer = template === "message" || template === "video";
+  // While a video is live, the countdown is the video's own remaining time.
+  const liveVideo = current?.kind === "video" && video && video.slideId === current.id ? videoTimer(video) : null;
+  if (showTimer && liveVideo) {
+    return {
+      template,
+      itemLabel: item?.label ?? "",
+      current: stageText(current),
+      next: stageText(nextSlide(state)),
+      notes: current?.notes?.trim() || null,
+      timer: liveVideo,
+      timerIsVideo: true,
+      message: controls.showMessage && controls.message.trim() ? controls.message.trim() : null,
+      mainMode: state.mode,
+    };
+  }
   return {
     template,
     itemLabel: item?.label ?? "",

@@ -883,6 +883,51 @@ export type Database = {
         Update: { [_ in never]: never }
         Relationships: []
       }
+      service_media: {
+        Row: {
+          account_id: string
+          created_at: string
+          created_by_user_id: string | null
+          duration_seconds: number | null
+          file_name: string
+          height: number | null
+          id: string
+          kind: string
+          mime_type: string
+          size_bytes: number
+          storage_path: string
+          width: number | null
+        }
+        Insert: {
+          account_id: string
+          created_at?: string
+          created_by_user_id?: string | null
+          duration_seconds?: number | null
+          file_name: string
+          height?: number | null
+          id?: string
+          kind: string
+          mime_type: string
+          size_bytes: number
+          storage_path: string
+          width?: number | null
+        }
+        Update: {
+          account_id?: string
+          created_at?: string
+          created_by_user_id?: string | null
+          duration_seconds?: number | null
+          file_name?: string
+          height?: number | null
+          id?: string
+          kind?: string
+          mime_type?: string
+          size_bytes?: number
+          storage_path?: string
+          width?: number | null
+        }
+        Relationships: []
+      }
       service_items: {
         Row: {
           account_id: string
@@ -890,6 +935,7 @@ export type Database = {
           id: string
           item_type: string
           label: string | null
+          media_id: string | null
           payload: Json
           payload_version: number
           position: number
@@ -904,6 +950,7 @@ export type Database = {
           id?: string
           item_type: string
           label?: string | null
+          media_id?: string | null
           payload?: Json
           payload_version?: number
           position: number
@@ -918,6 +965,7 @@ export type Database = {
           id?: string
           item_type?: string
           label?: string | null
+          media_id?: string | null
           payload?: Json
           payload_version?: number
           position?: number

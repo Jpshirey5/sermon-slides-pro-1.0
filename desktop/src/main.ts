@@ -38,6 +38,8 @@ function secureWebPreferences(preload: boolean): Electron.WebPreferences {
     nodeIntegration: false,
     sandbox: true,
     webSecurity: true,
+    // Service videos start on cue without a click in the window first.
+    autoplayPolicy: "no-user-gesture-required",
     // Licensed scripture is shown in these windows; no inspector in release builds.
     devTools: !app.isPackaged,
     ...(preload ? { preload: path.join(__dirname, "preload.js") } : {}),

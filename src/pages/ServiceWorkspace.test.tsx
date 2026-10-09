@@ -62,6 +62,11 @@ function makeSession(over: Partial<PresenterSession> = {}): PresenterSession {
     usingOfflineCopy: false,
     windowClosed: vi.fn(),
     endSession: vi.fn(),
+    videoUrls: {},
+    videoStatus: null,
+    sendVideo: vi.fn(),
+    setLocalVideoPlayer: vi.fn(),
+    reportLocalVideoStatus: vi.fn(),
     ...over,
   };
 }
@@ -74,7 +79,7 @@ const service: ServiceDetail = {
   defaultTranslationId: "KJV",
   updatedAt: "",
   items: ["logo", "sermon", "empty", "reading", "blank"].map((id, i) => ({
-    id, position: (i + 1) * 1000, type: (id === "reading" || id === "empty" ? "scripture" : id) as never, sermonId: id === "sermon" ? "ser1" : null, songId: null, label: null, payload: {},
+    id, position: (i + 1) * 1000, type: (id === "reading" || id === "empty" ? "scripture" : id) as never, sermonId: id === "sermon" ? "ser1" : null, songId: null, mediaId: null, label: null, payload: {},
   })),
 };
 
@@ -176,6 +181,33 @@ describe("ServiceWorkspace", () => {
     expect(mocks.session.dispatch).toHaveBeenCalledWith({ type: "toggleBlack" });
     expect(mocks.session.dispatch).toHaveBeenCalledWith({ type: "toggleLogo" });
     expect(mocks.session.dispatch).toHaveBeenCalledWith({ type: "next" });
+  });
+
+  it("adds a sermon slide after the chosen slide and saves it to the sermon", async () => {
+    mocks.getEditorPresentationState.mockResolvedValue({
+      editorSlides: [
+        { id: "t", type: "title", content: { title: "Anchored" }, ...style },
+        { id: "p", type: "point", content: { title: "Hope is a person", subtitle: "" }, ...style },
+        { id: "s", type: "scripture", content: { reference: "John 3:16 (NIV)" }, ...style },
+      ],
+    });
+    renderWorkspace();
+    fireEvent.keyDown(await screen.findByRole("button", { name: "Add slide" }), { key: "Enter" });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Point" }));
+    await waitFor(() => expect(mocks.saveEditorSlides).toHaveBeenCalled());
+    const [sermonId, slides] = mocks.saveEditorSlides.mock.calls[0];
+    expect(sermonId).toBe("ser1");
+    expect(slides.map((s: { type: string }) => s.type)).toEqual(["title", "point", "scripture", "point"]);
+  });
+
+  it("shows video controls in the right column when a video is live", async () => {
+    const video = { id: "v", kind: "video" as const, title: "Welcome video", style, video: { media_id: "m1", storage_path: "account/a/m1.mp4", duration_seconds: 90, loop: false, end_action: "hold" as const } };
+    mocks.session = makeSession({ current: video, frame: { kind: "slide", slide: video } });
+    renderWorkspace();
+    const controls = await screen.findByRole("region", { name: "Video controls" });
+    fireEvent.click(within(controls).getByRole("button", { name: "Play video" }));
+    expect(mocks.session.sendVideo).toHaveBeenCalledWith({ action: "play" });
+    expect(within(controls).getByText(/Playing in this preview/)).toBeInTheDocument();
   });
 
   it("explains a load failure with a retry", async () => {

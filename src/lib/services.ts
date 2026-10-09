@@ -10,7 +10,7 @@ import {
   parseReference,
 } from "../../supabase/functions/_shared/scripture/references.ts";
 
-export type ServiceItemType = "sermon" | "scripture" | "song" | "blank" | "logo";
+export type ServiceItemType = "sermon" | "scripture" | "song" | "slides" | "video" | "blank" | "logo";
 export type StageTemplateChoice = "worship" | "message" | "video" | "simple";
 export type ScriptureLayout = "passage" | "verse_by_verse";
 
@@ -34,6 +34,7 @@ export interface ServiceItem {
   type: ServiceItemType;
   sermonId: string | null;
   songId: string | null;
+  mediaId: string | null;
   label: string | null;
   payload: Record<string, unknown>;
 }
@@ -103,7 +104,7 @@ export async function getService(id: string): Promise<ServiceDetail | null> {
       .maybeSingle(),
     supabase
       .from("service_items")
-      .select("id, position, item_type, sermon_id, song_id, label, payload")
+      .select("id, position, item_type, sermon_id, song_id, media_id, label, payload")
       .eq("service_id", id)
       .order("position", { ascending: true }),
   ]);
@@ -123,6 +124,7 @@ export async function getService(id: string): Promise<ServiceDetail | null> {
       type: r.item_type as ServiceItemType,
       sermonId: r.sermon_id,
       songId: r.song_id ?? null,
+      mediaId: r.media_id ?? null,
       label: r.label,
       payload: (r.payload && typeof r.payload === "object" && !Array.isArray(r.payload) ? r.payload : {}) as Record<string, unknown>,
     })),
@@ -148,20 +150,36 @@ export async function deleteService(id: string): Promise<void> {
 
 export async function addServiceItem(
   service: Pick<ServiceDetail, "id" | "accountId" | "items">,
-  item: { type: ServiceItemType; sermonId?: string | null; songId?: string | null; label?: string | null; payload?: Record<string, unknown> },
+  item: {
+    type: ServiceItemType;
+    sermonId?: string | null;
+    songId?: string | null;
+    mediaId?: string | null;
+    label?: string | null;
+    payload?: Record<string, unknown>;
+    /** Put it right after this item instead of at the end. */
+    afterItemId?: string | null;
+  },
 ): Promise<void> {
   const last = service.items.reduce((max, i) => Math.max(max, i.position), 0);
-  const { error } = await supabase.from("service_items").insert({
+  const after = item.afterItemId ? service.items.find((i) => i.id === item.afterItemId) : undefined;
+  const { data, error } = await supabase.from("service_items").insert({
     service_id: service.id,
     account_id: service.accountId,
     position: last + POSITION_STEP,
     item_type: item.type,
     sermon_id: item.type === "sermon" ? item.sermonId ?? null : null,
     song_id: item.type === "song" ? item.songId ?? null : null,
+    media_id: item.type === "video" ? item.mediaId ?? null : null,
     label: item.label?.trim() || null,
     payload: (item.payload ?? {}) as never,
-  });
+  }).select("id").single();
   fail("add the item", error);
+  if (after && data) {
+    const ordered = [...service.items].sort((a, b) => a.position - b.position).map((i) => i.id);
+    ordered.splice(ordered.indexOf(after.id) + 1, 0, data.id);
+    await reorderServiceItems(service.id, ordered);
+  }
 }
 
 export async function updateServiceItem(id: string, patch: { label?: string | null; payload?: Record<string, unknown> }): Promise<void> {

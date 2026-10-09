@@ -17,6 +17,10 @@ export interface SlideEdit {
   notes?: string;
   /** Solid background color, applied to every slide in the group. */
   background?: string;
+  /** Background picture (a storage ref), or null to remove it. Applied to the group. */
+  backgroundImage?: string | null;
+  /** Custom slides only: the body text under the title. */
+  body?: string;
 }
 
 export type EditResult = { ok: true; slides: SlideData[] } | { ok: false; reason: string };
@@ -63,6 +67,10 @@ export function applySlideEdit(
     if (edit.background !== undefined) {
       slide.background = edit.background;
       delete slide.backgroundImage;
+    }
+    if (edit.backgroundImage !== undefined) {
+      if (edit.backgroundImage) slide.backgroundImage = edit.backgroundImage;
+      else delete slide.backgroundImage;
     }
     if (edit.notes !== undefined && position === 0) {
       const notes = edit.notes.trim();

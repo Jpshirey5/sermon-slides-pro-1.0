@@ -64,3 +64,12 @@ describe("applySlideEdit", () => {
     expect(input[1].content.title).toBe("Hope");
   });
 });
+
+describe("applySlideEdit background pictures", () => {
+  it("sets a picture on the whole passage group and can remove it", () => {
+    const r = applySlideEdit(slides(), [2, 3], "scripture", { backgroundImage: "storage:presentation-backgrounds/account/a/x.png" });
+    expect(r.ok && [r.slides[2].backgroundImage, r.slides[3].backgroundImage]).toEqual(["storage:presentation-backgrounds/account/a/x.png", "storage:presentation-backgrounds/account/a/x.png"]);
+    const removed = applySlideEdit(slides(), [1], "point", { backgroundImage: null });
+    expect(removed.ok && removed.slides[1].backgroundImage).toBeUndefined();
+  });
+});

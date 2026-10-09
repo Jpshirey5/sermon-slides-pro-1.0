@@ -18,6 +18,7 @@ import { createFumsQueue, type FumsQueue, type FumsQueueStorage } from "../core/
 import { currentSlide, initialPresenterState, nextSlide, outputFrame, type PresenterAction, presenterReducer } from "../core/state";
 import { buildStageFrame, initialStageControls, type StageAction, type StageControls, type StageFrame, stageReducer } from "../core/stage";
 import type { PresenterTransport } from "../core/transport";
+import { clampTime, clampVolume, type VideoCommand, type VideoStatus } from "../core/video";
 import type { OutputFrame, PresenterSlide, ServiceBundle } from "../core/types";
 
 export const STATUS_POLL_MS = 60_000;
@@ -32,6 +33,8 @@ export interface PresenterSessionDeps {
   deviceId: string;
   /** Resolves stored background refs to URLs (signed storage URLs, data URLs). */
   resolveImages: (refs: string[]) => Promise<Record<string, string>>;
+  /** Turns a stored video path into a playable URL (signed link, or a local copy on desktop). */
+  resolveVideo?: (storagePath: string) => Promise<string>;
   newNonce: () => string;
   now?: () => number;
   /** For toasts: something changed that the operator should know. */
@@ -81,15 +84,27 @@ export interface PresenterSession {
   usingOfflineCopy: boolean;
   /** Tell the session a presenter window closed (the desktop app reports this). */
   windowClosed: (kind: "main" | "stage") => void;
+  /** Playable URLs for video slides, by storage path. */
+  videoUrls: Record<string, string>;
+  /** Status of the video on the main screen (or the preview while rehearsing). */
+  videoStatus: VideoStatus | null;
+  /** Control the live video. Goes to the main screen, or to the preview when no main screen is open. */
+  sendVideo: (command: VideoCommand) => void;
+  /** The workspace preview registers itself to play video while no main screen is open. */
+  setLocalVideoPlayer: (player: ((command: VideoCommand) => void) | null) => void;
+  /** The preview reports its status while it is the one playing. */
+  reportLocalVideoStatus: (status: VideoStatus) => void;
   endSession: () => void;
 }
 
-/** Swap stored background refs for resolved URLs before a frame leaves the operator. */
-function withResolvedImages(frame: OutputFrame, images: Record<string, string>): OutputFrame {
+/** Swap stored image refs and video paths for playable URLs before a frame leaves the operator. */
+export function withResolvedMedia(frame: OutputFrame, images: Record<string, string>, videos: Record<string, string> = {}): OutputFrame {
   if (frame.kind !== "slide") return frame;
-  const ref = frame.slide.style.backgroundImage;
-  if (!ref) return frame;
-  return { kind: "slide", slide: { ...frame.slide, style: { ...frame.slide.style, backgroundImage: images[ref] ?? null } } };
+  let slide = frame.slide;
+  const ref = slide.style.backgroundImage;
+  if (ref) slide = { ...slide, style: { ...slide.style, backgroundImage: images[ref] ?? null } };
+  if (slide.video) slide = { ...slide, video: { ...slide.video, src: videos[slide.video.storage_path] } };
+  return slide === frame.slide ? frame : { kind: "slide", slide };
 }
 
 export function usePresenterSession(serviceId: string, deps: PresenterSessionDeps): PresenterSession {
@@ -104,6 +119,8 @@ export function usePresenterSession(serviceId: string, deps: PresenterSessionDep
   const [projectorConnected, setProjectorConnected] = useState(false);
   const [stageConnected, setStageConnected] = useState(false);
   const [stage, dispatchStage] = useReducer(stageReducer, initialStageControls);
+  const [videoUrls, setVideoUrls] = useState<Record<string, string>>({});
+  const [videoStatus, setVideoStatus] = useState<VideoStatus | null>(null);
   const [canPresent, setCanPresent] = useState(true);
   const [fumsPending, setFumsPending] = useState(0);
   const [attempt, setAttempt] = useState(0);
@@ -137,6 +154,12 @@ export function usePresenterSession(serviceId: string, deps: PresenterSessionDep
     dispatch({ type: "load", bundle: pruned });
     const refs = [...new Set(pruned.items.flatMap((i) => i.slides).map((s) => s.style.backgroundImage).filter((r): r is string => Boolean(r)))];
     if (refs.length) depsRef.current.resolveImages(refs).then(setImages).catch(() => undefined);
+    const paths = [...new Set(pruned.items.flatMap((i) => i.slides).map((s) => s.video?.storage_path).filter((p): p is string => Boolean(p)))];
+    const resolveVideo = depsRef.current.resolveVideo;
+    if (paths.length && resolveVideo) {
+      void Promise.all(paths.map(async (p) => [p, await resolveVideo(p).catch(() => "")] as const)).then((pairs) =>
+        setVideoUrls((prev) => ({ ...prev, ...Object.fromEntries(pairs.filter(([, url]) => url)) })));
+    }
   }, [now]);
 
   const loadBundle = useCallback(async (silent: boolean) => {
@@ -242,8 +265,8 @@ export function usePresenterSession(serviceId: string, deps: PresenterSessionDep
     framesBySeq.current.set(seq.current, f);
     // Keep only recent frames; acks for older ones no longer matter.
     for (const key of framesBySeq.current.keys()) if (key < seq.current - 20) framesBySeq.current.delete(key);
-    t.send({ type: "frame", seq: seq.current, frame: withResolvedImages(f, images) });
-  }, [images]);
+    t.send({ type: "frame", seq: seq.current, frame: withResolvedMedia(f, images, videoUrls) });
+  }, [images, videoUrls]);
   const sendFrameRef = useRef(sendFrame);
   sendFrameRef.current = sendFrame;
 
@@ -259,6 +282,8 @@ export function usePresenterSession(serviceId: string, deps: PresenterSessionDep
         // A fresh projector has shown nothing yet.
         lastAckedSlideId.current = null;
         sendFrameRef.current(lastFrame.current);
+      } else if (message.type === "videoState") {
+        handleVideoStatusRef.current(message.status);
       } else if (message.type === "displayed") {
         setProjectorConnected(true);
         const shown = framesBySeq.current.get(message.seq);
@@ -279,8 +304,48 @@ export function usePresenterSession(serviceId: string, deps: PresenterSessionDep
     };
   }, [nonce]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── video ──
+  const projectorConnectedRef = useRef(false);
+  projectorConnectedRef.current = projectorConnected;
+  const localVideoPlayer = useRef<((command: VideoCommand) => void) | null>(null);
+  const lastEndedFor = useRef<string | null>(null);
+
+  const sendVideo = useCallback((command: VideoCommand) => {
+    const safe: VideoCommand =
+      command.action === "seek" ? { action: "seek", time: clampTime(command.time, null) }
+      : command.action === "volume" ? { action: "volume", volume: clampVolume(command.volume) }
+      : command;
+    if (projectorConnectedRef.current && transport.current) transport.current.send({ type: "video", command: safe });
+    else localVideoPlayer.current?.(safe);
+  }, []);
+
+  // A status report: remember it, and act on the video's end-of-video setting once.
+  const handleVideoStatus = (status: VideoStatus) => {
+    setVideoStatus(status);
+    if (!status.ended) {
+      if (lastEndedFor.current === status.slideId) lastEndedFor.current = null;
+      return;
+    }
+    if (lastEndedFor.current === status.slideId) return;
+    lastEndedFor.current = status.slideId;
+    const live = currentSlide(stateRef.current);
+    if (!live || live.id !== status.slideId || live.kind !== "video" || status.loop) return;
+    if (live.video?.end_action === "clear") dispatch({ type: "black" });
+    else if (live.video?.end_action === "next") dispatch({ type: "next" });
+  };
+  const handleVideoStatusRef = useRef(handleVideoStatus);
+  handleVideoStatusRef.current = handleVideoStatus;
+  const stateRef = useRef(state);
+  stateRef.current = state;
+
+  // Moving off a video clears its status so the stage countdown goes back to the timer.
+  const liveSlide = currentSlide(state);
+  useEffect(() => {
+    if (videoStatus && liveSlide?.id !== videoStatus.slideId) setVideoStatus(null);
+  }, [liveSlide?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── stage display ──
-  const stageFrame = useMemo(() => buildStageFrame(state, stage), [state, stage]);
+  const stageFrame = useMemo(() => buildStageFrame(state, stage, videoStatus), [state, stage, videoStatus]);
   const lastStageFrame = useRef<StageFrame>(stageFrame);
   const stageKey = JSON.stringify(stageFrame);
   useEffect(() => {
@@ -370,6 +435,15 @@ export function usePresenterSession(serviceId: string, deps: PresenterSessionDep
     attachStageWindow,
     reload: () => loadBundle(true),
     usingOfflineCopy,
+    videoUrls,
+    videoStatus,
+    sendVideo,
+    setLocalVideoPlayer: (player) => {
+      localVideoPlayer.current = player;
+    },
+    reportLocalVideoStatus: (status) => {
+      if (!projectorConnectedRef.current) handleVideoStatusRef.current(status);
+    },
     windowClosed: (kind) => {
       if (kind === "main") {
         projectorWindow.current = null;

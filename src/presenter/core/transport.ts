@@ -7,12 +7,15 @@
 // screen, which is what triggers FUMS reporting.
 
 import type { StageFrame } from "./stage";
+import { isVideoCommand, type VideoCommand, type VideoStatus } from "./video";
 import type { OutputFrame } from "./types";
 
 export type OperatorMessage =
   | { type: "frame"; seq: number; frame: OutputFrame }
   /** For the stage display window. */
   | { type: "stage"; frame: StageFrame }
+  /** Control the video on the main screen. */
+  | { type: "video"; command: VideoCommand }
   /** Sent when the operator closes the service. The output goes black. */
   | { type: "end" };
 
@@ -20,7 +23,9 @@ export type OutputMessage =
   /** A window opened and is ready. Main screen unless role says "stage". */
   | { type: "ready"; role?: "main" | "stage" }
   /** A frame is on screen. */
-  | { type: "displayed"; seq: number; slideId: string | null };
+  | { type: "displayed"; seq: number; slideId: string | null }
+  /** The main screen's video playback status. */
+  | { type: "videoState"; status: VideoStatus };
 
 export type PresenterMessage = OperatorMessage | OutputMessage;
 
@@ -45,6 +50,11 @@ export function newChannelNonce(random: () => string = () => crypto.randomUUID()
 function isPresenterMessage(value: unknown): value is PresenterMessage {
   if (!value || typeof value !== "object") return false;
   const type = (value as { type?: unknown }).type;
+  if (type === "video") return isVideoCommand((value as { command?: unknown }).command);
+  if (type === "videoState") {
+    const s = (value as { status?: Record<string, unknown> }).status;
+    return Boolean(s && typeof s.slideId === "string" && typeof s.currentTime === "number");
+  }
   return type === "frame" || type === "stage" || type === "end" || type === "ready" || type === "displayed";
 }
 

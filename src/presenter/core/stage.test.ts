@@ -120,3 +120,19 @@ describe("stage frame", () => {
     expect(stageText(null)).toBeNull();
   });
 });
+
+describe("stage frame with a live video", () => {
+  it("shows the video's own remaining time on the video and message layouts", () => {
+    const bundle = makeBundle();
+    bundle.items[3].slides = [{ id: "vid", kind: "video", title: "Countdown.mp4", style: { background: "#000", fontFamily: "Georgia", textColor: "#fff" }, video: { media_id: "m", storage_path: "p", duration_seconds: 300, loop: false, end_action: "hold" } }];
+    bundle.items[3].stage = { template: "video", timer_seconds: null };
+    const state = [{ type: "load" as const, bundle }, { type: "goToItem" as const, item: 3 }].reduce(presenterReducer, initialPresenterState);
+    const status = { slideId: "vid", currentTime: 100, duration: 300, paused: false, ended: false, volume: 1, muted: false, loop: false, at: T0 };
+    const frame = buildStageFrame(state, initialStageControls, status);
+    expect(frame.timerIsVideo).toBe(true);
+    expect(timerRemainingMs(frame.timer!, T0 + 10_000)).toBe(190_000);
+    expect(frame.current).toEqual({ text: "Countdown.mp4", caption: "Video" });
+    // Status for a different slide is ignored.
+    expect(buildStageFrame(state, initialStageControls, { ...status, slideId: "other" }).timerIsVideo).toBeUndefined();
+  });
+});
