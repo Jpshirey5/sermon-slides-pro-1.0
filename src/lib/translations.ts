@@ -32,9 +32,17 @@ export const isTranslationAllowed = (code: string | null | undefined, canUseEsv:
   return !RESTRICTED_TRANSLATIONS.has(code.toUpperCase());
 };
 
+// Translations anyone can look up without signing in. Copyrighted
+// translations are only served to signed-in churches (scripture-lookup
+// enforces this; the list here just avoids offering what will be refused).
+export const PUBLIC_DOMAIN_TRANSLATIONS = new Set(["KJV", "WEB", "ASV"]);
+
 // The translation list a given user may pick from. Restricted translations are
-// dropped unless the user's org is entitled to them.
-export const getAvailableTranslations = (canUseEsv: boolean): TranslationOption[] =>
-  canUseEsv
-    ? TRANSLATION_OPTIONS
-    : TRANSLATION_OPTIONS.filter((t) => !RESTRICTED_TRANSLATIONS.has(t.code.toUpperCase()));
+// dropped unless the user's org is entitled to them, and guests (not signed in)
+// see public domain translations only.
+export const getAvailableTranslations = (canUseEsv: boolean, signedIn = true): TranslationOption[] =>
+  TRANSLATION_OPTIONS.filter((t) => {
+    const code = t.code.toUpperCase();
+    if (!signedIn) return PUBLIC_DOMAIN_TRANSLATIONS.has(code);
+    return canUseEsv || !RESTRICTED_TRANSLATIONS.has(code);
+  });

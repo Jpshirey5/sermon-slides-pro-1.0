@@ -29,9 +29,9 @@ const StructuredBuilderInfoModal = ({ open, onOpenChange }: StructuredBuilderInf
         </DialogHeader>
 
         <p className="text-sm text-muted-foreground">
-          The Structured Builder is our manual building tool — add your points and
-          scripture references one at a time for full control over every slide. Pay
-          only when you're ready to export.
+          The Structured Builder is our manual building tool. Add your points and
+          scripture references one at a time for full control over every slide.
+          When you're ready to present on Sunday, pick a plan.
         </p>
 
         <div className="rounded-xl border border-primary/30 bg-primary/5 p-4">

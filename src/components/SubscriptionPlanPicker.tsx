@@ -23,8 +23,8 @@ const SubscriptionPlanPicker = ({
   const [billingInterval, setBillingInterval] = useState<BillingInterval>("monthly");
 
   const featureHighlights: Record<string, string> = {
-    core: "Up to 3 users • No watermark • 25 shared AI Quick Build generations/month",
-    team: "Up to 10 users • No watermark • Multi-role teams • 150 shared AI Quick Build generations/month",
+    core: "Up to 3 users, presenting, no watermark, 25 shared AI Quick Build generations a month",
+    team: "Up to 10 users, presenting, no watermark, multi-role teams, 150 shared AI Quick Build generations a month",
   };
 
   return (

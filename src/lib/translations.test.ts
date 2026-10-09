@@ -19,6 +19,12 @@ describe("translation entitlement gating", () => {
     expect(codes.length).toBe(TRANSLATION_OPTIONS.length);
   });
 
+  it("offers guests public domain translations only, even if the org flag is set", () => {
+    expect(getAvailableTranslations(false, false).map((t) => t.code).sort()).toEqual(["ASV", "KJV", "WEB"]);
+    expect(getAvailableTranslations(true, false).map((t) => t.code)).not.toContain("ESV");
+    expect(getAvailableTranslations(true, false).map((t) => t.code)).not.toContain("NIV");
+  });
+
   it("treats ESV as disallowed for non-entitled orgs, case-insensitively", () => {
     expect(isTranslationAllowed("ESV", false)).toBe(false);
     expect(isTranslationAllowed("esv", false)).toBe(false);

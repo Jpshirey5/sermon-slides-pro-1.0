@@ -97,10 +97,15 @@ serve(async (req) => {
         .maybeSingle(),
       supabaseClient
         .from("accounts")
-        .select("signup_status")
+        .select("signup_status, partner_billing_active")
         .eq("id", accountId)
         .maybeSingle(),
     ]);
+
+    // Partner API seats are billed through the partner; never start a Stripe checkout for them.
+    if (account?.partner_billing_active) {
+      throw new Error("Billing for this account is managed by your church software provider");
+    }
 
     if (membership?.role !== "owner") {
       throw new Error("Only the account owner can manage billing for this organization");

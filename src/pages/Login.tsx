@@ -31,6 +31,12 @@ const Login = () => {
     if (passwordReset) {
       toast.success("Password updated. Log in with your new password to continue.");
     }
+    const handoff = searchParams.get("handoff");
+    if (handoff === "expired") {
+      toast.error("That sign-in link has expired or was already used. Go back to your church software and click the Sermon Slide Pro button again.", { duration: 10000 });
+    } else if (handoff === "error") {
+      toast.error("We couldn't sign you in from your church software. Click the Sermon Slide Pro button there again, or log in below.", { duration: 10000 });
+    }
     const queryReason = searchParams.get("reason");
     const storedReason = consumeStoredLogoutReason();
     const reason = queryReason === "inactive" || queryReason === "security" ? queryReason : storedReason;

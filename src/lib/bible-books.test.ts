@@ -7,6 +7,7 @@ import {
   getVerseCount,
 } from "./bible-books";
 import { parseScriptureReference } from "./scripture-api";
+import { bookCodeFromName, parseReference } from "../../supabase/functions/_shared/scripture/references.ts";
 
 const bookNamed = (name: string) => {
   const book = BIBLE_BOOKS.find((candidate) => candidate.name === name);
@@ -156,5 +157,18 @@ describe("buildReference", () => {
   it("omits an end verse that is not after the start", () => {
     expect(buildReference("John", 3, 16, 16)).toBe("John 3:16");
     expect(buildReference("John", 3, 16, null)).toBe("John 3:16");
+  });
+});
+
+describe("picker names resolve on the server", () => {
+  it("every book name maps to a code in the shared server parser", () => {
+    const unresolved = BIBLE_BOOKS.filter((b) => !bookCodeFromName(b.name)).map((b) => b.name);
+    expect(unresolved).toEqual([]);
+  });
+
+  it("every built reference parses on the server", () => {
+    for (const book of BIBLE_BOOKS) {
+      expect(parseReference(`${book.name} 1:1`), book.name).not.toBeNull();
+    }
   });
 });

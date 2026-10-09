@@ -17,6 +17,8 @@ export interface ValidatedVerseBlock {
 export interface ValidationOutcome {
   validated: ValidatedVerseBlock[];
   warnings: string[];
+  /** The refs that could not be looked up, in input order. */
+  failed: ParsedScriptureRef[];
 }
 
 const LOOKUP_CHUNK_SIZE = 5;
@@ -79,10 +81,13 @@ export async function validateReferences(options: {
   supabaseUrl: string;
   anonKey: string;
   authHeader: string;
+  /** Extra request headers (the partner API uses this to look up on behalf of a user). */
+  extraHeaders?: Record<string, string>;
 }): Promise<ValidationOutcome> {
-  const { refs, translation, supabaseUrl, anonKey, authHeader } = options;
+  const { refs, translation, supabaseUrl, anonKey, authHeader, extraHeaders } = options;
   const validated: ValidatedVerseBlock[] = [];
   const warnings: string[] = [];
+  const failed: ParsedScriptureRef[] = [];
   const lookupUrl = `${supabaseUrl.replace(/\/$/, "")}/functions/v1/scripture-lookup`;
   // The user's JWT is required: scripture-lookup checks the caller's account for
   // ESV entitlement, which the anon key can never pass.
@@ -90,6 +95,7 @@ export async function validateReferences(options: {
     "content-type": "application/json",
     apikey: anonKey,
     Authorization: authHeader,
+    ...(extraHeaders ?? {}),
   };
 
   for (let i = 0; i < refs.length; i += LOOKUP_CHUNK_SIZE) {
@@ -101,6 +107,7 @@ export async function validateReferences(options: {
       if (result) {
         validated.push(result);
       } else {
+        failed.push(chunk[index]);
         warnings.push(
           `Could not validate reference: '${chunk[index].raw_text}' — please check in Sermon Review`,
         );
@@ -108,5 +115,5 @@ export async function validateReferences(options: {
     });
   }
 
-  return { validated, warnings };
+  return { validated, warnings, failed };
 }

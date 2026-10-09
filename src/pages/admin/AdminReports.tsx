@@ -172,7 +172,7 @@ const AdminReports = () => {
               <StatCard label="Presentations (range)" value={usage?.presentationsInWindow ?? 0} hint={`${usage?.totalPresentations ?? 0} all-time`} />
               <StatCard label="Active Organizations" value={usage?.activeOrgs ?? 0} hint="Created a deck in range" />
               <StatCard label="Quick Build Share" value={`${quickBuildPct}%`} hint={`${split.quickBuild} Quick · ${split.structuredBuilder} Structured`} />
-              <StatCard label="Exports" value={usage?.exports?.succeeded ?? 0} hint={`${usage?.exports?.started ?? 0} started`} />
+              <StatCard label="Presenter Sessions" value={usage?.presenter?.sessions ?? 0} hint={`${usage?.presenter?.churches ?? 0} churches`} />
             </div>
             <div className="grid gap-4 md:grid-cols-2">
               <div className="rounded-2xl glass-panel p-5">
@@ -226,7 +226,7 @@ const AdminReports = () => {
                 </div>
               </div>
             )}
-            {usage?.notes?.exports && <p className="text-xs text-muted-foreground">{usage.notes.exports}</p>}
+            {usage?.notes?.presenter && <p className="text-xs text-muted-foreground">{usage.notes.presenter}</p>}
           </section>
         </>
       )}

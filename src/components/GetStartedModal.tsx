@@ -48,7 +48,7 @@ const GetStartedModal = ({ open, onOpenChange }: GetStartedModalProps) => {
               Try it Free
             </h3>
             <p className="text-sm text-muted-foreground mb-4">
-              No account, no payment — build and export your presentation right now.
+              No account, no payment. Build your presentation right now.
             </p>
             <span className="inline-flex items-center gap-1 text-sm font-medium text-primary group-hover:gap-2 transition-all">
               Start Creating Free <ArrowRight className="w-4 h-4" />

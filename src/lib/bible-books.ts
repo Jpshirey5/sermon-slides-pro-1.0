@@ -4,9 +4,10 @@
  * `chapterVerseCounts[i]` is the number of verses in chapter `i + 1`, so the array length
  * doubles as the book's chapter count — one source of truth, no way for the two to drift.
  *
- * IMPORTANT: every `name` here must be a resolvable key in the `bookMappings` table in
- * supabase/functions/scripture-lookup/index.ts, or the picker will emit references the
- * lookup edge function cannot resolve. bible-books.test.ts locks this in.
+ * IMPORTANT: every `name` here must resolve in BOOK_ALIASES in
+ * supabase/functions/_shared/scripture/references.ts (used by scripture-lookup and the
+ * presenter), or the picker will emit references the server cannot resolve.
+ * bible-books.test.ts locks this in.
  *
  * Versification follows the KJV. Translations that omit disputed verses (e.g. Matthew 17:21
  * in NIV/CSB) will still offer them here; the lookup returns an error for those, which is

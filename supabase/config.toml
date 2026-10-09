@@ -18,9 +18,6 @@ verify_jwt = false
 [functions.send-invite]
 verify_jwt = true
 
-[functions.esv-lookup]
-verify_jwt = false
-
 [functions.scripture-lookup]
 verify_jwt = false
 
@@ -64,4 +61,27 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.finalize-quick-build-parse]
+verify_jwt = false
+
+# Partner API: partner-api authenticates with partner API keys + HMAC request
+# signatures; partner-handoff is a public single-use link; partner-approve
+# verifies the user's JWT itself (same pattern as the functions above).
+[functions.partner-api]
+verify_jwt = false
+
+[functions.partner-handoff]
+verify_jwt = false
+
+[functions.partner-approve]
+verify_jwt = false
+
+# Presenter endpoints. Sign-in is checked in code with getClaims (see
+# _shared/presenter/http.ts), the same way check-subscription does it.
+[functions.service-bundle]
+verify_jwt = false
+
+[functions.presenter-status]
+verify_jwt = false
+
+[functions.fums-report]
 verify_jwt = false
