@@ -61,7 +61,7 @@ const DesktopLogin = () => {
     <div className="fixed inset-0 flex items-center justify-center overflow-y-auto bg-neutral-950 px-4 py-10 text-neutral-100">
       <div className="w-full max-w-sm">
         <div className="mb-10 flex flex-col items-center text-center">
-          <div className="mb-5 flex h-24 w-24 items-center justify-center rounded-full gradient-hero shadow-glow" aria-hidden>
+          <div className="mb-5 flex h-24 w-24 items-center justify-center rounded-[22%] gradient-hero shadow-glow" aria-hidden>
             <BookOpen className="h-12 w-12 text-primary-foreground" />
           </div>
           <h1 className="font-serif text-3xl font-semibold tracking-tight">Sermon Slide Pro</h1>
