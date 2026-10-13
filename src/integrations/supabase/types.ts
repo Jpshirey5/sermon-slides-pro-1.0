@@ -1000,6 +1000,7 @@ export type Database = {
           created_by_user_id: string | null
           default_translation_id: string | null
           id: string
+          is_template: boolean
           logo_path: string | null
           service_date: string | null
           title: string
@@ -1013,6 +1014,7 @@ export type Database = {
           created_by_user_id?: string | null
           default_translation_id?: string | null
           id?: string
+          is_template?: boolean
           logo_path?: string | null
           service_date?: string | null
           title: string
@@ -1026,6 +1028,7 @@ export type Database = {
           created_by_user_id?: string | null
           default_translation_id?: string | null
           id?: string
+          is_template?: boolean
           logo_path?: string | null
           service_date?: string | null
           title?: string
@@ -1269,6 +1272,10 @@ export type Database = {
       }
     }
     Functions: {
+      copy_service_structure: {
+        Args: { _source_id: string; _title: string; _service_date: string | null; _as_template: boolean }
+        Returns: string
+      }
       create_campus: {
         Args: { _account_id: string; _name: string }
         Returns: {

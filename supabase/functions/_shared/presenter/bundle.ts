@@ -121,7 +121,9 @@ export async function buildServiceBundle(
   const planned: PlannedItem[] = rows.map((row) => {
     switch (row.item_type) {
       case "sermon": {
-        const sermon = row.sermon_id ? sermons.get(row.sermon_id) : undefined;
+        // No sermon picked yet (a section from a template): an empty section the church fills in.
+        if (!row.sermon_id) return { row, type: "sermon", label: row.label || "Sermon", slots: [] };
+        const sermon = sermons.get(row.sermon_id);
         if (!sermon) {
           return {
             row,
@@ -135,7 +137,8 @@ export async function buildServiceBundle(
       case "scripture":
         return { row, type: "scripture", label: row.label || "Scripture", slots: planScriptureItem(row.id, row.payload, fallback) };
       case "song": {
-        const song = row.song_id ? songs.get(row.song_id) : undefined;
+        if (!row.song_id) return { row, type: "song", label: row.label || "Song", slots: [] };
+        const song = songs.get(row.song_id);
         if (!song) {
           return {
             row,

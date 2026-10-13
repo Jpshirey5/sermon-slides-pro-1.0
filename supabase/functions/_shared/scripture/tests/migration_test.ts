@@ -222,16 +222,14 @@ Deno.test("items may only reference sermons and campuses from their own account"
     () => db.query(`insert into public.services (account_id, title, campus_id) values ($1, 'x', $2)`, [accountA, campusB]),
     "foreign campus",
   );
-  await assertRejects(
-    () => db.query(`insert into public.service_items (service_id, account_id, position, item_type) values ($1, $2, 1, 'sermon')`, [serviceA, accountA]),
-    "sermon item without a sermon",
-  );
+  // An empty sermon section (from a template) is allowed; the church picks the sermon later.
+  await db.query(`insert into public.service_items (service_id, account_id, position, item_type) values ($1, $2, 1, 'sermon')`, [serviceA, accountA]);
   await assertRejects(
     () => db.query(`insert into public.service_items (service_id, account_id, position, item_type, sermon_id) values ($1, $2, 1, 'blank', (select id from public.sermons where account_id = $2 limit 1))`, [serviceA, accountA]),
     "non-sermon item pointing at a sermon",
   );
   await assertRejects(
-    () => db.query(`insert into public.service_items (service_id, account_id, position, item_type) values ($1, $2, 1, 'song')`, [serviceA, accountA]),
+    () => db.query(`insert into public.service_items (service_id, account_id, position, item_type) values ($1, $2, 2, 'karaoke')`, [serviceA, accountA]),
     "unknown item type",
   );
 });

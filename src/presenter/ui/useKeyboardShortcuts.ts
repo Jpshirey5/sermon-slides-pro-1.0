@@ -6,7 +6,6 @@ export const SHORTCUTS: { keys: string; action: string }[] = [
   { keys: "Right, Space, Page Down", action: "Next slide" },
   { keys: "Left, Page Up", action: "Previous slide" },
   { keys: "C or B", action: "Clear the screen on or off" },
-  { keys: "L", action: "Logo screen on or off" },
   { keys: "Esc", action: "Back to the current slide" },
   { keys: "Number, then Enter", action: "Go to that item" },
 ];
@@ -42,9 +41,6 @@ export function keyToAction(key: string, state: KeyState): { action: PresenterAc
     case "B":
     case ".":
       return { action: { type: "toggleBlack" }, digits: "" };
-    case "l":
-    case "L":
-      return { action: { type: "toggleLogo" }, digits: "" };
     case "Escape":
       return { action: { type: "live" }, digits: "" };
     default:

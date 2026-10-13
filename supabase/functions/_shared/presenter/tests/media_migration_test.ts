@@ -80,8 +80,8 @@ Deno.test("deleting a video keeps the item, with the reference cleared", async (
   assertEquals(item.media_id, null);
 });
 
-Deno.test("song and sermon rules still hold after the item rules were replaced", async () => {
+Deno.test("empty sermon and song sections are allowed (templates), and videos still need a video", async () => {
   const w = await setup();
-  await assertRejects(() => w.db.query(`insert into public.service_items (service_id, account_id, position, item_type) values ($1, $2, 1, 'song')`, [w.serviceA, w.a]), "song without song");
-  await assertRejects(() => w.db.query(`insert into public.service_items (service_id, account_id, position, item_type) values ($1, $2, 1, 'sermon')`, [w.serviceA, w.a]), "sermon without sermon");
+  await w.db.query(`insert into public.service_items (service_id, account_id, position, item_type) values ($1, $2, 1, 'song'), ($1, $2, 2, 'sermon')`, [w.serviceA, w.a]);
+  await assertRejects(() => w.db.query(`insert into public.service_items (service_id, account_id, position, item_type) values ($1, $2, 3, 'video')`, [w.serviceA, w.a]), "video without video");
 });

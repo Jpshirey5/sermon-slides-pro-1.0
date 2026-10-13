@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { CalendarDays, ListMusic, Loader2, MonitorPlay, Plus, Trash2 } from "lucide-react";
+import { CalendarDays, LayoutTemplate, ListMusic, Loader2, MonitorPlay, Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -11,7 +11,8 @@ import { ServicesHeader } from "@/components/services/ServicesHeader";
 import { TranslationSelect } from "@/components/services/TranslationSelect";
 import { useAuth } from "@/contexts/AuthContext";
 import { formatDateOnlyForDisplay } from "@/lib/date-format";
-import { createService, deleteService, listServices, type ServiceSummary } from "@/lib/services";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { createService, createServiceFromTemplate, deleteService, listServices, listTemplates, type ServiceSummary } from "@/lib/services";
 import { DEFAULT_TRANSLATION } from "@/lib/translations";
 
 const nextSunday = () => {
@@ -24,6 +25,8 @@ const Services = () => {
   const navigate = useNavigate();
   const { profile } = useAuth();
   const [services, setServices] = useState<ServiceSummary[] | null>(null);
+  const [templates, setTemplates] = useState<ServiceSummary[]>([]);
+  const [startFrom, setStartFrom] = useState<string>("new");
   const [showCreate, setShowCreate] = useState(false);
   const [creating, setCreating] = useState(false);
   const [title, setTitle] = useState("Sunday Service");
@@ -39,13 +42,15 @@ const Services = () => {
         setServices([]);
         toast.error("Could not load your services", { description: error.message });
       });
+    listTemplates().then(setTemplates).catch(() => setTemplates([]));
   }, []);
 
   const handleCreate = async () => {
     if (!title.trim()) return;
     setCreating(true);
     try {
-      const id = await createService({ title, serviceDate: date || null, defaultTranslationId: translation });
+      const input = { title, serviceDate: date || null, defaultTranslationId: translation };
+      const id = startFrom === "new" ? await createService(input) : await createServiceFromTemplate(startFrom, input);
       navigate(`/dashboard/services/${id}`);
     } catch (error) {
       toast.error("Could not create the service", { description: (error as Error).message });
@@ -59,6 +64,8 @@ const Services = () => {
     try {
       await deleteService(deleting.id);
       setServices((list) => list?.filter((s) => s.id !== deleting.id) ?? null);
+      setTemplates((list) => list.filter((s) => s.id !== deleting.id));
+      if (startFrom === deleting.id) setStartFrom("new");
       toast.success(`Deleted "${deleting.title}"`);
       setDeleting(null);
     } catch (error) {
@@ -86,7 +93,7 @@ const Services = () => {
               Songs
             </Button>
           </Link>
-          <Button variant="hero" onClick={() => setShowCreate(true)}>
+          <Button variant="hero" onClick={() => { setStartFrom("new"); setShowCreate(true); }}>
             <Plus className="w-4 h-4" />
             New Service
           </Button>
@@ -141,21 +148,63 @@ const Services = () => {
             ))}
           </ul>
         )}
+
+        {templates.length > 0 && (
+          <section className="mt-10" aria-labelledby="templates-heading">
+            <h2 id="templates-heading" className="font-serif text-xl font-semibold text-foreground">Templates</h2>
+            <p className="text-sm text-muted-foreground mt-1 mb-4">
+              Pick one under New Service to start with the same order. Sermons and songs start empty so you can choose this week's.
+            </p>
+            <ul className="space-y-3">
+              {templates.map((t) => (
+                <li key={t.id}>
+                  <Card>
+                    <CardContent className="flex items-center justify-between gap-4 py-4">
+                      <p className="flex min-w-0 flex-1 items-center gap-2 font-medium text-foreground">
+                        <LayoutTemplate className="h-4 w-4 shrink-0 text-primary" />
+                        <span className="truncate">{t.title}</span>
+                      </p>
+                      <Button variant="outline" size="sm" onClick={() => { setStartFrom(t.id); setTitle("Sunday Service"); setShowCreate(true); }}>
+                        <Plus className="w-4 h-4" />
+                        Use
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => navigate(`/dashboard/services/${t.id}`)}>
+                        <Pencil className="w-4 h-4" />
+                        Edit
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="text-muted-foreground hover:text-destructive"
+                        onClick={() => setDeleting(t)}
+                        aria-label={`Delete template ${t.title}`}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </CardContent>
+                  </Card>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
       </main>
 
       <Dialog open={deleting !== null} onOpenChange={(open) => !open && !deletingBusy && setDeleting(null)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Delete this service?</DialogTitle>
+            <DialogTitle>{deleting?.isTemplate ? "Delete this template?" : "Delete this service?"}</DialogTitle>
             <DialogDescription>
-              "{deleting?.title}" and its order of items will be removed. This can't be undone. Your sermons, songs, and videos stay in your library.
+              {deleting?.isTemplate
+                ? `"${deleting?.title}" will be removed. Services you already made from it stay. This can't be undone.`
+                : `"${deleting?.title}" and its order of items will be removed. This can't be undone. Your sermons, songs, and videos stay in your library.`}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleting(null)} disabled={deletingBusy}>Cancel</Button>
             <Button variant="destructive" onClick={handleDelete} disabled={deletingBusy}>
               {deletingBusy && <Loader2 className="w-4 h-4 animate-spin" />}
-              Delete service
+              {deleting?.isTemplate ? "Delete template" : "Delete service"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -165,9 +214,23 @@ const Services = () => {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>New service</DialogTitle>
-            <DialogDescription>You can add your sermon and readings next.</DialogDescription>
+            <DialogDescription>
+              {startFrom === "new" ? "You can add your sermon, songs, and slides next." : "Same order as the template. Pick this week's sermon and songs next."}
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
+            {templates.length > 0 && (
+              <div className="space-y-2">
+                <Label htmlFor="service-start">Start from</Label>
+                <Select value={startFrom} onValueChange={setStartFrom}>
+                  <SelectTrigger id="service-start"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="new">New blank service</SelectItem>
+                    {templates.map((t) => <SelectItem key={t.id} value={t.id}>Template: {t.title}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div className="space-y-2">
               <Label htmlFor="service-title">Name</Label>
               <Input id="service-title" value={title} onChange={(e) => setTitle(e.target.value)} maxLength={120} />

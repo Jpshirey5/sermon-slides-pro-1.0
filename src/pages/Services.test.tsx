@@ -6,6 +6,8 @@ import Services from "./Services";
 const mocks = vi.hoisted(() => ({
   listServices: vi.fn(),
   deleteService: vi.fn(),
+  listTemplates: vi.fn(),
+  createServiceFromTemplate: vi.fn(),
 }));
 
 vi.mock("@/integrations/supabase/client", () => ({ supabase: {} }));
@@ -13,6 +15,8 @@ vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ profile: null, canU
 vi.mock("@/lib/services", () => ({
   listServices: mocks.listServices,
   deleteService: mocks.deleteService,
+  listTemplates: mocks.listTemplates,
+  createServiceFromTemplate: mocks.createServiceFromTemplate,
   createService: vi.fn(),
 }));
 
@@ -25,6 +29,7 @@ describe("Services", () => {
       { id: "b", title: "Wednesday Night", serviceDate: null },
     ]);
     mocks.deleteService.mockReset().mockResolvedValue(undefined);
+    mocks.listTemplates.mockReset().mockResolvedValue([]);
   });
 
   it("deletes a service only after confirming", async () => {
@@ -45,5 +50,18 @@ describe("Services", () => {
     fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Cancel" }));
     expect(mocks.deleteService).not.toHaveBeenCalled();
     expect(screen.getByText("Sunday Service")).toBeInTheDocument();
+  });
+
+  it("lists templates and starts a new service from one", async () => {
+    mocks.listTemplates.mockResolvedValue([{ id: "tpl", title: "Sunday Morning", serviceDate: null, updatedAt: "", isTemplate: true }]);
+    mocks.createServiceFromTemplate.mockReset().mockResolvedValue("new1");
+    renderPage();
+    const templates = await screen.findByRole("region", { name: "Templates" });
+    fireEvent.click(within(templates).getByRole("button", { name: "Use" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(/Pick this week's sermon and songs next/)).toBeInTheDocument();
+    fireEvent.change(within(dialog).getByLabelText("Name"), { target: { value: "October 25" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Create" }));
+    await waitFor(() => expect(mocks.createServiceFromTemplate).toHaveBeenCalledWith("tpl", expect.objectContaining({ title: "October 25" })));
   });
 });

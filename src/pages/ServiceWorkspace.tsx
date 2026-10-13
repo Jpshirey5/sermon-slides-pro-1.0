@@ -19,6 +19,7 @@ import {
   GripVertical,
   Image as ImageIcon,
   Keyboard,
+  LayoutTemplate,
   ListMusic,
   Loader2,
   MessageSquare,
@@ -81,6 +82,7 @@ import {
   readScripturePayload,
   removeServiceItem,
   reorderServiceItems,
+  saveAsTemplate,
   type ScripturePayload,
   type SermonOption,
   type ServiceDetail,
@@ -189,6 +191,10 @@ const ServiceWorkspace = () => {
   const graphicInput = useRef<HTMLInputElement>(null);
   const pendingGraphic = useRef<{ item: BundleItem; after: number | null } | null>(null);
   const pendingVideo = useRef<{ item: BundleItem; after: number | null } | null>(null);
+  /** When set, the sermon or song picker fills this section instead of adding a new one. */
+  const fillRow = useRef<string | null>(null);
+  const [templateName, setTemplateName] = useState<string | null>(null);
+  const [savingTemplate, setSavingTemplate] = useState(false);
   const [sermons, setSermons] = useState<SermonOption[] | null>(null);
   const [songs, setSongs] = useState<Song[] | null>(null);
   const [reading, setReading] = useState<{ itemId: string | null; draft: ReadingDraft | null } | null>(null);
@@ -252,7 +258,7 @@ const ServiceWorkspace = () => {
     void loadService();
   }, [loadService]);
 
-  const anyDialogOpen = Boolean(picker || reading || songEditor || editingSlide || countdownFor || renaming || displays || showShortcuts || showNotices);
+  const anyDialogOpen = Boolean(picker || reading || songEditor || editingSlide || countdownFor || renaming || templateName !== null || displays || showShortcuts || showNotices);
   useKeyboardShortcuts(dispatch, session.load.kind === "ready" && !anyDialogOpen);
 
   // The view follows the live slide when it moves to another item.
@@ -500,6 +506,33 @@ const ServiceWorkspace = () => {
     }
   };
 
+  /** Open the sermon or song picker to fill (or change) an existing section. */
+  const chooseFor = (row: ServiceItem, kind: "sermon" | "song") => {
+    fillRow.current = row.id;
+    openPicker(kind);
+  };
+
+  const pickInto = (kind: "sermon" | "song", id: string) => {
+    const rowId = fillRow.current;
+    fillRow.current = null;
+    if (!rowId) return add(kind === "sermon" ? { type: "sermon", sermonId: id } : { type: "song", songId: id });
+    void run(`Could not choose the ${kind}`, () => updateServiceItem(rowId, kind === "sermon" ? { sermonId: id } : { songId: id }));
+  };
+
+  const saveTemplate = async () => {
+    if (!service || templateName === null) return;
+    setSavingTemplate(true);
+    try {
+      await saveAsTemplate(service.id, templateName.trim() || service.title);
+      toast.success("Template saved", { description: "Pick it under New Service on the Services page." });
+      setTemplateName(null);
+    } catch (error) {
+      toast.error("Could not save the template", { description: (error as Error).message });
+    } finally {
+      setSavingTemplate(false);
+    }
+  };
+
   // ── windows ──
   const openWindow = (kind: WindowKind, display: DisplayInfo | null) => {
     setDisplays(null);
@@ -652,7 +685,13 @@ const ServiceWorkspace = () => {
             else setTitle(service.title);
           }}
         />
-        <span className="mr-auto text-xs text-neutral-500">{service.serviceDate ? formatDateOnlyForDisplay(service.serviceDate) : ""}</span>
+        {service.isTemplate ? (
+          <span className="mr-auto rounded-md bg-primary/20 px-2 py-1 text-xs text-primary" title="Changes here change the template, not services already made from it">
+            Template
+          </span>
+        ) : (
+          <span className="mr-auto text-xs text-neutral-500">{service.serviceDate ? formatDateOnlyForDisplay(service.serviceDate) : ""}</span>
+        )}
 
         {session.usingOfflineCopy && (
           <span className="rounded-md bg-sky-500/15 px-2 py-1 text-xs text-sky-300" title="This service was saved on this computer the last time it loaded">
@@ -669,6 +708,11 @@ const ServiceWorkspace = () => {
           <span className="rounded-md bg-neutral-800 px-2 py-1 text-xs text-neutral-400" title="Scripture display reports waiting to send">
             {session.fumsPending} report{session.fumsPending === 1 ? "" : "s"} waiting
           </span>
+        )}
+        {!service.isTemplate && (
+          <Button size="sm" variant="ghost" className="text-neutral-300 hover:bg-neutral-800 hover:text-white" onClick={() => setTemplateName(service.title)}>
+            <LayoutTemplate className="h-4 w-4" /> Save as template
+          </Button>
         )}
         <Button size="sm" variant="secondary" onClick={() => void chooseScreen("main")}>
           <MonitorUp className="h-4 w-4" /> {projectorConnected ? "Reopen main screen" : "Main screen"}
@@ -765,6 +809,8 @@ const ServiceWorkspace = () => {
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" className="w-56" onCloseAutoFocus={(e) => renamingRef.current && e.preventDefault()}>
                         <DropdownMenuItem onSelect={() => { renamingRef.current = true; setRenaming({ rowId: row.id, value: item.label }); }}><Pencil className="h-4 w-4" /> Rename</DropdownMenuItem>
+                        {item.type === "sermon" && <DropdownMenuItem onSelect={() => chooseFor(row, "sermon")}>{item.sermon_id ? "Change sermon" : "Choose sermon"}</DropdownMenuItem>}
+                        {item.type === "song" && <DropdownMenuItem onSelect={() => chooseFor(row, "song")}>{item.song_id ? "Change song" : "Choose song"}</DropdownMenuItem>}
                         {item.type === "song" && item.song_id && <DropdownMenuItem onSelect={() => setSongEditor({ songId: item.song_id!, addToService: false })}>Edit song</DropdownMenuItem>}
                         {item.type === "scripture" && <DropdownMenuItem onSelect={() => editSlide(item, item.slides[0] ?? { id: "x", kind: "blank", style: { background: "#000", fontFamily: "Georgia", textColor: "#fff" } })}>Edit reading</DropdownMenuItem>}
                         {item.type === "sermon" && item.sermon_id && <DropdownMenuItem onSelect={() => navigate(`/editor/${item.sermon_id}`)}>Open in sermon editor</DropdownMenuItem>}
@@ -804,7 +850,15 @@ const ServiceWorkspace = () => {
             <span className="ml-auto text-xs text-neutral-500">Click a slide to show it. Double-click to edit.</span>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto p-4">
-            {shownItem && shownItem.slides.length === 0 && (
+            {shownItem && shownRow && shownItem.slides.length === 0 && ((shownItem.type === "sermon" && !shownItem.sermon_id) || (shownItem.type === "song" && !shownItem.song_id)) ? (
+              <div className="flex min-h-[40vh] flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-neutral-700 text-center">
+                {shownItem.type === "sermon" ? <Presentation className="h-8 w-8 text-neutral-500" /> : <Music className="h-8 w-8 text-neutral-500" />}
+                <p className="text-sm text-neutral-400">No {shownItem.type} chosen yet.</p>
+                <Button onClick={() => chooseFor(shownRow, shownItem.type as "sermon" | "song")}>
+                  {shownItem.type === "sermon" ? "Choose sermon" : "Choose song"}
+                </Button>
+              </div>
+            ) : shownItem && shownItem.slides.length === 0 && (
               <p className="text-sm text-neutral-500">
                 This item has no slides yet.{" "}
                 {shownItem.type === "scripture" && shownRow && (
@@ -869,9 +923,8 @@ const ServiceWorkspace = () => {
             {session.current?.kind === "missing" && (
               <p className="mt-2 rounded bg-amber-500/10 px-2 py-1.5 text-xs text-amber-300">{missingText(session.current.missing_reason)}</p>
             )}
-            <div className="mt-2 grid grid-cols-5 gap-1.5">
+            <div className="mt-2 grid grid-cols-4 gap-1.5">
               <Button size="sm" className={modeButton(false)} onClick={() => dispatch({ type: "prev" })} aria-label="Previous slide"><ChevronLeft className="h-4 w-4" /></Button>
-              <Button size="sm" className={modeButton(state.mode === "logo")} onClick={() => dispatch({ type: "toggleLogo" })}>Logo</Button>
               <Button size="sm" className={modeButton(state.mode === "black")} onClick={() => dispatch({ type: "toggleBlack" })}>Clear</Button>
               <Button size="sm" className={modeButton(false)} disabled={state.mode === "live"} onClick={() => dispatch({ type: "live" })}>Show</Button>
               <Button size="sm" className="bg-primary text-primary-foreground hover:bg-primary/90" onClick={() => dispatch({ type: "next" })} aria-label="Next slide"><ChevronRight className="h-4 w-4" /></Button>
@@ -952,8 +1005,8 @@ const ServiceWorkspace = () => {
         description="Its slides play in the order you built them."
         options={sermons?.map((s) => ({ id: s.id, title: s.title, detail: s.presentationDate ? formatDateOnlyForDisplay(s.presentationDate) : undefined })) ?? null}
         emptyText="You have no sermons yet. Create one from the dashboard first."
-        onPick={(id) => { setPicker(null); add({ type: "sermon", sermonId: id }); }}
-        onClose={() => setPicker(null)}
+        onPick={(id) => { setPicker(null); pickInto("sermon", id); }}
+        onClose={() => { fillRow.current = null; setPicker(null); }}
       />
       <PickerDialog
         open={picker === "song"}
@@ -961,8 +1014,8 @@ const ServiceWorkspace = () => {
         description="Songs from your church's library."
         options={songs?.map((s) => ({ id: s.id, title: s.title, detail: [s.author, s.ccliSongNumber && `CCLI ${s.ccliSongNumber}`].filter(Boolean).join(" · ") || undefined })) ?? null}
         emptyText="Your song library is empty. Add your first song."
-        onPick={(id) => { setPicker(null); add({ type: "song", songId: id }); }}
-        onClose={() => setPicker(null)}
+        onPick={(id) => { setPicker(null); pickInto("song", id); }}
+        onClose={() => { fillRow.current = null; setPicker(null); }}
         footer={
           <Button variant="outline" onClick={() => { setPicker(null); setSongEditor({ songId: null, addToService: true }); }}>
             <ListMusic className="h-4 w-4" /> New song
@@ -1030,6 +1083,34 @@ const ServiceWorkspace = () => {
           if (file && pending) void dropImage(pending.item, file, null);
         }}
       />
+      <Dialog open={templateName !== null} onOpenChange={(o) => !o && !savingTemplate && setTemplateName(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Save as template</DialogTitle>
+            <DialogDescription>
+              Saves this order of sections, their names, blank slides, and stage settings. Sermons and songs are left empty so you can pick new ones each week.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-1">
+            <Label htmlFor="template-name">Template name</Label>
+            <Input
+              id="template-name"
+              value={templateName ?? ""}
+              maxLength={120}
+              placeholder="Sunday Morning"
+              onChange={(e) => setTemplateName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && void saveTemplate()}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTemplateName(null)} disabled={savingTemplate}>Cancel</Button>
+            <Button onClick={() => void saveTemplate()} disabled={savingTemplate}>
+              {savingTemplate && <Loader2 className="h-4 w-4 animate-spin" />}
+              Save template
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Dialog open={videoSettings !== null} onOpenChange={(o) => !o && setVideoSettings(null)}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>

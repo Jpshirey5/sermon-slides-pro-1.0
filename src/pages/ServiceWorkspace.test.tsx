@@ -16,6 +16,8 @@ const mocks = vi.hoisted(() => ({
   uploadSlideImage: vi.fn(),
   addServiceItem: vi.fn(),
   updateServiceItem: vi.fn(),
+  listSermonOptions: vi.fn(),
+  saveAsTemplate: vi.fn(),
 }));
 
 vi.mock("@/lib/media", async (importOriginal) => {
@@ -32,7 +34,7 @@ vi.mock("@/lib/presentations", () => ({
 }));
 vi.mock("@/lib/services", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/services")>();
-  return { ...actual, getService: mocks.getService, addServiceItem: mocks.addServiceItem, updateServiceItem: mocks.updateServiceItem, listSermonOptions: vi.fn().mockResolvedValue([]) };
+  return { ...actual, getService: mocks.getService, addServiceItem: mocks.addServiceItem, updateServiceItem: mocks.updateServiceItem, listSermonOptions: mocks.listSermonOptions, saveAsTemplate: mocks.saveAsTemplate };
 });
 
 const style = { background: "#000000", fontFamily: "Georgia", textColor: "#FFFFFF" };
@@ -86,6 +88,7 @@ const service: ServiceDetail = {
   serviceDate: "2026-10-11",
   defaultTranslationId: "KJV",
   updatedAt: "",
+  isTemplate: false,
   items: ["logo", "sermon", "empty", "reading", "blank"].map((id, i) => ({
     id, position: (i + 1) * 1000, type: (id === "reading" || id === "empty" ? "scripture" : id) as never, sermonId: id === "sermon" ? "ser1" : null, songId: null, mediaId: null, label: null, payload: {},
   })),
@@ -106,6 +109,9 @@ describe("ServiceWorkspace", () => {
     mocks.getService.mockReset().mockResolvedValue(structuredClone(service));
     mocks.getEditorPresentationState.mockReset();
     mocks.saveEditorSlides.mockReset().mockResolvedValue(undefined);
+    mocks.listSermonOptions.mockReset().mockResolvedValue([]);
+    mocks.addServiceItem.mockReset().mockResolvedValue(undefined);
+    mocks.updateServiceItem.mockReset().mockResolvedValue(undefined);
   });
 
   it("shows the order, every slide of the selected item, the main screen, and the stage display", async () => {
@@ -177,17 +183,15 @@ describe("ServiceWorkspace", () => {
     expect(mocks.session.dispatchStage).toHaveBeenCalledWith({ type: "setMessage", text: "Wrap up" });
   });
 
-  it("main screen controls dispatch black, logo, and next", async () => {
+  it("main screen controls dispatch clear and next, with no logo button", async () => {
     renderWorkspace();
     await screen.findByRole("navigation", { name: "Service order" });
     const main = screen.getByRole("region", { name: "Main screen" });
     const buttons = within(main).getAllByRole("button").map((b) => b.textContent || b.getAttribute("aria-label"));
-    expect(buttons).toEqual(["Previous slide", "Logo", "Clear", "Show", "Next slide"]);
+    expect(buttons).toEqual(["Previous slide", "Clear", "Show", "Next slide"]);
     fireEvent.click(within(main).getByRole("button", { name: "Clear" }));
-    fireEvent.click(within(main).getByRole("button", { name: "Logo" }));
     fireEvent.click(within(main).getByRole("button", { name: "Next slide" }));
     expect(mocks.session.dispatch).toHaveBeenCalledWith({ type: "toggleBlack" });
-    expect(mocks.session.dispatch).toHaveBeenCalledWith({ type: "toggleLogo" });
     expect(mocks.session.dispatch).toHaveBeenCalledWith({ type: "next" });
   });
 
@@ -277,6 +281,31 @@ describe("ServiceWorkspace", () => {
     fireEvent.change(screen.getByRole("textbox", { name: "Section name" }), { target: { value: "  " } });
     fireEvent.keyDown(screen.getByRole("textbox", { name: "Section name" }), { key: "Enter" });
     await waitFor(() => expect(mocks.updateServiceItem).toHaveBeenCalledTimes(1));
+  });
+
+  it("an empty sermon section from a template asks you to choose a sermon, and fills that same section", async () => {
+    const empty = mocks.session.bundle!.items.find((i) => i.id === "empty")!;
+    Object.assign(empty, { type: "sermon", label: "Message", sermon_id: undefined, slides: [] });
+    mocks.listSermonOptions.mockResolvedValue([{ id: "ser9", title: "Rooted", presentationDate: null }]);
+    renderWorkspace();
+    const order = await screen.findByRole("navigation", { name: "Service order" });
+    fireEvent.click(within(order).getByText("Message"));
+    expect(await screen.findByText("No sermon chosen yet.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Choose sermon" }));
+    fireEvent.click(await screen.findByText("Rooted"));
+    await waitFor(() => expect(mocks.updateServiceItem).toHaveBeenCalledWith("empty", { sermonId: "ser9" }));
+    expect(mocks.addServiceItem).not.toHaveBeenCalled();
+  });
+
+  it("saves the service as a template", async () => {
+    mocks.saveAsTemplate.mockReset().mockResolvedValue("tpl1");
+    renderWorkspace();
+    await screen.findByRole("navigation", { name: "Service order" });
+    fireEvent.click(screen.getByRole("button", { name: "Save as template" }));
+    const name = await screen.findByLabelText("Template name");
+    fireEvent.change(name, { target: { value: "Sunday Morning" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save template" }));
+    await waitFor(() => expect(mocks.saveAsTemplate).toHaveBeenCalledWith("svc", "Sunday Morning"));
   });
 
   it("explains a load failure with a retry", async () => {
