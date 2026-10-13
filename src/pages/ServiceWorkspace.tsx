@@ -709,11 +709,6 @@ const ServiceWorkspace = () => {
             {session.fumsPending} report{session.fumsPending === 1 ? "" : "s"} waiting
           </span>
         )}
-        {!service.isTemplate && (
-          <Button size="sm" variant="ghost" className="text-neutral-300 hover:bg-neutral-800 hover:text-white" onClick={() => setTemplateName(service.title)}>
-            <LayoutTemplate className="h-4 w-4" /> Save as template
-          </Button>
-        )}
         <Button size="sm" variant="secondary" onClick={() => void chooseScreen("main")}>
           <MonitorUp className="h-4 w-4" /> {projectorConnected ? "Reopen main screen" : "Main screen"}
         </Button>
@@ -839,6 +834,19 @@ const ServiceWorkspace = () => {
           </ol>
           {bundle.items.length === 0 && (
             <p className="px-4 pb-6 text-sm text-neutral-500">Start with Add: a sermon, a song, or a blank slide. A blank slide can hold text, pictures, logos, and videos.</p>
+          )}
+          {!service.isTemplate && bundle.items.length > 0 && (
+            <div className="border-t border-neutral-800 p-3">
+              <Button
+                size="sm"
+                variant="outline"
+                className="w-full border-neutral-700 bg-transparent text-neutral-200 hover:bg-neutral-800 hover:text-white"
+                onClick={() => setTemplateName(service.title)}
+              >
+                <LayoutTemplate className="h-4 w-4" /> Save as template
+              </Button>
+              <p className="mt-1.5 text-center text-[11px] text-neutral-500">Saves this service order to reuse</p>
+            </div>
           )}
         </nav>
 

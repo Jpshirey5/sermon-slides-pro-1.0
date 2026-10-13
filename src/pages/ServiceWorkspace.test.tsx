@@ -300,8 +300,8 @@ describe("ServiceWorkspace", () => {
   it("saves the service as a template", async () => {
     mocks.saveAsTemplate.mockReset().mockResolvedValue("tpl1");
     renderWorkspace();
-    await screen.findByRole("navigation", { name: "Service order" });
-    fireEvent.click(screen.getByRole("button", { name: "Save as template" }));
+    const order = await screen.findByRole("navigation", { name: "Service order" });
+    fireEvent.click(within(order).getByRole("button", { name: "Save as template" }));
     const name = await screen.findByLabelText("Template name");
     fireEvent.change(name, { target: { value: "Sunday Morning" } });
     fireEvent.click(screen.getByRole("button", { name: "Save template" }));
