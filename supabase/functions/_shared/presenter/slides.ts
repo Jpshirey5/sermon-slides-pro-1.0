@@ -422,7 +422,7 @@ export function planSong(itemId: string, song: SongRow, ccliLicense: string | nu
 
 // ── custom Slides items ─────────────────────────────────────────────────────
 
-export type CustomSlideKind = "title" | "text" | "graphic" | "blank";
+export type CustomSlideKind = "title" | "text" | "graphic" | "blank" | "video";
 
 export interface CustomSlide {
   id: string;
@@ -434,9 +434,14 @@ export interface CustomSlide {
   textColor?: string;
   fontFamily?: string;
   notes?: string;
+  /** Video slides: a video from the church's library. */
+  media_id?: string;
+  loop?: boolean;
+  end_action?: "hold" | "clear" | "next";
 }
 
-const CUSTOM_KINDS: readonly CustomSlideKind[] = ["title", "text", "graphic", "blank"];
+const CUSTOM_KINDS: readonly CustomSlideKind[] = ["title", "text", "graphic", "blank", "video"];
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
 
 /** Read the slides list stored on a Slides item, dropping anything malformed. */
@@ -453,11 +458,31 @@ export function readCustomSlides(payload: unknown): CustomSlide[] {
     textColor: HEX_COLOR.test(str(s.textColor)) ? str(s.textColor) : undefined,
     fontFamily: str(s.fontFamily).slice(0, 80) || undefined,
     notes: str(s.notes).slice(0, 2000) || undefined,
+    ...(s.kind === "video"
+      ? {
+        media_id: UUID.test(str(s.media_id)) ? str(s.media_id) : undefined,
+        loop: s.loop === true,
+        end_action: s.end_action === "clear" || s.end_action === "next" ? s.end_action : "hold",
+      }
+      : {}),
   }));
 }
 
-export function planCustomSlides(itemId: string, payload: unknown): SlideSlot[] {
+/** Library videos used by video slides in a Blank slide section. */
+export function customSlideMediaIds(payload: unknown): string[] {
+  return readCustomSlides(payload).flatMap((s) => (s.kind === "video" && s.media_id ? [s.media_id] : []));
+}
+
+export function planCustomSlides(itemId: string, payload: unknown, media: ReadonlyMap<string, MediaRow> = new Map()): SlideSlot[] {
   return readCustomSlides(payload).map((s, i) => {
+    const source = { item_id: itemId, slide_indexes: [i] };
+    if (s.kind === "video") {
+      const m = s.media_id ? media.get(s.media_id) : undefined;
+      if (!m) {
+        return { kind: "static" as const, slide: { id: `${itemId}:${s.id}`, kind: "missing" as const, missing_reason: "video_deleted" as const, source, notes: s.notes, style: { ...DEFAULT_STYLE, background: "#000000" } } };
+      }
+      return { kind: "static" as const, slide: { ...videoSlide(`${itemId}:${s.id}`, m, { loop: s.loop, end_action: s.end_action }), notes: s.notes, source } };
+    }
     const style: SlideStyle = {
       background: s.background ?? DEFAULT_STYLE.background,
       backgroundImage: s.backgroundImage,
@@ -474,7 +499,7 @@ export function planCustomSlides(itemId: string, payload: unknown): SlideSlot[] 
         title: s.kind === "graphic" || s.kind === "blank" ? undefined : s.title,
         subtitle: s.kind === "text" || s.kind === "title" ? s.body : undefined,
         notes: s.notes,
-        source: { item_id: itemId, slide_indexes: [i] },
+        source,
         style,
       },
     };
@@ -491,23 +516,24 @@ export interface MediaRow {
 }
 
 export function planVideo(itemId: string, media: MediaRow, payload: unknown): SlideSlot[] {
+  return [{ kind: "static", slide: videoSlide(`${itemId}:video`, media, payload) }];
+}
+
+function videoSlide(id: string, media: MediaRow, payload: unknown): PresenterSlide {
   const p = isObject(payload) ? payload : {};
   const endAction = p.end_action === "clear" || p.end_action === "next" ? p.end_action : "hold";
   const duration = media.duration_seconds === null ? null : Number(media.duration_seconds);
-  return [{
-    kind: "static",
-    slide: {
-      id: `${itemId}:video`,
-      kind: "video",
-      title: media.file_name,
-      video: {
-        media_id: media.id,
-        storage_path: media.storage_path,
-        duration_seconds: duration !== null && Number.isFinite(duration) ? duration : null,
-        loop: p.loop === true,
-        end_action: endAction,
-      },
-      style: { ...DEFAULT_STYLE, background: "#000000" },
+  return {
+    id,
+    kind: "video",
+    title: media.file_name,
+    video: {
+      media_id: media.id,
+      storage_path: media.storage_path,
+      duration_seconds: duration !== null && Number.isFinite(duration) ? duration : null,
+      loop: p.loop === true,
+      end_action: endAction,
     },
-  }];
+    style: { ...DEFAULT_STYLE, background: "#000000" },
+  };
 }

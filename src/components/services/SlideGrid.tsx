@@ -274,7 +274,7 @@ export function SlideGrid(props: SlideGridProps) {
 
       {fileOver === "grid" && (
         <p className="col-span-full text-center text-xs text-primary">
-          {props.acceptsGraphicDrop ? "Drop a picture to add it as a slide, or a video to add it to the service." : "Drop a video to add it to the service, or drop a picture on a slide to make it the background."}
+          {props.acceptsGraphicDrop ? "Drop a picture or a video to add it as a slide here." : "Drop a picture on a slide to make it the background. A video goes into a new blank slide after this section."}
         </p>
       )}
     </div>

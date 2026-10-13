@@ -72,3 +72,41 @@ Deno.test("bundle: slides and video items, and a deleted video shows as missing"
   if (!after.ok) return;
   assertEquals(after.bundle.items[0].slides.map((s) => [s.kind, s.missing_reason]), [["missing", "video_deleted"]]);
 });
+
+Deno.test("blank slide section: video slides, and another church's video is never shown", async () => {
+  let accountId = "";
+  let otherId = "";
+  const db = await createTestDatabase(async (pre) => {
+    accountId = (await pre.query<{ id: string }>(`insert into public.accounts (name, subscription_status) values ('A', 'active') returning id`)).rows[0].id;
+    otherId = (await pre.query<{ id: string }>(`insert into public.accounts (name, subscription_status) values ('B', 'active') returning id`)).rows[0].id;
+  });
+  const userId = crypto.randomUUID();
+  await db.query(`insert into public.account_members (account_id, user_id) values ($1, $2)`, [accountId, userId]);
+  const addMedia = async (account: string, name: string) => (await db.query<{ id: string }>(
+    `insert into public.service_media (account_id, kind, storage_path, file_name, mime_type, size_bytes, duration_seconds)
+     values ($1, 'video', $2, $3, 'video/mp4', 1000, 45) returning id`,
+    [account, `account/${account}/${name}`, name],
+  )).rows[0].id;
+  const ours = await addMedia(accountId, "Intro.mp4");
+  const theirs = await addMedia(otherId, "Secret.mp4");
+  const serviceId = (await db.query<{ id: string }>(`insert into public.services (account_id, title) values ($1, 'Sunday') returning id`, [accountId])).rows[0].id;
+  const payload = {
+    slides: [
+      { id: "g", kind: "graphic", backgroundImage: "storage:presentation-backgrounds/logo.png" },
+      { id: "v", kind: "video", media_id: ours, loop: true, notes: "Lights down" },
+      { id: "x", kind: "video", media_id: theirs },
+    ],
+  };
+  await db.query(`insert into public.service_items (service_id, account_id, position, item_type, payload) values ($1, $2, 1000, 'slides', $3)`, [serviceId, accountId, JSON.stringify(payload)]);
+
+  const result = await buildServiceBundle({ store: createSqlPresenterStore(db), resolver: { store: createSqlScriptureStore(db), api: null } }, { userId, serviceId });
+  assert(result.ok, "bundle");
+  if (!result.ok) return;
+  const [section] = result.bundle.items;
+  assertEquals(section.label, "Blank slide");
+  assertEquals(section.slides.map((s) => s.kind), ["graphic", "video", "missing"]);
+  assertEquals([section.slides[1].video?.media_id, section.slides[1].video?.loop, section.slides[1].notes], [ours, true, "Lights down"]);
+  assertEquals(section.slides[1].source, { item_id: section.id, slide_indexes: [1] });
+  assertEquals(section.slides[2].missing_reason, "video_deleted");
+  assertEquals(JSON.stringify(result.bundle).includes("Secret.mp4"), false);
+});

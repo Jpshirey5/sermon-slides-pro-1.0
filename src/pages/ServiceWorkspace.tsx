@@ -15,7 +15,6 @@ import {
   ChevronRight,
   Clock,
   Film,
-  LayoutGrid,
   Upload,
   GripVertical,
   Image as ImageIcon,
@@ -134,7 +133,7 @@ const ITEM_ICON: Record<BundleItem["type"], typeof Square> = {
   logo: ImageIcon,
   blank: Square,
   credits: ScrollText,
-  slides: LayoutGrid,
+  slides: Square,
   video: Film,
 };
 
@@ -179,10 +178,16 @@ const ServiceWorkspace = () => {
   const [videoLibrary, setVideoLibrary] = useState<MediaItem[] | null>(null);
   const [uploading, setUploading] = useState<string | null>(null);
   const [busySlideId, setBusySlideId] = useState<string | null>(null);
-  const [videoSettings, setVideoSettings] = useState<{ item: ServiceItem; loop: boolean; endAction: "hold" | "clear" | "next" } | null>(null);
+  const [videoSettings, setVideoSettings] = useState<{
+    /** An old-style video item, or a video slide inside a Blank slide section. */
+    target: { kind: "item"; row: ServiceItem } | { kind: "slide"; item: BundleItem; index: number };
+    loop: boolean;
+    endAction: "hold" | "clear" | "next";
+  } | null>(null);
   const videoInput = useRef<HTMLInputElement>(null);
   const graphicInput = useRef<HTMLInputElement>(null);
   const pendingGraphic = useRef<{ item: BundleItem; after: number | null } | null>(null);
+  const pendingVideo = useRef<{ item: BundleItem; after: number | null } | null>(null);
   const [sermons, setSermons] = useState<SermonOption[] | null>(null);
   const [songs, setSongs] = useState<Song[] | null>(null);
   const [reading, setReading] = useState<{ itemId: string | null; draft: ReadingDraft | null } | null>(null);
@@ -354,7 +359,7 @@ const ServiceWorkspace = () => {
   const addKindsFor = (item: BundleItem | undefined): GridAddKind[] => {
     if (!item) return [];
     if (item.type === "sermon" && item.sermon_id) return [{ kind: "title", label: "Title" }, { kind: "point", label: "Point" }, { kind: "scripture", label: "Scripture" }, { kind: "blank", label: "Blank" }];
-    if (item.type === "slides") return [{ kind: "title", label: "Title" }, { kind: "text", label: "Text" }, { kind: "graphic", label: "Graphic (picture)" }, { kind: "blank", label: "Blank" }];
+    if (item.type === "slides") return [{ kind: "blank", label: "Blank" }, { kind: "title", label: "Title" }, { kind: "text", label: "Text" }, { kind: "graphic", label: "Picture or logo" }, { kind: "video", label: "Video" }];
     return [];
   };
 
@@ -362,6 +367,11 @@ const ServiceWorkspace = () => {
     if (item.type === "slides" && kind === "graphic" && !extra.backgroundImage) {
       pendingGraphic.current = { item, after };
       graphicInput.current?.click();
+      return;
+    }
+    if (item.type === "slides" && kind === "video" && !extra.media_id) {
+      pendingVideo.current = { item, after };
+      openPicker("video");
       return;
     }
     void mutateSlides(item, "Could not add the slide", (list) => {
@@ -439,17 +449,35 @@ const ServiceWorkspace = () => {
     }
   };
 
-  /** Upload a video to the library and add it to the service right after the section you're viewing. */
+  /** A new Blank slide section right after the one you're viewing. */
+  const addBlankSection = (first: CustomSlide = newCustomSlide("blank")) => {
+    const after = bundle?.items[viewItem]?.id;
+    add({ type: "slides", payload: { slides: [first] }, label: "Blank slide", afterItemId: serviceItem(after ?? "")?.id ?? null });
+  };
+
+  /**
+   * Put a library video into the service as a slide: where "Add slide" asked
+   * for it, else at the end of the Blank slide section you're viewing, else in
+   * a new Blank slide section after the section you're viewing.
+   */
+  const placeVideo = (mediaId: string) => {
+    const target = pendingVideo.current;
+    pendingVideo.current = null;
+    const video = { media_id: mediaId, loop: false, end_action: "hold" as const };
+    const shown = bundle?.items[viewItem];
+    if (target) addSlide(target.item, "video", target.after, video);
+    else if (shown?.type === "slides") addSlide(shown, "video", null, video);
+    else addBlankSection(newCustomSlide("video", video));
+  };
+
+  /** Upload a video to the library, then place it (see placeVideo). */
   const addVideoFile = async (file: File) => {
     const problem = fileProblem(file);
     if (problem || classifyFile(file) !== "video") return void toast.error(problem ?? `${file.name} isn't a video.`);
     if (!service) return;
     setUploading(`Uploading ${file.name}. Large videos can take a few minutes.`);
     try {
-      const mediaId = await uploadVideo(file);
-      const after = bundle?.items[viewItem]?.id;
-      await run("Could not add the video", () => addServiceItem(service, { type: "video", mediaId, afterItemId: serviceItem(after ?? "")?.id ?? null }));
-      toast.success("Video added");
+      placeVideo(await uploadVideo(file));
     } catch (error) {
       toast.error("Could not upload the video", { description: (error as Error).message });
     } finally {
@@ -492,10 +520,13 @@ const ServiceWorkspace = () => {
   // ── editing ──
   const editSlide = (item: BundleItem, slide: PresenterSlide) => {
     const row = serviceItem(item.id);
-    if (slide.source && (slide.kind === "title" || slide.kind === "point" || slide.kind === "scripture" || slide.kind === "missing" || slide.kind === "graphic" || (slide.kind === "blank" && slide.source.item_id))) {
+    const custom = slide.source?.item_id && row ? readCustomSlides(row.payload)[slide.source.slide_indexes[0]] : undefined;
+    if (custom?.kind === "video") {
+      setVideoSettings({ target: { kind: "slide", item, index: slide.source!.slide_indexes[0] }, loop: custom.loop === true, endAction: custom.end_action ?? "hold" });
+    } else if (slide.source && (slide.kind === "title" || slide.kind === "point" || slide.kind === "scripture" || slide.kind === "missing" || slide.kind === "graphic" || (slide.kind === "blank" && slide.source.item_id))) {
       setEditingSlide(slide);
     } else if (item.type === "video" && row) {
-      setVideoSettings({ item: row, loop: row.payload.loop === true, endAction: row.payload.end_action === "clear" || row.payload.end_action === "next" ? row.payload.end_action : "hold" });
+      setVideoSettings({ target: { kind: "item", row }, loop: row.payload.loop === true, endAction: row.payload.end_action === "clear" || row.payload.end_action === "next" ? row.payload.end_action : "hold" });
     } else if (item.type === "song" && item.song_id) {
       setSongEditor({ songId: item.song_id, addToService: false });
     } else if (item.type === "scripture" && row) {
@@ -652,11 +683,7 @@ const ServiceWorkspace = () => {
               <DropdownMenuContent align="end">
                 <DropdownMenuItem onSelect={() => openPicker("sermon")}><Presentation className="h-4 w-4" /> Sermon</DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => openPicker("song")}><Music className="h-4 w-4" /> Song</DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => setReading({ itemId: null, draft: null })}><BookOpen className="h-4 w-4" /> Reading</DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => add({ type: "logo" })}><ImageIcon className="h-4 w-4" /> Logo screen</DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => add({ type: "slides", payload: { slides: [newCustomSlide("title")] }, label: "Slides", afterItemId: shownItem?.id ?? null })}><LayoutGrid className="h-4 w-4" /> Slides (welcome, announcements, graphics)</DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => openPicker("video")}><Film className="h-4 w-4" /> Video</DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => add({ type: "blank" })}><Square className="h-4 w-4" /> Black screen</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => addBlankSection()}><Square className="h-4 w-4" /> Blank slide</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
@@ -723,7 +750,7 @@ const ServiceWorkspace = () => {
             })}
           </ol>
           {bundle.items.length === 0 && (
-            <p className="px-4 pb-6 text-sm text-neutral-500">Start with Add: a sermon, songs, readings, and logo or black screens.</p>
+            <p className="px-4 pb-6 text-sm text-neutral-500">Start with Add: a sermon, a song, or a blank slide. A blank slide can hold text, pictures, logos, and videos.</p>
           )}
         </nav>
 
@@ -929,8 +956,8 @@ const ServiceWorkspace = () => {
         description="Videos in your church's library. You can also drag a video file onto the slides area."
         options={videoLibrary?.map((v) => ({ id: v.id, title: v.fileName, detail: v.durationSeconds ? formatDuration(v.durationSeconds) : undefined })) ?? null}
         emptyText="No videos yet. Upload your first one."
-        onPick={(id) => { setPicker(null); add({ type: "video", mediaId: id, afterItemId: shownItem?.id ?? null }); }}
-        onClose={() => setPicker(null)}
+        onPick={(id) => { setPicker(null); placeVideo(id); }}
+        onClose={() => { pendingVideo.current = null; setPicker(null); }}
         footer={
           <Button variant="outline" disabled={uploading !== null} onClick={() => videoInput.current?.click()}>
             <Upload className="h-4 w-4" /> Upload video
@@ -991,7 +1018,14 @@ const ServiceWorkspace = () => {
                 const v = videoSettings;
                 if (!v) return;
                 setVideoSettings(null);
-                void run("Could not save the video settings", () => updateServiceItem(v.item.id, { payload: { ...v.item.payload, loop: v.loop, end_action: v.endAction } }));
+                if (v.target.kind === "item") {
+                  const row = v.target.row;
+                  void run("Could not save the video settings", () => updateServiceItem(row.id, { payload: { ...row.payload, loop: v.loop, end_action: v.endAction } }));
+                } else {
+                  const index = v.target.index;
+                  void mutateSlides(v.target.item, "Could not save the video settings", (list) =>
+                    list.map((s, i) => (i === index ? { ...(s as CustomSlide), loop: v.loop, end_action: v.endAction } : s)));
+                }
               }}
             >
               Save

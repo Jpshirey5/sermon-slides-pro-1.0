@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   getEditorPresentationState: vi.fn(),
   saveEditorSlides: vi.fn(),
   uploadSlideImage: vi.fn(),
+  addServiceItem: vi.fn(),
 }));
 
 vi.mock("@/lib/media", async (importOriginal) => {
@@ -30,7 +31,7 @@ vi.mock("@/lib/presentations", () => ({
 }));
 vi.mock("@/lib/services", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/services")>();
-  return { ...actual, getService: mocks.getService, listSermonOptions: vi.fn().mockResolvedValue([]) };
+  return { ...actual, getService: mocks.getService, addServiceItem: mocks.addServiceItem, listSermonOptions: vi.fn().mockResolvedValue([]) };
 });
 
 const style = { background: "#000000", fontFamily: "Georgia", textColor: "#FFFFFF" };
@@ -244,6 +245,21 @@ describe("ServiceWorkspace", () => {
       "storage:presentation-backgrounds/acct/bg.png",
       "storage:presentation-backgrounds/acct/bg.png",
     ]);
+  });
+
+  it("Add offers only a sermon, a song, or a blank slide", async () => {
+    mocks.addServiceItem.mockReset().mockResolvedValue(undefined);
+    renderWorkspace();
+    await screen.findByRole("navigation", { name: "Service order" });
+    fireEvent.keyDown(screen.getByRole("button", { name: /^Add$/ }), { key: "Enter" });
+    const items = (await screen.findAllByRole("menuitem")).map((m) => m.textContent?.trim());
+    expect(items).toEqual(["Sermon", "Song", "Blank slide"]);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Blank slide" }));
+    await waitFor(() => expect(mocks.addServiceItem).toHaveBeenCalled());
+    const [, item] = mocks.addServiceItem.mock.calls[0];
+    expect(item.type).toBe("slides");
+    expect(item.label).toBe("Blank slide");
+    expect(item.payload.slides.map((s: { kind: string }) => s.kind)).toEqual(["blank"]);
   });
 
   it("explains a load failure with a retry", async () => {
