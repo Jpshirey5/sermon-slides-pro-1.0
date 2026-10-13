@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   saveEditorSlides: vi.fn(),
   uploadSlideImage: vi.fn(),
   addServiceItem: vi.fn(),
+  updateServiceItem: vi.fn(),
 }));
 
 vi.mock("@/lib/media", async (importOriginal) => {
@@ -31,7 +32,7 @@ vi.mock("@/lib/presentations", () => ({
 }));
 vi.mock("@/lib/services", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/services")>();
-  return { ...actual, getService: mocks.getService, addServiceItem: mocks.addServiceItem, listSermonOptions: vi.fn().mockResolvedValue([]) };
+  return { ...actual, getService: mocks.getService, addServiceItem: mocks.addServiceItem, updateServiceItem: mocks.updateServiceItem, listSermonOptions: vi.fn().mockResolvedValue([]) };
 });
 
 const style = { background: "#000000", fontFamily: "Georgia", textColor: "#FFFFFF" };
@@ -260,6 +261,22 @@ describe("ServiceWorkspace", () => {
     expect(item.type).toBe("slides");
     expect(item.label).toBe("Blank slide");
     expect(item.payload.slides.map((s: { kind: string }) => s.kind)).toEqual(["blank"]);
+  });
+
+  it("renames a section from its menu, and an empty name goes back to the default", async () => {
+    mocks.updateServiceItem.mockReset().mockResolvedValue(undefined);
+    renderWorkspace();
+    const order = await screen.findByRole("navigation", { name: "Service order" });
+    fireEvent.doubleClick(within(order).getByText("Reading"));
+    const box = screen.getByRole("textbox", { name: "Section name" });
+    fireEvent.change(box, { target: { value: "Call to Worship" } });
+    fireEvent.keyDown(box, { key: "Enter" });
+    await waitFor(() => expect(mocks.updateServiceItem).toHaveBeenCalledWith("reading", { label: "Call to Worship" }));
+
+    fireEvent.doubleClick(within(order).getByText("Reading"));
+    fireEvent.change(screen.getByRole("textbox", { name: "Section name" }), { target: { value: "  " } });
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "Section name" }), { key: "Enter" });
+    await waitFor(() => expect(mocks.updateServiceItem).toHaveBeenCalledTimes(1));
   });
 
   it("explains a load failure with a retry", async () => {

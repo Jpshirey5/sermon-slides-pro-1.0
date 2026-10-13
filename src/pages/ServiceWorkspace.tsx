@@ -25,6 +25,7 @@ import {
   MonitorPlay,
   MonitorUp,
   MoreHorizontal,
+  Pencil,
   Music,
   Pause,
   Play,
@@ -194,6 +195,9 @@ const ServiceWorkspace = () => {
   const [songEditor, setSongEditor] = useState<{ songId: string | null; addToService: boolean } | null>(null);
   const [editingSlide, setEditingSlide] = useState<PresenterSlide | null>(null);
   const [countdownFor, setCountdownFor] = useState<ServiceItem | null>(null);
+  const [renaming, setRenaming] = useState<{ rowId: string; value: string } | null>(null);
+  const renamingRef = useRef(false);
+  renamingRef.current = renaming !== null;
   const [countdownMinutes, setCountdownMinutes] = useState("");
   const [displays, setDisplays] = useState<{ kind: WindowKind; list: DisplayInfo[] } | null>(null);
   const [showShortcuts, setShowShortcuts] = useState(false);
@@ -248,7 +252,7 @@ const ServiceWorkspace = () => {
     void loadService();
   }, [loadService]);
 
-  const anyDialogOpen = Boolean(picker || reading || songEditor || editingSlide || countdownFor || displays || showShortcuts || showNotices);
+  const anyDialogOpen = Boolean(picker || reading || songEditor || editingSlide || countdownFor || renaming || displays || showShortcuts || showNotices);
   useKeyboardShortcuts(dispatch, session.load.kind === "ready" && !anyDialogOpen);
 
   // The view follows the live slide when it moves to another item.
@@ -309,6 +313,17 @@ const ServiceWorkspace = () => {
     } finally {
       setBusy(false);
     }
+  };
+
+  /** Save a section's new name. An empty name goes back to the default (the sermon or song title). */
+  const saveRename = () => {
+    const r = renaming;
+    if (!r) return;
+    setRenaming(null);
+    const row = service?.items.find((i) => i.id === r.rowId);
+    const label = r.value.trim().slice(0, 120);
+    if (!row || label === (row.label ?? "")) return;
+    void run("Could not rename the section", () => updateServiceItem(row.id, { label: label || null }));
   };
 
   const serviceItem = (bundleItemId: string) => service?.items.find((i) => i.id === bundleItemId) ?? null;
@@ -697,14 +712,39 @@ const ServiceWorkspace = () => {
               return (
                 <li
                   key={item.id}
-                  draggable={Boolean(row) && !busy}
+                  draggable={Boolean(row) && !busy && !renaming}
                   onDragStart={() => setDragFrom(orderIndex)}
                   onDragOver={(e) => row && e.preventDefault()}
                   onDrop={() => row && dropAt(orderIndex)}
                   className={`group flex items-center gap-1 rounded-md pr-1 ${i === shownIndex ? "bg-primary/25" : "hover:bg-neutral-900"} ${dragFrom === orderIndex ? "opacity-40" : ""}`}
                 >
                   <span className="cursor-grab px-1 text-neutral-600 opacity-0 group-hover:opacity-100" aria-hidden>{row ? <GripVertical className="h-4 w-4" /> : null}</span>
-                  <button type="button" onClick={() => setViewItem(i)} className="flex min-w-0 flex-1 items-start gap-2 py-2 text-left text-sm">
+                  {renaming && row && renaming.rowId === row.id ? (
+                    <div className="flex min-w-0 flex-1 items-center gap-2 py-1.5">
+                      <Icon className="h-4 w-4 shrink-0 text-neutral-400" />
+                      <Input
+                        autoFocus
+                        aria-label="Section name"
+                        className="h-7 border-neutral-700 bg-neutral-950 px-2 text-sm text-neutral-100"
+                        value={renaming.value}
+                        maxLength={120}
+                        onFocus={(e) => e.target.select()}
+                        onChange={(e) => setRenaming({ rowId: row.id, value: e.target.value })}
+                        onKeyDown={(e) => {
+                          e.stopPropagation();
+                          if (e.key === "Enter") saveRename();
+                          if (e.key === "Escape") setRenaming(null);
+                        }}
+                        onBlur={saveRename}
+                      />
+                    </div>
+                  ) : (
+                  <button
+                    type="button"
+                    onClick={() => setViewItem(i)}
+                    onDoubleClick={() => row && setRenaming({ rowId: row.id, value: item.label })}
+                    className="flex min-w-0 flex-1 items-start gap-2 py-2 text-left text-sm"
+                  >
                     <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${isLiveItem ? "text-red-400" : "text-neutral-400"}`} />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-neutral-100">{item.label}</span>
@@ -715,6 +755,7 @@ const ServiceWorkspace = () => {
                       </span>
                     </span>
                   </button>
+                  )}
                   {row && (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -722,7 +763,8 @@ const ServiceWorkspace = () => {
                           <MoreHorizontal className="h-4 w-4" />
                         </Button>
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-56">
+                      <DropdownMenuContent align="end" className="w-56" onCloseAutoFocus={(e) => renamingRef.current && e.preventDefault()}>
+                        <DropdownMenuItem onSelect={() => { renamingRef.current = true; setRenaming({ rowId: row.id, value: item.label }); }}><Pencil className="h-4 w-4" /> Rename</DropdownMenuItem>
                         {item.type === "song" && item.song_id && <DropdownMenuItem onSelect={() => setSongEditor({ songId: item.song_id!, addToService: false })}>Edit song</DropdownMenuItem>}
                         {item.type === "scripture" && <DropdownMenuItem onSelect={() => editSlide(item, item.slides[0] ?? { id: "x", kind: "blank", style: { background: "#000", fontFamily: "Georgia", textColor: "#fff" } })}>Edit reading</DropdownMenuItem>}
                         {item.type === "sermon" && item.sermon_id && <DropdownMenuItem onSelect={() => navigate(`/editor/${item.sermon_id}`)}>Open in sermon editor</DropdownMenuItem>}
