@@ -1,5 +1,5 @@
-import { useState, type DragEvent } from "react";
-import { Copy, ImageOff, Loader2, MoreHorizontal, Pencil, Plus, StickyNote, Trash2 } from "lucide-react";
+import { useEffect, useState, type DragEvent, type MouseEvent } from "react";
+import { Check, Copy, ImageOff, Loader2, MoreHorizontal, Pencil, Plus, StickyNote, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -42,8 +42,13 @@ interface SlideGridProps {
   onDuplicate: (slideIndex: number) => void;
   onDelete: (slideIndex: number) => void;
   onRemovePicture: (slideIndex: number) => void;
-  /** A picture dropped on a slide (index) or on empty space (null). */
-  onDropImage: (file: File, slideIndex: number | null) => void;
+  /**
+   * A picture dropped on slides or on empty space (null). When the slide it
+   * lands on is part of a selection, every selected slide is passed.
+   */
+  onDropImage: (file: File, slideIndexes: number[] | null) => void;
+  /** Remove the background picture from several slides at once. */
+  onRemovePictures?: (slideIndexes: number[]) => void;
   /** A video dropped anywhere in the grid. */
   onDropVideo: (file: File) => void;
 }
@@ -57,6 +62,41 @@ export function SlideGrid(props: SlideGridProps) {
   const [dragFrom, setDragFrom] = useState<number | null>(null);
   const [dropBefore, setDropBefore] = useState<number | null>(null);
   const [fileOver, setFileOver] = useState<number | "grid" | null>(null);
+  // Shift-click selects a range from the last clicked slide; Cmd or Ctrl-click adds or removes one.
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [anchor, setAnchor] = useState<number | null>(null);
+  const slideKey = slides.map((s) => s.id).join("|");
+
+  useEffect(() => {
+    setSelected(new Set());
+    setAnchor(null);
+  }, [itemIndex, slideKey]);
+
+  const multi = selected.size > 1;
+  const canPicture = (i: number) => editable && Boolean(slides[i]?.source) && slides[i]?.kind !== "graphic";
+  const dropTargets = (i: number) => (multi && selected.has(i) ? [...selected].sort((a, b) => a - b).filter(canPicture) : [i]);
+
+  const clickSlide = (i: number, e: MouseEvent) => {
+    if (e.shiftKey) {
+      e.preventDefault();
+      const from = anchor ?? (cursor.item === itemIndex ? cursor.slide : i);
+      const [lo, hi] = from < i ? [from, i] : [i, from];
+      setSelected(new Set(Array.from({ length: hi - lo + 1 }, (_, k) => lo + k)));
+      setAnchor(from);
+      return;
+    }
+    if (e.metaKey || e.ctrlKey) {
+      const next = new Set(selected.size ? selected : anchor !== null ? [anchor] : []);
+      if (next.has(i)) next.delete(i);
+      else next.add(i);
+      setSelected(next);
+      setAnchor(i);
+      return;
+    }
+    setSelected(new Set([i]));
+    setAnchor(i);
+    props.onSelect(i);
+  };
 
   const reset = () => {
     setDragFrom(null);
@@ -72,8 +112,7 @@ export function SlideGrid(props: SlideGridProps) {
     for (const file of files) {
       const kind = classifyFile(file);
       if (kind === "video") props.onDropVideo(file);
-      else if (kind === "image") props.onDropImage(file, slideIndex);
-      else props.onDropImage(file, slideIndex); // the handler explains unsupported files
+      else props.onDropImage(file, slideIndex === null ? null : dropTargets(slideIndex)); // the handler explains unsupported files
     }
   };
 
@@ -100,7 +139,24 @@ export function SlideGrid(props: SlideGridProps) {
         reset();
       }}
       aria-label="Slides"
+      onKeyDown={(e) => {
+        if (e.key === "Escape" && multi) setSelected(new Set());
+      }}
     >
+      {multi && (
+        <div className="col-span-full flex items-center gap-2 rounded-md bg-primary/15 px-3 py-1.5 text-xs text-neutral-200" role="status">
+          <Check className="h-3.5 w-3.5 text-primary" />
+          <span>{selected.size} slides selected. Drop a picture on any of them to set the background on all.</span>
+          {props.onRemovePictures && [...selected].some((i) => canPicture(i) && slides[i].style.backgroundImage) && (
+            <Button size="sm" variant="ghost" className="ml-auto h-6 px-2 text-xs text-neutral-300 hover:bg-neutral-800 hover:text-white" onClick={() => props.onRemovePictures?.([...selected].sort((a, b) => a - b).filter(canPicture))}>
+              <ImageOff className="h-3.5 w-3.5" /> Remove pictures
+            </Button>
+          )}
+          <Button size="sm" variant="ghost" className={`${props.onRemovePictures ? "" : "ml-auto "}h-6 px-2 text-xs text-neutral-300 hover:bg-neutral-800 hover:text-white`} onClick={() => setSelected(new Set())} aria-label="Clear selection">
+            <X className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      )}
       {slides.map((slide, i) => {
         const isCursor = cursor.item === itemIndex && cursor.slide === i;
         const isLive = isCursor && live;
@@ -137,16 +193,22 @@ export function SlideGrid(props: SlideGridProps) {
           >
             <button
               type="button"
-              onClick={() => props.onSelect(i)}
+              onClick={(e) => clickSlide(i, e)}
               onDoubleClick={() => props.onEdit(slide)}
-              className={`block w-full rounded-md p-1 text-left transition-colors ${isLive ? "bg-red-500/20 ring-2 ring-red-500" : isCursor ? "ring-2 ring-primary" : "ring-1 ring-neutral-800 hover:ring-neutral-600"} ${fileOver === i ? "ring-2 ring-dashed ring-amber-400" : ""}`}
+              aria-pressed={multi ? selected.has(i) : undefined}
+              className={`block w-full select-none rounded-md p-1 text-left transition-colors ${multi && selected.has(i) ? "bg-primary/15 " : ""}${isLive ? "bg-red-500/20 ring-2 ring-red-500" : isCursor ? "ring-2 ring-primary" : "ring-1 ring-neutral-800 hover:ring-neutral-600"} ${fileOver === i ? "ring-2 ring-dashed ring-amber-400" : ""}`}
               aria-label={`Slide ${i + 1}: ${props.caption(slide)}`}
               aria-current={isCursor ? "true" : undefined}
             >
               <div className="relative">
                 <SlideView frame={asFrame(slide)} images={props.images} videos={props.videos} showMissing className="rounded" />
-                {fileOver === i && (
-                  <div className="absolute inset-0 flex items-center justify-center rounded bg-black/60 text-xs font-medium text-amber-200">Drop to set background</div>
+                {fileOver !== null && fileOver !== "grid" && (fileOver === i || (multi && selected.has(fileOver) && selected.has(i))) && (
+                  <div className="absolute inset-0 flex items-center justify-center rounded bg-black/60 text-xs font-medium text-amber-200">
+                    {multi && selected.has(i) ? `Drop to set background on ${dropTargets(i).length} slides` : "Drop to set background"}
+                  </div>
+                )}
+                {multi && selected.has(i) && (
+                  <span className="absolute left-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground"><Check className="h-3 w-3" /></span>
                 )}
                 {props.busySlideId === slide.id && (
                   <div className="absolute inset-0 flex items-center justify-center rounded bg-black/60"><Loader2 className="h-5 w-5 animate-spin text-white" /></div>

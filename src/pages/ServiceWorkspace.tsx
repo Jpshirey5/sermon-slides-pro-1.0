@@ -291,14 +291,16 @@ const ServiceWorkspace = () => {
   }, [bundle]);
 
   /** Run a change to the service, then reload both the order and the slides. */
-  const run = async (label: string, action: () => Promise<unknown>) => {
-    if (busy) return;
+  const run = async (label: string, action: () => Promise<unknown>): Promise<boolean> => {
+    if (busy) return false;
     setBusy(true);
     try {
       await action();
       await Promise.all([loadService(), session.reload()]);
+      return true;
     } catch (error) {
       toast.error(label, { description: (error as Error).message });
+      return false;
     } finally {
       setBusy(false);
     }
@@ -392,25 +394,34 @@ const ServiceWorkspace = () => {
     });
   };
 
-  const setSlidePicture = (item: BundleItem, i: number, ref: string | null) => {
-    const slide = item.slides[i];
-    if (!slide?.source) return;
+  /** Set or remove the background picture on one or more slides of a section, in one save. */
+  const setSlidePicture = (item: BundleItem, indexes: number | number[], ref: string | null) => {
+    const targets = (Array.isArray(indexes) ? indexes : [indexes]).map((i) => item.slides[i]).filter((slide) => slide?.source);
+    if (targets.length === 0) return;
     void mutateSlides(item, ref ? "Could not set the background" : "Could not remove the picture", (list) => {
-      if (item.type === "slides") {
-        const r = applyCustomSlideEdit(list as CustomSlide[], slide.source!.slide_indexes[0], { backgroundImage: ref });
-        if (r.ok === false) throw new Error(r.reason);
-        return r.slides;
+      let next = list;
+      for (const slide of targets) {
+        if (item.type === "slides") {
+          const r = applyCustomSlideEdit(next as CustomSlide[], slide.source!.slide_indexes[0], { backgroundImage: ref });
+          if (r.ok === false) throw new Error(r.reason);
+          next = r.slides;
+        } else {
+          const expected = slide.kind === "missing" ? "missing" : (slide.kind as "title" | "point" | "scripture" | "blank");
+          const r = applySlideEdit(next as SlideData[], slide.source!.slide_indexes, expected as never, { backgroundImage: ref });
+          if (r.ok === false) throw new Error(r.reason);
+          next = r.slides;
+        }
       }
-      const expected = slide.kind === "missing" ? "missing" : (slide.kind as "title" | "point" | "scripture" | "blank");
-      const r = applySlideEdit(list as SlideData[], slide.source!.slide_indexes, expected as never, { backgroundImage: ref });
-      if (r.ok === false) throw new Error(r.reason);
-      return r.slides;
+      return next;
+    }).then((ok) => {
+      if (ok && targets.length > 1) toast.success(ref ? `Background set on ${targets.length} slides` : `Pictures removed from ${targets.length} slides`);
     });
   };
 
-  const dropImage = async (item: BundleItem, file: File, slideIndex: number | null) => {
+  const dropImage = async (item: BundleItem, file: File, slideIndexes: number[] | null) => {
     const problem = fileProblem(file);
     if (problem || classifyFile(file) !== "image") return void toast.error(problem ?? `${file.name} isn't a picture.`);
+    const slideIndex = slideIndexes?.[0] ?? null;
     const target = slideIndex !== null ? item.slides[slideIndex] : null;
     if (target && !target.source) return void toast("Pictures can be added to sermon slides and Slides sections. Songs and readings use the slide editor.");
     if (!target && item.type !== "slides") return void toast("Drop the picture onto a slide to make it the background, or add a Slides section for graphics.");
@@ -418,7 +429,7 @@ const ServiceWorkspace = () => {
     setUploading(`Uploading ${file.name}`);
     try {
       const ref = await uploadSlideImage(file, serviceId, target?.id.replace(/[^A-Za-z0-9-]/g, "") || "graphic");
-      if (target && slideIndex !== null) setSlidePicture(item, slideIndex, ref);
+      if (target && slideIndexes) setSlidePicture(item, slideIndexes, ref);
       else addSlide(item, "graphic", null, { backgroundImage: ref });
     } catch (error) {
       toast.error("Could not upload the picture", { description: (error as Error).message });
@@ -752,7 +763,8 @@ const ServiceWorkspace = () => {
                 onDuplicate={(i) => duplicateSlide(shownItem, i)}
                 onDelete={(i) => deleteSlide(shownItem, i)}
                 onRemovePicture={(i) => setSlidePicture(shownItem, i, null)}
-                onDropImage={(file, i) => void dropImage(shownItem, file, i)}
+                onDropImage={(file, indexes) => void dropImage(shownItem, file, indexes)}
+                onRemovePictures={(indexes) => setSlidePicture(shownItem, indexes, null)}
                 onDropVideo={(file) => void addVideoFile(file)}
               />
             )}

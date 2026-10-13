@@ -13,7 +13,13 @@ const mocks = vi.hoisted(() => ({
   getService: vi.fn(),
   getEditorPresentationState: vi.fn(),
   saveEditorSlides: vi.fn(),
+  uploadSlideImage: vi.fn(),
 }));
+
+vi.mock("@/lib/media", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/media")>();
+  return { ...actual, uploadSlideImage: mocks.uploadSlideImage };
+});
 
 vi.mock("@/integrations/supabase/client", () => ({ supabase: { functions: { invoke: vi.fn() } } }));
 vi.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ canUseEsv: false }) }));
@@ -208,6 +214,36 @@ describe("ServiceWorkspace", () => {
     fireEvent.click(within(controls).getByRole("button", { name: "Play video" }));
     expect(mocks.session.sendVideo).toHaveBeenCalledWith({ action: "play" });
     expect(within(controls).getByText(/Playing in this preview/)).toBeInTheDocument();
+  });
+
+  it("shift-click selects a range, and a dropped picture becomes the background on every selected slide", async () => {
+    mocks.uploadSlideImage.mockReset().mockResolvedValue("storage:presentation-backgrounds/acct/bg.png");
+    mocks.getEditorPresentationState.mockResolvedValue({
+      editorSlides: [
+        { id: "t", type: "title", content: { title: "Anchored" }, ...style },
+        { id: "p", type: "point", content: { title: "Hope is a person", subtitle: "" }, ...style },
+        { id: "s", type: "scripture", content: { reference: "John 3:16 (NIV)" }, ...style },
+      ],
+    });
+    renderWorkspace();
+    fireEvent.click(await screen.findByRole("button", { name: "Slide 1: Title" }));
+    fireEvent.click(screen.getByRole("button", { name: "Slide 3: John 3:16 (NIV)" }), { shiftKey: true });
+    expect(screen.getByRole("status")).toHaveTextContent("3 slides selected");
+    // Shift-click only selects; it doesn't change what's on the main screen.
+    expect(mocks.session.dispatch).toHaveBeenCalledTimes(1);
+
+    const file = new File(["x"], "bg.png", { type: "image/png" });
+    const target = screen.getByRole("button", { name: "Slide 2: Hope is a person" }).parentElement!;
+    fireEvent.drop(target, { dataTransfer: { files: [file], types: ["Files"] } });
+
+    await waitFor(() => expect(mocks.saveEditorSlides).toHaveBeenCalledTimes(1));
+    expect(mocks.uploadSlideImage).toHaveBeenCalledTimes(1);
+    const [, slides] = mocks.saveEditorSlides.mock.calls[0];
+    expect(slides.map((s: { backgroundImage?: string }) => s.backgroundImage)).toEqual([
+      "storage:presentation-backgrounds/acct/bg.png",
+      "storage:presentation-backgrounds/acct/bg.png",
+      "storage:presentation-backgrounds/acct/bg.png",
+    ]);
   });
 
   it("explains a load failure with a retry", async () => {
