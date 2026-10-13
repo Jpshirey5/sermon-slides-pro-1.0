@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { CalendarDays, ListMusic, Loader2, MonitorPlay, Plus } from "lucide-react";
+import { CalendarDays, ListMusic, Loader2, MonitorPlay, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -11,7 +11,7 @@ import { ServicesHeader } from "@/components/services/ServicesHeader";
 import { TranslationSelect } from "@/components/services/TranslationSelect";
 import { useAuth } from "@/contexts/AuthContext";
 import { formatDateOnlyForDisplay } from "@/lib/date-format";
-import { createService, listServices, type ServiceSummary } from "@/lib/services";
+import { createService, deleteService, listServices, type ServiceSummary } from "@/lib/services";
 import { DEFAULT_TRANSLATION } from "@/lib/translations";
 
 const nextSunday = () => {
@@ -29,6 +29,8 @@ const Services = () => {
   const [title, setTitle] = useState("Sunday Service");
   const [date, setDate] = useState(nextSunday);
   const [translation, setTranslation] = useState(profile?.default_translation || DEFAULT_TRANSLATION);
+  const [deleting, setDeleting] = useState<ServiceSummary | null>(null);
+  const [deletingBusy, setDeletingBusy] = useState(false);
 
   useEffect(() => {
     listServices()
@@ -48,6 +50,21 @@ const Services = () => {
     } catch (error) {
       toast.error("Could not create the service", { description: (error as Error).message });
       setCreating(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deleting) return;
+    setDeletingBusy(true);
+    try {
+      await deleteService(deleting.id);
+      setServices((list) => list?.filter((s) => s.id !== deleting.id) ?? null);
+      toast.success(`Deleted "${deleting.title}"`);
+      setDeleting(null);
+    } catch (error) {
+      toast.error("Could not delete the service", { description: (error as Error).message });
+    } finally {
+      setDeletingBusy(false);
     }
   };
 
@@ -109,6 +126,15 @@ const Services = () => {
                       <MonitorPlay className="w-4 h-4" />
                       Open
                     </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="text-muted-foreground hover:text-destructive"
+                      onClick={() => setDeleting(s)}
+                      aria-label={`Delete ${s.title}`}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
                   </CardContent>
                 </Card>
               </li>
@@ -116,6 +142,24 @@ const Services = () => {
           </ul>
         )}
       </main>
+
+      <Dialog open={deleting !== null} onOpenChange={(open) => !open && !deletingBusy && setDeleting(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete this service?</DialogTitle>
+            <DialogDescription>
+              "{deleting?.title}" and its order of items will be removed. This can't be undone. Your sermons, songs, and videos stay in your library.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleting(null)} disabled={deletingBusy}>Cancel</Button>
+            <Button variant="destructive" onClick={handleDelete} disabled={deletingBusy}>
+              {deletingBusy && <Loader2 className="w-4 h-4 animate-spin" />}
+              Delete service
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={showCreate} onOpenChange={(open) => !creating && setShowCreate(open)}>
         <DialogContent className="sm:max-w-md">
