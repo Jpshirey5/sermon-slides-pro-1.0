@@ -308,6 +308,39 @@ describe("ServiceWorkspace", () => {
     await waitFor(() => expect(mocks.saveAsTemplate).toHaveBeenCalledWith("svc", "Sunday Morning"));
   });
 
+  it("desktop: Main screen opens straight on the saved screen, and the Screens menu can open it too", async () => {
+    const tv = { id: "2", label: "SAMSUNG", isPrimary: false, isCurrent: false, left: 1512, top: 0, width: 1920, height: 1080 };
+    const openPresenterWindow = vi.fn(async () => true);
+    window.sspDesktop = {
+      isDesktop: true,
+      openPresenterWindow,
+      onPresenterClosed: () => () => undefined,
+      listDisplays: vi.fn(async () => [tv]),
+      screens: {
+        get: vi.fn(async () => ({ displays: [tv], main: { saved: { id: "2", label: "SAMSUNG", width: 1920, height: 1080 }, connectedId: "2" }, stage: { saved: null, connectedId: null } })),
+        set: vi.fn(),
+        identify: vi.fn(),
+        onChanged: () => () => undefined,
+      },
+      onMenuCommand: () => () => undefined,
+      offlineCache: { available: vi.fn(async () => false) },
+    } as unknown as NonNullable<typeof window.sspDesktop>;
+    try {
+      renderWorkspace();
+      await screen.findByRole("navigation", { name: "Service order" });
+      fireEvent.click(screen.getByRole("button", { name: /^Main screen$/ }));
+      await waitFor(() => expect(openPresenterWindow).toHaveBeenCalledWith("main", expect.stringContaining("/output?channel="), "2"));
+      expect(screen.queryByText("Which screen is the main screen?")).not.toBeInTheDocument();
+
+      const detail = { kind: "main", handled: false };
+      window.dispatchEvent(new CustomEvent("ssp:screen-command", { detail }));
+      expect(detail.handled).toBe(true);
+      await waitFor(() => expect(openPresenterWindow).toHaveBeenCalledTimes(2));
+    } finally {
+      delete window.sspDesktop;
+    }
+  });
+
   it("explains a load failure with a retry", async () => {
     mocks.session = makeSession({ load: { kind: "error", error: "plan_required" }, bundle: null });
     renderWorkspace();

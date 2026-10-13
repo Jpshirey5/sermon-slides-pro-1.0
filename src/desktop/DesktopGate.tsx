@@ -2,6 +2,7 @@ import { useEffect, type ReactNode } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { getDesktop } from "./bridge";
+import { DesktopScreens } from "./DesktopScreens";
 import { desktopRoute } from "./routes";
 
 /**
@@ -12,7 +13,8 @@ import { desktopRoute } from "./routes";
 export function DesktopGate({ children }: { children: ReactNode }) {
   const location = useLocation();
   const { user, loading } = useAuth();
-  const isDesktop = Boolean(getDesktop());
+  const desktop = getDesktop();
+  const isDesktop = Boolean(desktop);
   const decision = isDesktop && !loading ? desktopRoute(location.pathname, location.search, Boolean(user)) : null;
 
   useEffect(() => {
@@ -24,5 +26,10 @@ export function DesktopGate({ children }: { children: ReactNode }) {
   if (loading) return location.pathname === "/" ? null : <>{children}</>;
   if (decision?.kind === "redirect") return <Navigate to={decision.to} replace />;
   if (decision?.kind === "browser") return <Navigate to={decision.then} replace />;
-  return <>{children}</>;
+  return (
+    <>
+      {children}
+      {user && desktop && <DesktopScreens desktop={desktop} />}
+    </>
+  );
 }

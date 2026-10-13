@@ -67,7 +67,7 @@ import { applyCustomSlideEdit, type CustomSlide, duplicateGroup, insertAt, moveG
 import type { SlideData } from "@/lib/slides/types";
 import { readCustomSlides } from "../../supabase/functions/_shared/presenter/slides.ts";
 import { VideoPlayer } from "@/presenter/ui/VideoPlayer";
-import { getDesktop } from "@/desktop/bridge";
+import { getDesktop, SCREEN_COMMAND_EVENT, type ScreenCommandDetail } from "@/desktop/bridge";
 import { supabase } from "@/integrations/supabase/client";
 import { resolveBackgroundImages } from "@/lib/background-assets";
 import { formatDateOnlyForDisplay } from "@/lib/date-format";
@@ -240,6 +240,28 @@ const ServiceWorkspace = () => {
 
   // Desktop app: it tells us when a presenter window is closed.
   useEffect(() => desktop?.onPresenterClosed((kind) => session.windowClosed(kind)), [desktop]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Screens > Open Main Screen / Open Stage Display in the app menu.
+  const chooseScreenRef = useRef<((kind: WindowKind) => Promise<void>) | null>(null);
+  useEffect(() => {
+    const onCommand = (e: Event) => {
+      const detail = (e as CustomEvent<ScreenCommandDetail>).detail;
+      if (!chooseScreenRef.current) return;
+      detail.handled = true;
+      void chooseScreenRef.current(detail.kind);
+    };
+    window.addEventListener(SCREEN_COMMAND_EVENT, onCommand);
+    return () => window.removeEventListener(SCREEN_COMMAND_EVENT, onCommand);
+  }, []);
+  // A screen unplugged or turned off mid-service, and plugged back in.
+  useEffect(
+    () =>
+      desktop?.screens.onChanged(({ kind, state }) => {
+        const name = kind === "main" ? "Main screen" : "Stage display";
+        if (kind && state === "disconnected") toast.warning(`${name} disconnected`, { description: "Its window is hidden until the screen is plugged back in.", duration: 10000 });
+        if (kind && state === "reconnected") toast.success(`${name} is back`);
+      }),
+    [desktop],
+  );
   const { bundle, state, dispatch, frame, images, projectorConnected, stageConnected, stage, dispatchStage, stageFrame } = session;
   const live = projectorConnected || stageConnected;
 
@@ -534,8 +556,12 @@ const ServiceWorkspace = () => {
   };
 
   // ── windows ──
-  const openWindow = (kind: WindowKind, display: DisplayInfo | null) => {
+  const openWindow = (kind: WindowKind, display: DisplayInfo | null, remember = false) => {
     setDisplays(null);
+    if (desktop && remember && display) {
+      void desktop.screens.set(kind, display.id).then(() =>
+        toast(`Saved ${display.label} as the ${kind === "main" ? "main screen" : "stage display"}.`, { description: "Change it anytime in Screens > Set Up Screens." }));
+    }
     const path = kind === "main" ? "output" : "stage";
     const url = `/present/${serviceId}/${path}?channel=${encodeURIComponent(session.nonce)}`;
     if (desktop) {
@@ -556,7 +582,11 @@ const ServiceWorkspace = () => {
   };
   const chooseScreen = async (kind: WindowKind) => {
     if (desktop) {
-      const list = await desktop.listDisplays();
+      // The screen saved in Screens > Set Up Screens, if it's plugged in.
+      const setup = await desktop.screens.get();
+      const saved = setup?.displays.find((d) => d.id === setup[kind].connectedId);
+      if (saved) return openWindow(kind, saved);
+      const list = setup?.displays ?? (await desktop.listDisplays());
       return list.length < 2 ? openWindow(kind, list[0] ?? null) : setDisplays({ kind, list });
     }
     if (!supportsWindowManagement(window)) return openWindow(kind, null);
@@ -564,6 +594,7 @@ const ServiceWorkspace = () => {
     if (!result.supported || result.displays.length < 2) return openWindow(kind, null);
     setDisplays({ kind, list: result.displays });
   };
+  chooseScreenRef.current = session.load.kind === "ready" ? chooseScreen : null;
 
   // ── editing ──
   const editSlide = (item: BundleItem, slide: PresenterSlide) => {
@@ -1198,7 +1229,7 @@ const ServiceWorkspace = () => {
           </DialogHeader>
           <div className="space-y-2">
             {(displays?.list ?? []).map((d) => (
-              <Button key={d.id} variant={d === pickDefaultDisplay(displays?.list ?? []) ? "default" : "outline"} className="w-full justify-between" onClick={() => displays && openWindow(displays.kind, d)}>
+              <Button key={d.id} variant={d === pickDefaultDisplay(displays?.list ?? []) ? "default" : "outline"} className="w-full justify-between" onClick={() => displays && openWindow(displays.kind, d, true)}>
                 <span>{d.label}{d.isCurrent ? " (this screen)" : ""}</span>
                 <span className="text-xs opacity-70">{d.width} x {d.height}</span>
               </Button>
