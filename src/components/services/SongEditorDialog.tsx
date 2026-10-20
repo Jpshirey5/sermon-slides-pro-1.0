@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { ArrowDown, ArrowUp, Loader2, Plus, Trash2, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ArrowDown, ArrowUp, ClipboardPaste, FileUp, Loader2, Plus, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -20,7 +20,18 @@ import {
   validateSong,
   getChurchCcliLicense,
 } from "@/lib/songs";
+import { MAX_SONG_TEXT, parseSongText } from "@/lib/song-import";
 import { songCredit } from "../../../supabase/functions/_shared/presenter/slides.ts";
+
+const readAsText = (file: File) =>
+  typeof file.text === "function"
+    ? file.text()
+    : new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result ?? ""));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsText(file);
+    });
 
 interface SongEditorDialogProps {
   open: boolean;
@@ -42,6 +53,7 @@ export function SongEditorDialog({ open, songId, onSaved, onClose }: SongEditorD
   useEffect(() => {
     if (!open) return;
     setShowProblems(false);
+    setPasting(null);
     if (!songId) {
       setSong(emptySong());
       return;
@@ -54,6 +66,47 @@ export function SongEditorDialog({ open, songId, onSaved, onClose }: SongEditorD
         onClose();
       });
   }, [open, songId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const [pasting, setPasting] = useState<string | null>(null);
+  const [dropping, setDropping] = useState(false);
+  const fileInput = useRef<HTMLInputElement>(null);
+
+  /** Fill the song from a whole pasted song or a SongSelect lyrics file. Sections are replaced; details fill in only where blank. */
+  const applyImport = (text: string, from: "paste" | "file") => {
+    const imported = parseSongText(text);
+    if (!imported) {
+      toast.error(from === "file" ? "No lyrics found in that file." : "No lyrics found. Paste the whole song, with labels like Verse 1 and Chorus.");
+      return false;
+    }
+    setSong((s) => {
+      if (!s) return s;
+      const sections = imported.sections.map((x) => ({ id: newSectionId(), label: x.label, lyrics: x.lyrics }));
+      return {
+        ...s,
+        title: s.title.trim() ? s.title : imported.title,
+        author: s.author.trim() ? s.author : imported.author,
+        ccliSongNumber: s.ccliSongNumber.trim() ? s.ccliSongNumber : imported.ccliSongNumber,
+        copyright: s.copyright.trim() ? s.copyright : imported.copyright,
+        source: imported.ccliSongNumber ? "licensed" : s.source,
+        sections,
+        arrangement: imported.arrangement.map((i) => sections[i].id),
+      };
+    });
+    toast.success(
+      `${imported.sections.length} section${imported.sections.length === 1 ? "" : "s"} added`,
+      { description: imported.fromSongSelect ? "Song details filled in from the SongSelect file." : "Check the section names and the arrangement." },
+    );
+    return true;
+  };
+
+  const readFile = async (file: File | undefined) => {
+    if (!file) return;
+    if (file.size > MAX_SONG_TEXT * 4 || (!/\.(txt|text)$/i.test(file.name) && file.type !== "text/plain")) {
+      toast.error("Choose the lyrics .txt file from SongSelect.");
+      return;
+    }
+    applyImport(await readAsText(file), "file");
+  };
 
   const update = (patch: Partial<Song>) => setSong((s) => (s ? { ...s, ...patch } : s));
   const updateSection = (id: string, patch: Partial<Song["sections"][number]>) =>
@@ -101,7 +154,22 @@ export function SongEditorDialog({ open, songId, onSaved, onClose }: SongEditorD
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && !saving && onClose()}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+      <DialogContent
+        className={`max-h-[90vh] overflow-y-auto sm:max-w-2xl ${dropping ? "ring-2 ring-primary" : ""}`}
+        onDragOver={(e) => {
+          if (Array.from(e.dataTransfer.types).includes("Files")) {
+            e.preventDefault();
+            setDropping(true);
+          }
+        }}
+        onDragLeave={(e) => e.currentTarget === e.target && setDropping(false)}
+        onDrop={(e) => {
+          if (!e.dataTransfer.files.length) return;
+          e.preventDefault();
+          setDropping(false);
+          void readFile(e.dataTransfer.files[0]);
+        }}
+      >
         <DialogHeader>
           <DialogTitle>{songId ? "Edit song" : "New song"}</DialogTitle>
           <DialogDescription>
@@ -113,6 +181,53 @@ export function SongEditorDialog({ open, songId, onSaved, onClose }: SongEditorD
           <div className="flex justify-center py-10 text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin" /></div>
         ) : (
           <div className="space-y-5 py-1">
+            <div className="flex flex-wrap items-center gap-2 rounded-md border border-dashed border-border px-3 py-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => setPasting("")}>
+                <ClipboardPaste className="h-4 w-4" /> Paste whole song
+              </Button>
+              <Button type="button" variant="outline" size="sm" onClick={() => fileInput.current?.click()}>
+                <FileUp className="h-4 w-4" /> Import SongSelect file
+              </Button>
+              <input
+                ref={fileInput}
+                type="file"
+                accept=".txt,text/plain"
+                className="hidden"
+                aria-label="SongSelect lyrics file"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = "";
+                  void readFile(file);
+                }}
+              />
+              <span className="text-xs text-muted-foreground">or drop the lyrics .txt file you downloaded from SongSelect here.</span>
+            </div>
+
+            {pasting !== null && (
+              <div className="space-y-2 rounded-lg border border-border p-3">
+                <Label htmlFor="song-paste">Paste the whole song</Label>
+                <p className="text-xs text-muted-foreground">
+                  Put each section's name on its own line (Verse 1, Chorus, Bridge). A blank line inside a section starts a new slide. This replaces the sections below.
+                </p>
+                <Textarea
+                  id="song-paste"
+                  rows={10}
+                  className="font-mono text-sm"
+                  maxLength={MAX_SONG_TEXT}
+                  autoFocus
+                  value={pasting}
+                  placeholder={"Verse 1\nFirst line\nSecond line\n\nChorus\nChorus line"}
+                  onChange={(e) => setPasting(e.target.value)}
+                />
+                <div className="flex justify-end gap-2">
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setPasting(null)}>Cancel</Button>
+                  <Button type="button" size="sm" disabled={!pasting.trim()} onClick={() => applyImport(pasting, "paste") && setPasting(null)}>
+                    Use these lyrics
+                  </Button>
+                </div>
+              </div>
+            )}
+
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="song-title">Title</Label>
