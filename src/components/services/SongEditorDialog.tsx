@@ -19,7 +19,9 @@ import {
   type SongSource,
   validateSong,
   getChurchCcliLicense,
+  uploadSongBackground,
 } from "@/lib/songs";
+import { SongBackgroundField } from "./SongBackgroundField";
 import { MAX_SONG_TEXT, parseSongText } from "@/lib/song-import";
 import { songCredit } from "../../../supabase/functions/_shared/presenter/slides.ts";
 
@@ -333,6 +335,18 @@ export function SongEditorDialog({ open, songId, onSaved, onClose }: SongEditorD
                   </Button>
                 ))}
               </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="song-background">Background</Label>
+              <SongBackgroundField
+                id="song-background"
+                color={song.background}
+                image={song.backgroundImage}
+                onChange={({ color, image }) => update({ background: color, backgroundImage: image })}
+                onUpload={(file) => uploadSongBackground(file, song.id || "new-song")}
+                emptyText="Uses your church's default song background (set on the Songs page). You can also drag a picture onto this song's slides in a service."
+              />
             </div>
 
             {showProblems && problems.length > 0 && (

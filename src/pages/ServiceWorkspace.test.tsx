@@ -18,7 +18,23 @@ const mocks = vi.hoisted(() => ({
   updateServiceItem: vi.fn(),
   listSermonOptions: vi.fn(),
   saveAsTemplate: vi.fn(),
+  recordSongUse: vi.fn(),
+  setSongBackground: vi.fn(),
+  uploadSongBackground: vi.fn(),
+  getSong: vi.fn(),
 }));
+
+vi.mock("@/lib/songs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/songs")>();
+  return {
+    ...actual,
+    recordSongUse: mocks.recordSongUse,
+    setSongBackground: mocks.setSongBackground,
+    uploadSongBackground: mocks.uploadSongBackground,
+    getSong: mocks.getSong,
+    listSongs: vi.fn(async () => []),
+  };
+});
 
 vi.mock("@/lib/media", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/media")>();
@@ -111,6 +127,7 @@ describe("ServiceWorkspace", () => {
     mocks.saveEditorSlides.mockReset().mockResolvedValue(undefined);
     mocks.listSermonOptions.mockReset().mockResolvedValue([]);
     mocks.addServiceItem.mockReset().mockResolvedValue(undefined);
+    mocks.recordSongUse.mockReset().mockResolvedValue(undefined);
     mocks.updateServiceItem.mockReset().mockResolvedValue(undefined);
   });
 
@@ -339,6 +356,63 @@ describe("ServiceWorkspace", () => {
     } finally {
       delete window.sspDesktop;
     }
+  });
+
+  const makeSongSession = (over: Partial<PresenterSession> = {}) => {
+    const session = makeSession();
+    const item = session.bundle!.items.find((i) => i.id === "empty")!;
+    Object.assign(item, {
+      type: "song",
+      label: "Morning Light",
+      song_id: "song1",
+      slides: [{ id: "l1", kind: "lyrics", text: "first verse", style }, { id: "l2", kind: "lyrics", text: "the chorus", style }],
+    });
+    const index = session.bundle!.items.indexOf(item);
+    return { ...session, state: { ...session.state, mode: "live" as const, cursor: { item: index, slide: 0 } }, ...over };
+  };
+
+  it("CCLI: a song counts once when it's live on the main screen, not while rehearsing", async () => {
+    mocks.session = makeSongSession({ projectorConnected: false });
+    const { unmount } = renderWorkspace();
+    await screen.findByRole("navigation", { name: "Service order" });
+    expect(mocks.recordSongUse).not.toHaveBeenCalled();
+    unmount();
+
+    mocks.session = makeSongSession({ projectorConnected: true });
+    renderWorkspace();
+    await waitFor(() => expect(mocks.recordSongUse).toHaveBeenCalledWith("svc", "song1"));
+    expect(mocks.recordSongUse).toHaveBeenCalledTimes(1);
+  });
+
+  it("dropping a picture on a song's slide sets that song's background", async () => {
+    mocks.session = makeSongSession();
+    mocks.uploadSongBackground.mockReset().mockResolvedValue("storage:presentation-backgrounds/account/a/sermons/songs/song1.png");
+    mocks.setSongBackground.mockReset().mockResolvedValue(undefined);
+    renderWorkspace();
+    const order = await screen.findByRole("navigation", { name: "Service order" });
+    fireEvent.click(within(order).getByText("Morning Light"));
+    const slide = (await screen.findByRole("button", { name: /^Slide 2:/ })).parentElement!;
+    fireEvent.drop(slide, { dataTransfer: { files: [new File(["x"], "bg.png", { type: "image/png" })], types: ["Files"] } });
+    await waitFor(() =>
+      expect(mocks.setSongBackground).toHaveBeenCalledWith("song1", { background: null, backgroundImage: "storage:presentation-backgrounds/account/a/sermons/songs/song1.png" }));
+  });
+
+  it("sets a song's arrangement for this service only", async () => {
+    mocks.session = makeSongSession();
+    mocks.getSong.mockReset().mockResolvedValue({
+      id: "song1", title: "Morning Light", author: "", ccliSongNumber: "", copyright: "", source: "licensed", background: "", backgroundImage: null,
+      sections: [{ id: "v1", label: "Verse 1", lyrics: "a" }, { id: "c", label: "Chorus", lyrics: "b" }, { id: "b", label: "Bridge", lyrics: "c" }],
+      arrangement: ["v1", "c", "b", "c"],
+    });
+    renderWorkspace();
+    const order = await screen.findByRole("navigation", { name: "Service order" });
+    fireEvent.keyDown(within(order).getByRole("button", { name: "Morning Light options" }), { key: "Enter" });
+    fireEvent.click(await screen.findByRole("menuitem", { name: /Arrangement for this service/ }));
+    const dialog = await screen.findByRole("dialog", { name: "Arrangement for this service" });
+    await within(dialog).findByLabelText("Remove Bridge from the order");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Remove Bridge from the order" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(mocks.updateServiceItem).toHaveBeenCalledWith("empty", { payload: { arrangement: ["v1", "c", "c"] } }));
   });
 
   it("explains a load failure with a retry", async () => {

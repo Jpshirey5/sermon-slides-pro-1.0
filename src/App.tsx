@@ -26,6 +26,7 @@ import Dashboard from "./pages/Dashboard";
 import Services from "./pages/Services";
 import ServiceWorkspace from "./pages/ServiceWorkspace";
 import Songs from "./pages/Songs";
+import SongReport from "./pages/SongReport";
 import PresentOutput from "./pages/PresentOutput";
 import PresentStage from "./pages/PresentStage";
 import Account from "./pages/Account";
@@ -110,6 +111,7 @@ const App = () => (
               <Route path="/dashboard/services" element={<ProtectedRoute><Services /></ProtectedRoute>} />
               <Route path="/dashboard/services/:id" element={<ProtectedRoute><ServiceWorkspace /></ProtectedRoute>} />
               <Route path="/dashboard/songs" element={<ProtectedRoute><Songs /></ProtectedRoute>} />
+              <Route path="/dashboard/songs/report" element={<ProtectedRoute><SongReport /></ProtectedRoute>} />
               <Route path="/present/:serviceId" element={<PresentRedirect />} />
               {/* The projector window holds no data; it only shows frames the signed-in operator sends. */}
               <Route path="/present/:serviceId/output" element={<PresentOutput />} />

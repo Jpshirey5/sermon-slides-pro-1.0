@@ -513,6 +513,8 @@ export type Database = {
           stripe_customer_id: string | null
           stripe_subscription_id: string | null
           subscription_period_end: string | null
+          song_background: string | null
+          song_background_image: string | null
           subscription_status: Database["public"]["Enums"]["subscription_status"]
           updated_at: string
         }
@@ -537,6 +539,8 @@ export type Database = {
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
           subscription_period_end?: string | null
+          song_background?: string | null
+          song_background_image?: string | null
           subscription_status?: Database["public"]["Enums"]["subscription_status"]
           updated_at?: string
         }
@@ -561,6 +565,8 @@ export type Database = {
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
           subscription_period_end?: string | null
+          song_background?: string | null
+          song_background_image?: string | null
           subscription_status?: Database["public"]["Enums"]["subscription_status"]
           updated_at?: string
         }
@@ -1036,6 +1042,59 @@ export type Database = {
         }
         Relationships: []
       }
+      song_usage: {
+        Row: {
+          account_id: string
+          author: string | null
+          ccli_song_number: string | null
+          copyright: string | null
+          created_at: string
+          created_by_user_id: string | null
+          id: string
+          service_id: string | null
+          song_id: string | null
+          source: string
+          title: string
+          used_on: string
+        }
+        Insert: {
+          account_id: string
+          author?: string | null
+          ccli_song_number?: string | null
+          copyright?: string | null
+          created_at?: string
+          created_by_user_id?: string | null
+          id?: string
+          service_id?: string | null
+          song_id?: string | null
+          source: string
+          title: string
+          used_on: string
+        }
+        Update: {
+          account_id?: string
+          author?: string | null
+          ccli_song_number?: string | null
+          copyright?: string | null
+          created_at?: string
+          created_by_user_id?: string | null
+          id?: string
+          service_id?: string | null
+          song_id?: string | null
+          source?: string
+          title?: string
+          used_on?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "song_usage_service_id_fkey"
+            columns: ["service_id"]
+            isOneToOne: false
+            referencedRelation: "services"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       songs: {
         Row: {
           account_id: string
@@ -1044,6 +1103,8 @@ export type Database = {
           author: string | null
           ccli_song_number: string | null
           copyright: string | null
+          background: string | null
+          background_image: string | null
           created_at: string
           created_by_user_id: string | null
           id: string
@@ -1059,6 +1120,8 @@ export type Database = {
           author?: string | null
           ccli_song_number?: string | null
           copyright?: string | null
+          background?: string | null
+          background_image?: string | null
           created_at?: string
           created_by_user_id?: string | null
           id?: string
@@ -1074,6 +1137,8 @@ export type Database = {
           author?: string | null
           ccli_song_number?: string | null
           copyright?: string | null
+          background?: string | null
+          background_image?: string | null
           created_at?: string
           created_by_user_id?: string | null
           id?: string
@@ -1272,6 +1337,10 @@ export type Database = {
       }
     }
     Functions: {
+      record_song_use: {
+        Args: { _service_id: string; _song_id: string; _used_on: string }
+        Returns: boolean
+      }
       copy_service_structure: {
         Args: { _source_id: string; _title: string; _service_date: string | null; _as_template: boolean }
         Returns: string

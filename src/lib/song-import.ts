@@ -56,7 +56,7 @@ function tidyLabel(raw: string): string {
   return lower.charAt(0).toUpperCase() + lower.slice(1);
 }
 
-const normalize = (text: string) => text.replace(/\r\n?/g, "\n").replace(/ /g, " ").replace(/[ \t]+$/gm, "");
+const normalize = (text: string) => text.replace(/\r\n?/g, "\n").replace(/\u00a0/g, " ").replace(/[ \t]+$/gm, "");
 const trimBlankLines = (text: string) => text.replace(/^\s*\n/, "").replace(/\n\s*$/, "").replace(/\n{3,}/g, "\n\n").trim();
 
 /** Read a whole song. Returns null when there are no lyrics in it. */

@@ -147,7 +147,10 @@ export async function buildServiceBundle(
             slots: [{ kind: "static", slide: { id: `${row.id}:missing`, kind: "missing", missing_reason: "song_deleted", style: BLACK } }],
           };
         }
-        return { row, type: "song", label: row.label || song.title, slots: planSong(row.id, song, plan?.ccli_license_number ?? null) };
+        return { row, type: "song", label: row.label || song.title, slots: planSong(row.id, song, plan?.ccli_license_number ?? null, {
+          churchBackground: plan ? { background: plan.song_background, background_image: plan.song_background_image } : null,
+          serviceArrangement: (row.payload as Record<string, unknown> | null)?.arrangement,
+        }) };
       }
       case "slides":
         return { row, type: "slides", label: row.label || "Blank slide", slots: planCustomSlides(row.id, row.payload, media) };

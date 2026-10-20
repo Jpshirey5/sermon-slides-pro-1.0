@@ -60,6 +60,7 @@ import { PickerDialog } from "@/components/services/PickerDialog";
 import { ReadingDialog, type ReadingDraft } from "@/components/services/ReadingDialog";
 import { SlideEditDialog } from "@/components/services/SlideEditDialog";
 import { SongEditorDialog } from "@/components/services/SongEditorDialog";
+import { ServiceArrangementDialog } from "@/components/services/ServiceArrangementDialog";
 import { type AddKind as GridAddKind, SlideGrid } from "@/components/services/SlideGrid";
 import { VideoControls } from "@/components/services/VideoControls";
 import { classifyFile, fileProblem, formatDuration, listVideos, type MediaItem, uploadSlideImage, uploadVideo, videoUrl } from "@/lib/media";
@@ -92,7 +93,7 @@ import {
   updateServiceItem,
 } from "@/lib/services";
 import { holdSessionWhilePresenting } from "@/lib/session-security";
-import { listSongs, type Song } from "@/lib/songs";
+import { listSongs, recordSongUse, setSongBackground, type Song, uploadSongBackground } from "@/lib/songs";
 import type { BundleFetchError, Invoke } from "@/presenter/core/bundle-client";
 import {
   type DisplayInfo,
@@ -194,6 +195,7 @@ const ServiceWorkspace = () => {
   /** When set, the sermon or song picker fills this section instead of adding a new one. */
   const fillRow = useRef<string | null>(null);
   const [templateName, setTemplateName] = useState<string | null>(null);
+  const [arranging, setArranging] = useState<{ row: ServiceItem; songId: string } | null>(null);
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [sermons, setSermons] = useState<SermonOption[] | null>(null);
   const [songs, setSongs] = useState<Song[] | null>(null);
@@ -252,6 +254,19 @@ const ServiceWorkspace = () => {
     window.addEventListener(SCREEN_COMMAND_EVENT, onCommand);
     return () => window.removeEventListener(SCREEN_COMMAND_EVENT, onCommand);
   }, []);
+  // CCLI reporting: a song counts once per service, the first time one of its
+  // slides is live on the main screen. Rehearsing with no main screen open
+  // doesn't count. A failed save is retried the next time the song is live.
+  const reportedSongs = useRef(new Set<string>());
+  const liveSongId = (() => {
+    const item = session.bundle?.items[session.state.cursor.item];
+    return session.projectorConnected && session.state.mode === "live" && item?.type === "song" ? item.song_id ?? null : null;
+  })();
+  useEffect(() => {
+    if (!liveSongId || !service || service.isTemplate || reportedSongs.current.has(liveSongId)) return;
+    reportedSongs.current.add(liveSongId);
+    recordSongUse(service.id, liveSongId).catch(() => reportedSongs.current.delete(liveSongId));
+  }, [liveSongId, service]);
   // A screen unplugged or turned off mid-service, and plugged back in.
   useEffect(
     () =>
@@ -280,7 +295,7 @@ const ServiceWorkspace = () => {
     void loadService();
   }, [loadService]);
 
-  const anyDialogOpen = Boolean(picker || reading || songEditor || editingSlide || countdownFor || renaming || templateName !== null || displays || showShortcuts || showNotices);
+  const anyDialogOpen = Boolean(picker || reading || songEditor || editingSlide || countdownFor || renaming || arranging || templateName !== null || displays || showShortcuts || showNotices);
   useKeyboardShortcuts(dispatch, session.load.kind === "ready" && !anyDialogOpen);
 
   // The view follows the live slide when it moves to another item.
@@ -476,7 +491,23 @@ const ServiceWorkspace = () => {
     if (problem || classifyFile(file) !== "image") return void toast.error(problem ?? `${file.name} isn't a picture.`);
     const slideIndex = slideIndexes?.[0] ?? null;
     const target = slideIndex !== null ? item.slides[slideIndex] : null;
-    if (target && !target.source) return void toast("Pictures can be added to sermon slides and Slides sections. Songs and readings use the slide editor.");
+    if (item.type === "song" && item.song_id) {
+      // A picture on any of a song's slides becomes that song's background, everywhere it's used.
+      const songId = item.song_id;
+      setUploading(`Uploading ${file.name}`);
+      try {
+        const ref = await uploadSongBackground(file, songId);
+        if (await run("Could not set the song background", () => setSongBackground(songId, { background: null, backgroundImage: ref }))) {
+          toast.success("Song background set", { description: "Used for this song in every service. Change it in the song." });
+        }
+      } catch (error) {
+        toast.error("Could not upload the picture", { description: (error as Error).message });
+      } finally {
+        setUploading(null);
+      }
+      return;
+    }
+    if (target && !target.source) return void toast("Pictures can be added to sermon, song, and blank slides. Readings use their own settings.");
     if (!target && item.type !== "slides") return void toast("Drop the picture onto a slide to make it the background, or add a Slides section for graphics.");
     setBusySlideId(target?.id ?? null);
     setUploading(`Uploading ${file.name}`);
@@ -837,6 +868,11 @@ const ServiceWorkspace = () => {
                         <DropdownMenuItem onSelect={() => { renamingRef.current = true; setRenaming({ rowId: row.id, value: item.label }); }}><Pencil className="h-4 w-4" /> Rename</DropdownMenuItem>
                         {item.type === "sermon" && <DropdownMenuItem onSelect={() => chooseFor(row, "sermon")}>{item.sermon_id ? "Change sermon" : "Choose sermon"}</DropdownMenuItem>}
                         {item.type === "song" && <DropdownMenuItem onSelect={() => chooseFor(row, "song")}>{item.song_id ? "Change song" : "Choose song"}</DropdownMenuItem>}
+                        {item.type === "song" && item.song_id && (
+                          <DropdownMenuItem onSelect={() => setArranging({ row, songId: item.song_id! })}>
+                            Arrangement for this service{Array.isArray(row.payload.arrangement) && row.payload.arrangement.length ? " (custom)" : ""}
+                          </DropdownMenuItem>
+                        )}
                         {item.type === "song" && item.song_id && <DropdownMenuItem onSelect={() => setSongEditor({ songId: item.song_id!, addToService: false })}>Edit song</DropdownMenuItem>}
                         {item.type === "scripture" && <DropdownMenuItem onSelect={() => editSlide(item, item.slides[0] ?? { id: "x", kind: "blank", style: { background: "#000", fontFamily: "Georgia", textColor: "#fff" } })}>Edit reading</DropdownMenuItem>}
                         {item.type === "sermon" && item.sermon_id && <DropdownMenuItem onSelect={() => navigate(`/editor/${item.sermon_id}`)}>Open in sermon editor</DropdownMenuItem>}
@@ -1120,6 +1156,18 @@ const ServiceWorkspace = () => {
           const pending = pendingGraphic.current;
           pendingGraphic.current = null;
           if (file && pending) void dropImage(pending.item, file, null);
+        }}
+      />
+      <ServiceArrangementDialog
+        target={arranging ? { songId: arranging.songId, current: Array.isArray(arranging.row.payload.arrangement) ? (arranging.row.payload.arrangement as string[]) : [] } : null}
+        onClose={() => setArranging(null)}
+        onSave={async (arrangement) => {
+          const row = arranging?.row;
+          if (!row) return;
+          const payload = { ...row.payload };
+          if (arrangement.length) payload.arrangement = arrangement;
+          else delete payload.arrangement;
+          if (await run("Could not save the arrangement", () => updateServiceItem(row.id, { payload }))) setArranging(null);
         }}
       />
       <Dialog open={templateName !== null} onOpenChange={(o) => !o && !savingTemplate && setTemplateName(null)}>

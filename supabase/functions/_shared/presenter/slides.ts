@@ -356,6 +356,27 @@ export interface SongRow {
   source: "licensed" | "public_domain" | "original";
   sections: unknown;
   arrangement: unknown;
+  background?: string | null;
+  background_image?: string | null;
+}
+
+/** A background for song slides: the church's default, or one song's own. */
+export interface SongBackground {
+  background?: string | null;
+  background_image?: string | null;
+}
+
+const HEX_BG = /^#[0-9a-fA-F]{6}$/;
+
+/** The song's own background if it has one, else the church default, else black. */
+export function songStyle(song: SongBackground, churchDefault: SongBackground | null): SlideStyle {
+  const own = Boolean(song.background || song.background_image);
+  const pick = own ? song : churchDefault ?? {};
+  return {
+    ...DEFAULT_STYLE,
+    background: pick.background && HEX_BG.test(pick.background) ? pick.background : DEFAULT_STYLE.background,
+    backgroundImage: pick.background_image || null,
+  };
 }
 
 interface SongSection {
@@ -374,10 +395,17 @@ function readSections(raw: unknown): SongSection[] {
 }
 
 /** The order sections are sung in: the arrangement if set, otherwise as listed. */
-export function songOrder(song: Pick<SongRow, "sections" | "arrangement">): SongSection[] {
+/**
+ * Sections in singing order. A service's own arrangement (from the service
+ * item) wins over the song's saved one; either way, ids that no longer match
+ * a section are skipped.
+ */
+export function songOrder(song: Pick<SongRow, "sections" | "arrangement">, serviceArrangement?: unknown): SongSection[] {
   const sections = readSections(song.sections);
   const byId = new Map(sections.map((s) => [s.id, s]));
-  const arrangement = Array.isArray(song.arrangement) ? song.arrangement.map((x) => str(x)).filter((id) => byId.has(id)) : [];
+  const pick = (list: unknown) => (Array.isArray(list) ? list.map((x) => str(x)).filter((id) => byId.has(id)) : []);
+  const forService = pick(serviceArrangement);
+  const arrangement = forService.length ? forService : pick(song.arrangement);
   return arrangement.length ? arrangement.map((id) => byId.get(id)!) : sections;
 }
 
@@ -398,10 +426,16 @@ export function songCredit(song: Pick<SongRow, "title" | "author" | "copyright" 
 }
 
 /** One slide per stanza: a blank line in a section's lyrics starts a new slide. */
-export function planSong(itemId: string, song: SongRow, ccliLicense: string | null): SlideSlot[] {
+export function planSong(
+  itemId: string,
+  song: SongRow,
+  ccliLicense: string | null,
+  options: { churchBackground?: SongBackground | null; serviceArrangement?: unknown } = {},
+): SlideSlot[] {
   const credit = songCredit(song, ccliLicense);
+  const style = songStyle(song, options.churchBackground ?? null);
   const slots: SlideSlot[] = [];
-  songOrder(song).forEach((section, sectionIndex) => {
+  songOrder(song, options.serviceArrangement).forEach((section, sectionIndex) => {
     const stanzas = section.lyrics.replace(/\r\n/g, "\n").split(/\n\s*\n/).map((t) => t.trim()).filter(Boolean);
     stanzas.forEach((text, stanzaIndex) => {
       slots.push({
@@ -412,7 +446,7 @@ export function planSong(itemId: string, song: SongRow, ccliLicense: string | nu
           text,
           label: section.label,
           ...(slots.length === 0 ? { credit } : {}),
-          style: DEFAULT_STYLE,
+          style,
         },
       });
     });
