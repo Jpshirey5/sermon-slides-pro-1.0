@@ -26,6 +26,8 @@ export interface ServiceSummary {
   title: string;
   serviceDate: string | null;
   updatedAt: string;
+  /** A saved structure to start new services from, not a real service. */
+  isTemplate: boolean;
 }
 
 export interface ServiceItem {
@@ -63,18 +65,46 @@ function fail(action: string, error: { message: string } | null): asserts error 
   if (error) throw new Error(`Could not ${action}: ${error.message}`);
 }
 
-export async function listServices(): Promise<ServiceSummary[]> {
+async function listServiceRows(templates: boolean): Promise<ServiceSummary[]> {
   const accountId = await requireAccountId();
   const { data, error } = await supabase
     .from("services")
-    .select("id, title, service_date, updated_at")
+    .select("id, title, service_date, updated_at, is_template")
     .eq("account_id", accountId)
+    .eq("is_template", templates)
     .is("archived_at", null)
-    .order("service_date", { ascending: false, nullsFirst: true })
+    .order(templates ? "title" : "service_date", templates ? { ascending: true } : { ascending: false, nullsFirst: true })
     .order("updated_at", { ascending: false })
     .limit(100);
-  fail("load services", error);
-  return (data ?? []).map((r) => ({ id: r.id, title: r.title, serviceDate: r.service_date, updatedAt: r.updated_at }));
+  fail(templates ? "load templates" : "load services", error);
+  return (data ?? []).map((r) => ({ id: r.id, title: r.title, serviceDate: r.service_date, updatedAt: r.updated_at, isTemplate: r.is_template }));
+}
+
+export const listServices = () => listServiceRows(false);
+export const listTemplates = () => listServiceRows(true);
+
+/**
+ * Copy a service's structure into a new service or template. Sermon and song
+ * sections come across empty, ready to pick this week's; blank slides,
+ * section names, and stage settings come across as they are.
+ */
+async function copyStructure(sourceId: string, title: string, serviceDate: string | null, asTemplate: boolean): Promise<string> {
+  const { data, error } = await supabase.rpc("copy_service_structure", {
+    _source_id: sourceId,
+    _title: title.trim(),
+    _service_date: serviceDate || null,
+    _as_template: asTemplate,
+  });
+  fail(asTemplate ? "save the template" : "create the service", error);
+  return data as string;
+}
+
+export const saveAsTemplate = (serviceId: string, name: string) => copyStructure(serviceId, name, null, true);
+
+export async function createServiceFromTemplate(templateId: string, input: { title: string; serviceDate: string | null; defaultTranslationId: string | null }): Promise<string> {
+  const id = await copyStructure(templateId, input.title, input.serviceDate, false);
+  if (input.defaultTranslationId) await updateService(id, { defaultTranslationId: input.defaultTranslationId });
+  return id;
 }
 
 export async function createService(input: { title: string; serviceDate: string | null; defaultTranslationId: string | null }): Promise<string> {
@@ -99,7 +129,7 @@ export async function getService(id: string): Promise<ServiceDetail | null> {
   const [{ data: service, error }, { data: items, error: itemsError }] = await Promise.all([
     supabase
       .from("services")
-      .select("id, account_id, title, service_date, default_translation_id, updated_at")
+      .select("id, account_id, title, service_date, default_translation_id, updated_at, is_template")
       .eq("id", id)
       .maybeSingle(),
     supabase
@@ -118,6 +148,7 @@ export async function getService(id: string): Promise<ServiceDetail | null> {
     serviceDate: service.service_date,
     defaultTranslationId: service.default_translation_id,
     updatedAt: service.updated_at,
+    isTemplate: service.is_template ?? false,
     items: (items ?? []).map((r) => ({
       id: r.id,
       position: r.position,
@@ -182,8 +213,13 @@ export async function addServiceItem(
   }
 }
 
-export async function updateServiceItem(id: string, patch: { label?: string | null; payload?: Record<string, unknown> }): Promise<void> {
-  const update: { label?: string | null; payload?: never } = {};
+export async function updateServiceItem(
+  id: string,
+  patch: { label?: string | null; payload?: Record<string, unknown>; sermonId?: string | null; songId?: string | null },
+): Promise<void> {
+  const update: { label?: string | null; payload?: never; sermon_id?: string | null; song_id?: string | null } = {};
+  if (patch.sermonId !== undefined) update.sermon_id = patch.sermonId;
+  if (patch.songId !== undefined) update.song_id = patch.songId;
   if (patch.label !== undefined) update.label = patch.label?.trim() || null;
   if (patch.payload !== undefined) update.payload = patch.payload as never;
   const { error } = await supabase.from("service_items").update(update).eq("id", id);
@@ -239,10 +275,11 @@ export async function getOrCreateServiceForSermon(sermon: { id: string; title: s
   const accountId = await requireAccountId();
   const { data: existing, error } = await supabase
     .from("service_items")
-    .select("service_id, services!inner(id, archived_at, updated_at)")
+    .select("service_id, services!inner(id, archived_at, updated_at, is_template)")
     .eq("account_id", accountId)
     .eq("sermon_id", sermon.id)
     .is("services.archived_at", null)
+    .eq("services.is_template", false)
     .order("updated_at", { ascending: false, referencedTable: "services" })
     .limit(1);
   fail("look up services for this sermon", error);

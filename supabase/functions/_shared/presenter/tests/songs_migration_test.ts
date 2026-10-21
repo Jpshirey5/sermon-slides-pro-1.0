@@ -71,7 +71,7 @@ Deno.test("song fields are validated", async () => {
   await w.db.query(`update public.accounts set ccli_license_number = '1234567' where id = $1`, [w.a]);
 });
 
-Deno.test("song items: own church's songs only, and a song is required", async () => {
+Deno.test("song items: own church's songs only; an empty song section is allowed", async () => {
   const w = await setup();
   await as(w.db, w.userA, (tx) =>
     tx.query(`insert into public.service_items (service_id, account_id, position, item_type, song_id) values ($1, $2, 1000, 'song', $3)`, [w.serviceA, w.a, w.songA]));
@@ -79,10 +79,8 @@ Deno.test("song items: own church's songs only, and a song is required", async (
     () => w.db.query(`insert into public.service_items (service_id, account_id, position, item_type, song_id) values ($1, $2, 2000, 'song', $3)`, [w.serviceA, w.a, w.songB]),
     "another church's song",
   );
-  await assertRejects(
-    () => w.db.query(`insert into public.service_items (service_id, account_id, position, item_type) values ($1, $2, 2000, 'song')`, [w.serviceA, w.a]),
-    "song item without a song",
-  );
+  // Templates leave song sections empty until the church picks one.
+  await w.db.query(`insert into public.service_items (service_id, account_id, position, item_type) values ($1, $2, 2000, 'song')`, [w.serviceA, w.a]);
   await assertRejects(
     () => w.db.query(`insert into public.service_items (service_id, account_id, position, item_type, song_id) values ($1, $2, 2000, 'blank', $3)`, [w.serviceA, w.a, w.songA]),
     "non-song item pointing at a song",

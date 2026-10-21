@@ -13,7 +13,7 @@ describe("keyboard shortcuts", () => {
     expect(press(".").action).toEqual({ type: "toggleBlack" });
     expect(press("c").action).toEqual({ type: "toggleBlack" });
     expect(press("C").action).toEqual({ type: "toggleBlack" });
-    expect(press("l").action).toEqual({ type: "toggleLogo" });
+    expect(press("l").action).toBeNull();
     expect(press("Escape").action).toEqual({ type: "live" });
     expect(press("x").action).toBeNull();
   });

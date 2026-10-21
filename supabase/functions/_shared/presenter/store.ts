@@ -102,7 +102,7 @@ export function createSupabasePresenterStore(admin: SupabaseClient): PresenterSt
     async getAccountPlan(accountId) {
       const { data, error } = await admin
         .from("accounts")
-        .select("subscription_status, is_beta_user, beta_trial_ends_at, partner_billing_active, ccli_license_number")
+        .select("subscription_status, is_beta_user, beta_trial_ends_at, partner_billing_active, ccli_license_number, song_background, song_background_image")
         .eq("id", accountId)
         .maybeSingle();
       if (error) fail("account", error);
@@ -134,7 +134,7 @@ export function createSupabasePresenterStore(admin: SupabaseClient): PresenterSt
       if (ids.length === 0) return [];
       const { data, error } = await admin
         .from("songs")
-        .select("id, title, author, ccli_song_number, copyright, source, sections, arrangement")
+        .select("id, title, author, ccli_song_number, copyright, source, sections, arrangement, background, background_image")
         .eq("account_id", accountId)
         .in("id", ids as string[]);
       if (error) fail("songs", error);

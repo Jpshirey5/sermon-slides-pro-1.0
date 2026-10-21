@@ -19,6 +19,7 @@ import {
   planScriptureItem,
   planSermon,
   planSong,
+  customSlideMediaIds,
   planCustomSlides,
   planVideo,
   renderSlot,
@@ -111,13 +112,18 @@ export async function buildServiceBundle(
   const sermons = new Map((await store.getSermons(sermonIds, service.account_id)).map((s) => [s.id, s]));
   const songIds = [...new Set(rows.map((r) => r.song_id).filter((id): id is string => Boolean(id)))];
   const songs = new Map((await store.getSongs(songIds, service.account_id)).map((s) => [s.id, s]));
-  const mediaIds = [...new Set(rows.map((r) => r.media_id).filter((id): id is string => Boolean(id)))];
+  const mediaIds = [...new Set([
+    ...rows.map((r) => r.media_id).filter((id): id is string => Boolean(id)),
+    ...rows.filter((r) => r.item_type === "slides").flatMap((r) => customSlideMediaIds(r.payload)),
+  ])];
   const media = new Map((await store.getMedia(mediaIds, service.account_id)).map((m) => [m.id, m]));
 
   const planned: PlannedItem[] = rows.map((row) => {
     switch (row.item_type) {
       case "sermon": {
-        const sermon = row.sermon_id ? sermons.get(row.sermon_id) : undefined;
+        // No sermon picked yet (a section from a template): an empty section the church fills in.
+        if (!row.sermon_id) return { row, type: "sermon", label: row.label || "Sermon", slots: [] };
+        const sermon = sermons.get(row.sermon_id);
         if (!sermon) {
           return {
             row,
@@ -131,7 +137,8 @@ export async function buildServiceBundle(
       case "scripture":
         return { row, type: "scripture", label: row.label || "Scripture", slots: planScriptureItem(row.id, row.payload, fallback) };
       case "song": {
-        const song = row.song_id ? songs.get(row.song_id) : undefined;
+        if (!row.song_id) return { row, type: "song", label: row.label || "Song", slots: [] };
+        const song = songs.get(row.song_id);
         if (!song) {
           return {
             row,
@@ -140,10 +147,13 @@ export async function buildServiceBundle(
             slots: [{ kind: "static", slide: { id: `${row.id}:missing`, kind: "missing", missing_reason: "song_deleted", style: BLACK } }],
           };
         }
-        return { row, type: "song", label: row.label || song.title, slots: planSong(row.id, song, plan?.ccli_license_number ?? null) };
+        return { row, type: "song", label: row.label || song.title, slots: planSong(row.id, song, plan?.ccli_license_number ?? null, {
+          churchBackground: plan ? { background: plan.song_background, background_image: plan.song_background_image } : null,
+          serviceArrangement: (row.payload as Record<string, unknown> | null)?.arrangement,
+        }) };
       }
       case "slides":
-        return { row, type: "slides", label: row.label || "Slides", slots: planCustomSlides(row.id, row.payload) };
+        return { row, type: "slides", label: row.label || "Blank slide", slots: planCustomSlides(row.id, row.payload, media) };
       case "video": {
         const m = row.media_id ? media.get(row.media_id) : undefined;
         if (!m) {

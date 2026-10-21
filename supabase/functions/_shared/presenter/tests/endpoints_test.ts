@@ -206,11 +206,11 @@ Deno.test("bundle: a revoked translation's items come back with a reason and no 
   assertEquals(bundle.revocation_epoch, 2, "epoch moved");
 });
 
-Deno.test("bundle: a deleted sermon shows as a missing item instead of breaking the service", async () => {
+Deno.test("bundle: a deleted sermon leaves an empty section to pick a new one, instead of breaking the service", async () => {
   const w = await setup();
   await w.db.query(`delete from public.sermons where id = $1`, [w.sermonId]);
   const bundle = await okBundle(w);
-  assertEquals(bundle.items[1].slides.map((s) => [s.kind, s.missing_reason]), [["missing", "sermon_deleted"]]);
+  assertEquals([bundle.items[1].type, bundle.items[1].label, bundle.items[1].slides], ["sermon", "Sermon", []]);
 });
 
 Deno.test("bundle: a second request is served from the cache", async () => {

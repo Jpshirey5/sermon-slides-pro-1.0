@@ -8,6 +8,7 @@ import { Maximize } from "lucide-react";
 import { createBroadcastTransport, type PresenterTransport } from "@/presenter/core/transport";
 import type { OutputFrame } from "@/presenter/core/types";
 import { SlideView } from "@/presenter/ui/SlideView";
+import { ExitWindowButton } from "@/presenter/ui/ExitWindowButton";
 import { useFillsScreen } from "@/presenter/ui/useFillsScreen";
 import { VideoPlayer } from "@/presenter/ui/VideoPlayer";
 import type { VideoCommand } from "@/presenter/core/video";
@@ -108,6 +109,7 @@ const PresentOutput = () => {
       style={{ cursor: cursorHidden ? "none" : "default" }}
       onDoubleClick={goFullscreen}
     >
+      <ExitWindowButton label="Close main screen" />
       {/* Letterbox the 16:9 slide inside whatever shape the projector is. */}
       <div className="w-full max-h-full" style={{ maxWidth: "calc(100vh * 16 / 9)" }}>
         <SlideView

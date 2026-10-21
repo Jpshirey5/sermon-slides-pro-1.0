@@ -15,17 +15,18 @@ import {
   ChevronRight,
   Clock,
   Film,
-  LayoutGrid,
   Upload,
   GripVertical,
   Image as ImageIcon,
   Keyboard,
+  LayoutTemplate,
   ListMusic,
   Loader2,
   MessageSquare,
   MonitorPlay,
   MonitorUp,
   MoreHorizontal,
+  Pencil,
   Music,
   Pause,
   Play,
@@ -59,6 +60,7 @@ import { PickerDialog } from "@/components/services/PickerDialog";
 import { ReadingDialog, type ReadingDraft } from "@/components/services/ReadingDialog";
 import { SlideEditDialog } from "@/components/services/SlideEditDialog";
 import { SongEditorDialog } from "@/components/services/SongEditorDialog";
+import { ServiceArrangementDialog } from "@/components/services/ServiceArrangementDialog";
 import { type AddKind as GridAddKind, SlideGrid } from "@/components/services/SlideGrid";
 import { VideoControls } from "@/components/services/VideoControls";
 import { classifyFile, fileProblem, formatDuration, listVideos, type MediaItem, uploadSlideImage, uploadVideo, videoUrl } from "@/lib/media";
@@ -66,7 +68,7 @@ import { applyCustomSlideEdit, type CustomSlide, duplicateGroup, insertAt, moveG
 import type { SlideData } from "@/lib/slides/types";
 import { readCustomSlides } from "../../supabase/functions/_shared/presenter/slides.ts";
 import { VideoPlayer } from "@/presenter/ui/VideoPlayer";
-import { getDesktop } from "@/desktop/bridge";
+import { getDesktop, SCREEN_COMMAND_EVENT, type ScreenCommandDetail } from "@/desktop/bridge";
 import { supabase } from "@/integrations/supabase/client";
 import { resolveBackgroundImages } from "@/lib/background-assets";
 import { formatDateOnlyForDisplay } from "@/lib/date-format";
@@ -81,6 +83,7 @@ import {
   readScripturePayload,
   removeServiceItem,
   reorderServiceItems,
+  saveAsTemplate,
   type ScripturePayload,
   type SermonOption,
   type ServiceDetail,
@@ -90,7 +93,7 @@ import {
   updateServiceItem,
 } from "@/lib/services";
 import { holdSessionWhilePresenting } from "@/lib/session-security";
-import { listSongs, type Song } from "@/lib/songs";
+import { listSongs, recordSongUse, setSongBackground, type Song, uploadSongBackground } from "@/lib/songs";
 import type { BundleFetchError, Invoke } from "@/presenter/core/bundle-client";
 import {
   type DisplayInfo,
@@ -134,7 +137,7 @@ const ITEM_ICON: Record<BundleItem["type"], typeof Square> = {
   logo: ImageIcon,
   blank: Square,
   credits: ScrollText,
-  slides: LayoutGrid,
+  slides: Square,
   video: Film,
 };
 
@@ -179,16 +182,30 @@ const ServiceWorkspace = () => {
   const [videoLibrary, setVideoLibrary] = useState<MediaItem[] | null>(null);
   const [uploading, setUploading] = useState<string | null>(null);
   const [busySlideId, setBusySlideId] = useState<string | null>(null);
-  const [videoSettings, setVideoSettings] = useState<{ item: ServiceItem; loop: boolean; endAction: "hold" | "clear" | "next" } | null>(null);
+  const [videoSettings, setVideoSettings] = useState<{
+    /** An old-style video item, or a video slide inside a Blank slide section. */
+    target: { kind: "item"; row: ServiceItem } | { kind: "slide"; item: BundleItem; index: number };
+    loop: boolean;
+    endAction: "hold" | "clear" | "next";
+  } | null>(null);
   const videoInput = useRef<HTMLInputElement>(null);
   const graphicInput = useRef<HTMLInputElement>(null);
   const pendingGraphic = useRef<{ item: BundleItem; after: number | null } | null>(null);
+  const pendingVideo = useRef<{ item: BundleItem; after: number | null } | null>(null);
+  /** When set, the sermon or song picker fills this section instead of adding a new one. */
+  const fillRow = useRef<string | null>(null);
+  const [templateName, setTemplateName] = useState<string | null>(null);
+  const [arranging, setArranging] = useState<{ row: ServiceItem; songId: string } | null>(null);
+  const [savingTemplate, setSavingTemplate] = useState(false);
   const [sermons, setSermons] = useState<SermonOption[] | null>(null);
   const [songs, setSongs] = useState<Song[] | null>(null);
   const [reading, setReading] = useState<{ itemId: string | null; draft: ReadingDraft | null } | null>(null);
   const [songEditor, setSongEditor] = useState<{ songId: string | null; addToService: boolean } | null>(null);
   const [editingSlide, setEditingSlide] = useState<PresenterSlide | null>(null);
   const [countdownFor, setCountdownFor] = useState<ServiceItem | null>(null);
+  const [renaming, setRenaming] = useState<{ rowId: string; value: string } | null>(null);
+  const renamingRef = useRef(false);
+  renamingRef.current = renaming !== null;
   const [countdownMinutes, setCountdownMinutes] = useState("");
   const [displays, setDisplays] = useState<{ kind: WindowKind; list: DisplayInfo[] } | null>(null);
   const [showShortcuts, setShowShortcuts] = useState(false);
@@ -225,6 +242,41 @@ const ServiceWorkspace = () => {
 
   // Desktop app: it tells us when a presenter window is closed.
   useEffect(() => desktop?.onPresenterClosed((kind) => session.windowClosed(kind)), [desktop]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Screens > Open Main Screen / Open Stage Display in the app menu.
+  const chooseScreenRef = useRef<((kind: WindowKind) => Promise<void>) | null>(null);
+  useEffect(() => {
+    const onCommand = (e: Event) => {
+      const detail = (e as CustomEvent<ScreenCommandDetail>).detail;
+      if (!chooseScreenRef.current) return;
+      detail.handled = true;
+      void chooseScreenRef.current(detail.kind);
+    };
+    window.addEventListener(SCREEN_COMMAND_EVENT, onCommand);
+    return () => window.removeEventListener(SCREEN_COMMAND_EVENT, onCommand);
+  }, []);
+  // CCLI reporting: a song counts once per service, the first time one of its
+  // slides is live on the main screen. Rehearsing with no main screen open
+  // doesn't count. A failed save is retried the next time the song is live.
+  const reportedSongs = useRef(new Set<string>());
+  const liveSongId = (() => {
+    const item = session.bundle?.items[session.state.cursor.item];
+    return session.projectorConnected && session.state.mode === "live" && item?.type === "song" ? item.song_id ?? null : null;
+  })();
+  useEffect(() => {
+    if (!liveSongId || !service || service.isTemplate || reportedSongs.current.has(liveSongId)) return;
+    reportedSongs.current.add(liveSongId);
+    recordSongUse(service.id, liveSongId).catch(() => reportedSongs.current.delete(liveSongId));
+  }, [liveSongId, service]);
+  // A screen unplugged or turned off mid-service, and plugged back in.
+  useEffect(
+    () =>
+      desktop?.screens.onChanged(({ kind, state }) => {
+        const name = kind === "main" ? "Main screen" : "Stage display";
+        if (kind && state === "disconnected") toast.warning(`${name} disconnected`, { description: "Its window is hidden until the screen is plugged back in.", duration: 10000 });
+        if (kind && state === "reconnected") toast.success(`${name} is back`);
+      }),
+    [desktop],
+  );
   const { bundle, state, dispatch, frame, images, projectorConnected, stageConnected, stage, dispatchStage, stageFrame } = session;
   const live = projectorConnected || stageConnected;
 
@@ -243,7 +295,7 @@ const ServiceWorkspace = () => {
     void loadService();
   }, [loadService]);
 
-  const anyDialogOpen = Boolean(picker || reading || songEditor || editingSlide || countdownFor || displays || showShortcuts || showNotices);
+  const anyDialogOpen = Boolean(picker || reading || songEditor || editingSlide || countdownFor || renaming || arranging || templateName !== null || displays || showShortcuts || showNotices);
   useKeyboardShortcuts(dispatch, session.load.kind === "ready" && !anyDialogOpen);
 
   // The view follows the live slide when it moves to another item.
@@ -291,17 +343,30 @@ const ServiceWorkspace = () => {
   }, [bundle]);
 
   /** Run a change to the service, then reload both the order and the slides. */
-  const run = async (label: string, action: () => Promise<unknown>) => {
-    if (busy) return;
+  const run = async (label: string, action: () => Promise<unknown>): Promise<boolean> => {
+    if (busy) return false;
     setBusy(true);
     try {
       await action();
       await Promise.all([loadService(), session.reload()]);
+      return true;
     } catch (error) {
       toast.error(label, { description: (error as Error).message });
+      return false;
     } finally {
       setBusy(false);
     }
+  };
+
+  /** Save a section's new name. An empty name goes back to the default (the sermon or song title). */
+  const saveRename = () => {
+    const r = renaming;
+    if (!r) return;
+    setRenaming(null);
+    const row = service?.items.find((i) => i.id === r.rowId);
+    const label = r.value.trim().slice(0, 120);
+    if (!row || label === (row.label ?? "")) return;
+    void run("Could not rename the section", () => updateServiceItem(row.id, { label: label || null }));
   };
 
   const serviceItem = (bundleItemId: string) => service?.items.find((i) => i.id === bundleItemId) ?? null;
@@ -352,7 +417,7 @@ const ServiceWorkspace = () => {
   const addKindsFor = (item: BundleItem | undefined): GridAddKind[] => {
     if (!item) return [];
     if (item.type === "sermon" && item.sermon_id) return [{ kind: "title", label: "Title" }, { kind: "point", label: "Point" }, { kind: "scripture", label: "Scripture" }, { kind: "blank", label: "Blank" }];
-    if (item.type === "slides") return [{ kind: "title", label: "Title" }, { kind: "text", label: "Text" }, { kind: "graphic", label: "Graphic (picture)" }, { kind: "blank", label: "Blank" }];
+    if (item.type === "slides") return [{ kind: "blank", label: "Blank" }, { kind: "title", label: "Title" }, { kind: "text", label: "Text" }, { kind: "graphic", label: "Picture or logo" }, { kind: "video", label: "Video" }];
     return [];
   };
 
@@ -360,6 +425,11 @@ const ServiceWorkspace = () => {
     if (item.type === "slides" && kind === "graphic" && !extra.backgroundImage) {
       pendingGraphic.current = { item, after };
       graphicInput.current?.click();
+      return;
+    }
+    if (item.type === "slides" && kind === "video" && !extra.media_id) {
+      pendingVideo.current = { item, after };
+      openPicker("video");
       return;
     }
     void mutateSlides(item, "Could not add the slide", (list) => {
@@ -392,33 +462,58 @@ const ServiceWorkspace = () => {
     });
   };
 
-  const setSlidePicture = (item: BundleItem, i: number, ref: string | null) => {
-    const slide = item.slides[i];
-    if (!slide?.source) return;
+  /** Set or remove the background picture on one or more slides of a section, in one save. */
+  const setSlidePicture = (item: BundleItem, indexes: number | number[], ref: string | null) => {
+    const targets = (Array.isArray(indexes) ? indexes : [indexes]).map((i) => item.slides[i]).filter((slide) => slide?.source);
+    if (targets.length === 0) return;
     void mutateSlides(item, ref ? "Could not set the background" : "Could not remove the picture", (list) => {
-      if (item.type === "slides") {
-        const r = applyCustomSlideEdit(list as CustomSlide[], slide.source!.slide_indexes[0], { backgroundImage: ref });
-        if (r.ok === false) throw new Error(r.reason);
-        return r.slides;
+      let next = list;
+      for (const slide of targets) {
+        if (item.type === "slides") {
+          const r = applyCustomSlideEdit(next as CustomSlide[], slide.source!.slide_indexes[0], { backgroundImage: ref });
+          if (r.ok === false) throw new Error(r.reason);
+          next = r.slides;
+        } else {
+          const expected = slide.kind === "missing" ? "missing" : (slide.kind as "title" | "point" | "scripture" | "blank");
+          const r = applySlideEdit(next as SlideData[], slide.source!.slide_indexes, expected as never, { backgroundImage: ref });
+          if (r.ok === false) throw new Error(r.reason);
+          next = r.slides;
+        }
       }
-      const expected = slide.kind === "missing" ? "missing" : (slide.kind as "title" | "point" | "scripture" | "blank");
-      const r = applySlideEdit(list as SlideData[], slide.source!.slide_indexes, expected as never, { backgroundImage: ref });
-      if (r.ok === false) throw new Error(r.reason);
-      return r.slides;
+      return next;
+    }).then((ok) => {
+      if (ok && targets.length > 1) toast.success(ref ? `Background set on ${targets.length} slides` : `Pictures removed from ${targets.length} slides`);
     });
   };
 
-  const dropImage = async (item: BundleItem, file: File, slideIndex: number | null) => {
+  const dropImage = async (item: BundleItem, file: File, slideIndexes: number[] | null) => {
     const problem = fileProblem(file);
     if (problem || classifyFile(file) !== "image") return void toast.error(problem ?? `${file.name} isn't a picture.`);
+    const slideIndex = slideIndexes?.[0] ?? null;
     const target = slideIndex !== null ? item.slides[slideIndex] : null;
-    if (target && !target.source) return void toast("Pictures can be added to sermon slides and Slides sections. Songs and readings use the slide editor.");
+    if (item.type === "song" && item.song_id) {
+      // A picture on any of a song's slides becomes that song's background, everywhere it's used.
+      const songId = item.song_id;
+      setUploading(`Uploading ${file.name}`);
+      try {
+        const ref = await uploadSongBackground(file, songId);
+        if (await run("Could not set the song background", () => setSongBackground(songId, { background: null, backgroundImage: ref }))) {
+          toast.success("Song background set", { description: "Used for this song in every service. Change it in the song." });
+        }
+      } catch (error) {
+        toast.error("Could not upload the picture", { description: (error as Error).message });
+      } finally {
+        setUploading(null);
+      }
+      return;
+    }
+    if (target && !target.source) return void toast("Pictures can be added to sermon, song, and blank slides. Readings use their own settings.");
     if (!target && item.type !== "slides") return void toast("Drop the picture onto a slide to make it the background, or add a Slides section for graphics.");
     setBusySlideId(target?.id ?? null);
     setUploading(`Uploading ${file.name}`);
     try {
       const ref = await uploadSlideImage(file, serviceId, target?.id.replace(/[^A-Za-z0-9-]/g, "") || "graphic");
-      if (target && slideIndex !== null) setSlidePicture(item, slideIndex, ref);
+      if (target && slideIndexes) setSlidePicture(item, slideIndexes, ref);
       else addSlide(item, "graphic", null, { backgroundImage: ref });
     } catch (error) {
       toast.error("Could not upload the picture", { description: (error as Error).message });
@@ -428,17 +523,35 @@ const ServiceWorkspace = () => {
     }
   };
 
-  /** Upload a video to the library and add it to the service right after the section you're viewing. */
+  /** A new Blank slide section right after the one you're viewing. */
+  const addBlankSection = (first: CustomSlide = newCustomSlide("blank")) => {
+    const after = bundle?.items[viewItem]?.id;
+    add({ type: "slides", payload: { slides: [first] }, label: "Blank slide", afterItemId: serviceItem(after ?? "")?.id ?? null });
+  };
+
+  /**
+   * Put a library video into the service as a slide: where "Add slide" asked
+   * for it, else at the end of the Blank slide section you're viewing, else in
+   * a new Blank slide section after the section you're viewing.
+   */
+  const placeVideo = (mediaId: string) => {
+    const target = pendingVideo.current;
+    pendingVideo.current = null;
+    const video = { media_id: mediaId, loop: false, end_action: "hold" as const };
+    const shown = bundle?.items[viewItem];
+    if (target) addSlide(target.item, "video", target.after, video);
+    else if (shown?.type === "slides") addSlide(shown, "video", null, video);
+    else addBlankSection(newCustomSlide("video", video));
+  };
+
+  /** Upload a video to the library, then place it (see placeVideo). */
   const addVideoFile = async (file: File) => {
     const problem = fileProblem(file);
     if (problem || classifyFile(file) !== "video") return void toast.error(problem ?? `${file.name} isn't a video.`);
     if (!service) return;
     setUploading(`Uploading ${file.name}. Large videos can take a few minutes.`);
     try {
-      const mediaId = await uploadVideo(file);
-      const after = bundle?.items[viewItem]?.id;
-      await run("Could not add the video", () => addServiceItem(service, { type: "video", mediaId, afterItemId: serviceItem(after ?? "")?.id ?? null }));
-      toast.success("Video added");
+      placeVideo(await uploadVideo(file));
     } catch (error) {
       toast.error("Could not upload the video", { description: (error as Error).message });
     } finally {
@@ -446,9 +559,40 @@ const ServiceWorkspace = () => {
     }
   };
 
+  /** Open the sermon or song picker to fill (or change) an existing section. */
+  const chooseFor = (row: ServiceItem, kind: "sermon" | "song") => {
+    fillRow.current = row.id;
+    openPicker(kind);
+  };
+
+  const pickInto = (kind: "sermon" | "song", id: string) => {
+    const rowId = fillRow.current;
+    fillRow.current = null;
+    if (!rowId) return add(kind === "sermon" ? { type: "sermon", sermonId: id } : { type: "song", songId: id });
+    void run(`Could not choose the ${kind}`, () => updateServiceItem(rowId, kind === "sermon" ? { sermonId: id } : { songId: id }));
+  };
+
+  const saveTemplate = async () => {
+    if (!service || templateName === null) return;
+    setSavingTemplate(true);
+    try {
+      await saveAsTemplate(service.id, templateName.trim() || service.title);
+      toast.success("Template saved", { description: "Pick it under New Service on the Services page." });
+      setTemplateName(null);
+    } catch (error) {
+      toast.error("Could not save the template", { description: (error as Error).message });
+    } finally {
+      setSavingTemplate(false);
+    }
+  };
+
   // ── windows ──
-  const openWindow = (kind: WindowKind, display: DisplayInfo | null) => {
+  const openWindow = (kind: WindowKind, display: DisplayInfo | null, remember = false) => {
     setDisplays(null);
+    if (desktop && remember && display) {
+      void desktop.screens.set(kind, display.id).then(() =>
+        toast(`Saved ${display.label} as the ${kind === "main" ? "main screen" : "stage display"}.`, { description: "Change it anytime in Screens > Set Up Screens." }));
+    }
     const path = kind === "main" ? "output" : "stage";
     const url = `/present/${serviceId}/${path}?channel=${encodeURIComponent(session.nonce)}`;
     if (desktop) {
@@ -469,7 +613,11 @@ const ServiceWorkspace = () => {
   };
   const chooseScreen = async (kind: WindowKind) => {
     if (desktop) {
-      const list = await desktop.listDisplays();
+      // The screen saved in Screens > Set Up Screens, if it's plugged in.
+      const setup = await desktop.screens.get();
+      const saved = setup?.displays.find((d) => d.id === setup[kind].connectedId);
+      if (saved) return openWindow(kind, saved);
+      const list = setup?.displays ?? (await desktop.listDisplays());
       return list.length < 2 ? openWindow(kind, list[0] ?? null) : setDisplays({ kind, list });
     }
     if (!supportsWindowManagement(window)) return openWindow(kind, null);
@@ -477,14 +625,18 @@ const ServiceWorkspace = () => {
     if (!result.supported || result.displays.length < 2) return openWindow(kind, null);
     setDisplays({ kind, list: result.displays });
   };
+  chooseScreenRef.current = session.load.kind === "ready" ? chooseScreen : null;
 
   // ── editing ──
   const editSlide = (item: BundleItem, slide: PresenterSlide) => {
     const row = serviceItem(item.id);
-    if (slide.source && (slide.kind === "title" || slide.kind === "point" || slide.kind === "scripture" || slide.kind === "missing" || slide.kind === "graphic" || (slide.kind === "blank" && slide.source.item_id))) {
+    const custom = slide.source?.item_id && row ? readCustomSlides(row.payload)[slide.source.slide_indexes[0]] : undefined;
+    if (custom?.kind === "video") {
+      setVideoSettings({ target: { kind: "slide", item, index: slide.source!.slide_indexes[0] }, loop: custom.loop === true, endAction: custom.end_action ?? "hold" });
+    } else if (slide.source && (slide.kind === "title" || slide.kind === "point" || slide.kind === "scripture" || slide.kind === "missing" || slide.kind === "graphic" || (slide.kind === "blank" && slide.source.item_id))) {
       setEditingSlide(slide);
     } else if (item.type === "video" && row) {
-      setVideoSettings({ item: row, loop: row.payload.loop === true, endAction: row.payload.end_action === "clear" || row.payload.end_action === "next" ? row.payload.end_action : "hold" });
+      setVideoSettings({ target: { kind: "item", row }, loop: row.payload.loop === true, endAction: row.payload.end_action === "clear" || row.payload.end_action === "next" ? row.payload.end_action : "hold" });
     } else if (item.type === "song" && item.song_id) {
       setSongEditor({ songId: item.song_id, addToService: false });
     } else if (item.type === "scripture" && row) {
@@ -595,7 +747,13 @@ const ServiceWorkspace = () => {
             else setTitle(service.title);
           }}
         />
-        <span className="mr-auto text-xs text-neutral-500">{service.serviceDate ? formatDateOnlyForDisplay(service.serviceDate) : ""}</span>
+        {service.isTemplate ? (
+          <span className="mr-auto rounded-md bg-primary/20 px-2 py-1 text-xs text-primary" title="Changes here change the template, not services already made from it">
+            Template
+          </span>
+        ) : (
+          <span className="mr-auto text-xs text-neutral-500">{service.serviceDate ? formatDateOnlyForDisplay(service.serviceDate) : ""}</span>
+        )}
 
         {session.usingOfflineCopy && (
           <span className="rounded-md bg-sky-500/15 px-2 py-1 text-xs text-sky-300" title="This service was saved on this computer the last time it loaded">
@@ -641,11 +799,7 @@ const ServiceWorkspace = () => {
               <DropdownMenuContent align="end">
                 <DropdownMenuItem onSelect={() => openPicker("sermon")}><Presentation className="h-4 w-4" /> Sermon</DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => openPicker("song")}><Music className="h-4 w-4" /> Song</DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => setReading({ itemId: null, draft: null })}><BookOpen className="h-4 w-4" /> Reading</DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => add({ type: "logo" })}><ImageIcon className="h-4 w-4" /> Logo screen</DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => add({ type: "slides", payload: { slides: [newCustomSlide("title")] }, label: "Slides", afterItemId: shownItem?.id ?? null })}><LayoutGrid className="h-4 w-4" /> Slides (welcome, announcements, graphics)</DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => openPicker("video")}><Film className="h-4 w-4" /> Video</DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => add({ type: "blank" })}><Square className="h-4 w-4" /> Black screen</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => addBlankSection()}><Square className="h-4 w-4" /> Blank slide</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
@@ -659,14 +813,39 @@ const ServiceWorkspace = () => {
               return (
                 <li
                   key={item.id}
-                  draggable={Boolean(row) && !busy}
+                  draggable={Boolean(row) && !busy && !renaming}
                   onDragStart={() => setDragFrom(orderIndex)}
                   onDragOver={(e) => row && e.preventDefault()}
                   onDrop={() => row && dropAt(orderIndex)}
                   className={`group flex items-center gap-1 rounded-md pr-1 ${i === shownIndex ? "bg-primary/25" : "hover:bg-neutral-900"} ${dragFrom === orderIndex ? "opacity-40" : ""}`}
                 >
                   <span className="cursor-grab px-1 text-neutral-600 opacity-0 group-hover:opacity-100" aria-hidden>{row ? <GripVertical className="h-4 w-4" /> : null}</span>
-                  <button type="button" onClick={() => setViewItem(i)} className="flex min-w-0 flex-1 items-start gap-2 py-2 text-left text-sm">
+                  {renaming && row && renaming.rowId === row.id ? (
+                    <div className="flex min-w-0 flex-1 items-center gap-2 py-1.5">
+                      <Icon className="h-4 w-4 shrink-0 text-neutral-400" />
+                      <Input
+                        autoFocus
+                        aria-label="Section name"
+                        className="h-7 border-neutral-700 bg-neutral-950 px-2 text-sm text-neutral-100"
+                        value={renaming.value}
+                        maxLength={120}
+                        onFocus={(e) => e.target.select()}
+                        onChange={(e) => setRenaming({ rowId: row.id, value: e.target.value })}
+                        onKeyDown={(e) => {
+                          e.stopPropagation();
+                          if (e.key === "Enter") saveRename();
+                          if (e.key === "Escape") setRenaming(null);
+                        }}
+                        onBlur={saveRename}
+                      />
+                    </div>
+                  ) : (
+                  <button
+                    type="button"
+                    onClick={() => setViewItem(i)}
+                    onDoubleClick={() => row && setRenaming({ rowId: row.id, value: item.label })}
+                    className="flex min-w-0 flex-1 items-start gap-2 py-2 text-left text-sm"
+                  >
                     <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${isLiveItem ? "text-red-400" : "text-neutral-400"}`} />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-neutral-100">{item.label}</span>
@@ -677,6 +856,7 @@ const ServiceWorkspace = () => {
                       </span>
                     </span>
                   </button>
+                  )}
                   {row && (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -684,7 +864,15 @@ const ServiceWorkspace = () => {
                           <MoreHorizontal className="h-4 w-4" />
                         </Button>
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-56">
+                      <DropdownMenuContent align="end" className="w-56" onCloseAutoFocus={(e) => renamingRef.current && e.preventDefault()}>
+                        <DropdownMenuItem onSelect={() => { renamingRef.current = true; setRenaming({ rowId: row.id, value: item.label }); }}><Pencil className="h-4 w-4" /> Rename</DropdownMenuItem>
+                        {item.type === "sermon" && <DropdownMenuItem onSelect={() => chooseFor(row, "sermon")}>{item.sermon_id ? "Change sermon" : "Choose sermon"}</DropdownMenuItem>}
+                        {item.type === "song" && <DropdownMenuItem onSelect={() => chooseFor(row, "song")}>{item.song_id ? "Change song" : "Choose song"}</DropdownMenuItem>}
+                        {item.type === "song" && item.song_id && (
+                          <DropdownMenuItem onSelect={() => setArranging({ row, songId: item.song_id! })}>
+                            Arrangement for this service{Array.isArray(row.payload.arrangement) && row.payload.arrangement.length ? " (custom)" : ""}
+                          </DropdownMenuItem>
+                        )}
                         {item.type === "song" && item.song_id && <DropdownMenuItem onSelect={() => setSongEditor({ songId: item.song_id!, addToService: false })}>Edit song</DropdownMenuItem>}
                         {item.type === "scripture" && <DropdownMenuItem onSelect={() => editSlide(item, item.slides[0] ?? { id: "x", kind: "blank", style: { background: "#000", fontFamily: "Georgia", textColor: "#fff" } })}>Edit reading</DropdownMenuItem>}
                         {item.type === "sermon" && item.sermon_id && <DropdownMenuItem onSelect={() => navigate(`/editor/${item.sermon_id}`)}>Open in sermon editor</DropdownMenuItem>}
@@ -712,7 +900,20 @@ const ServiceWorkspace = () => {
             })}
           </ol>
           {bundle.items.length === 0 && (
-            <p className="px-4 pb-6 text-sm text-neutral-500">Start with Add: a sermon, songs, readings, and logo or black screens.</p>
+            <p className="px-4 pb-6 text-sm text-neutral-500">Start with Add: a sermon, a song, or a blank slide. A blank slide can hold text, pictures, logos, and videos.</p>
+          )}
+          {!service.isTemplate && bundle.items.length > 0 && (
+            <div className="border-t border-neutral-800 p-3">
+              <Button
+                size="sm"
+                variant="outline"
+                className="w-full border-neutral-700 bg-transparent text-neutral-200 hover:bg-neutral-800 hover:text-white"
+                onClick={() => setTemplateName(service.title)}
+              >
+                <LayoutTemplate className="h-4 w-4" /> Save as template
+              </Button>
+              <p className="mt-1.5 text-center text-[11px] text-neutral-500">Saves this service order to reuse</p>
+            </div>
           )}
         </nav>
 
@@ -724,7 +925,15 @@ const ServiceWorkspace = () => {
             <span className="ml-auto text-xs text-neutral-500">Click a slide to show it. Double-click to edit.</span>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto p-4">
-            {shownItem && shownItem.slides.length === 0 && (
+            {shownItem && shownRow && shownItem.slides.length === 0 && ((shownItem.type === "sermon" && !shownItem.sermon_id) || (shownItem.type === "song" && !shownItem.song_id)) ? (
+              <div className="flex min-h-[40vh] flex-col items-center justify-center gap-3 rounded-lg border border-dashed border-neutral-700 text-center">
+                {shownItem.type === "sermon" ? <Presentation className="h-8 w-8 text-neutral-500" /> : <Music className="h-8 w-8 text-neutral-500" />}
+                <p className="text-sm text-neutral-400">No {shownItem.type} chosen yet.</p>
+                <Button onClick={() => chooseFor(shownRow, shownItem.type as "sermon" | "song")}>
+                  {shownItem.type === "sermon" ? "Choose sermon" : "Choose song"}
+                </Button>
+              </div>
+            ) : shownItem && shownItem.slides.length === 0 && (
               <p className="text-sm text-neutral-500">
                 This item has no slides yet.{" "}
                 {shownItem.type === "scripture" && shownRow && (
@@ -752,7 +961,8 @@ const ServiceWorkspace = () => {
                 onDuplicate={(i) => duplicateSlide(shownItem, i)}
                 onDelete={(i) => deleteSlide(shownItem, i)}
                 onRemovePicture={(i) => setSlidePicture(shownItem, i, null)}
-                onDropImage={(file, i) => void dropImage(shownItem, file, i)}
+                onDropImage={(file, indexes) => void dropImage(shownItem, file, indexes)}
+                onRemovePictures={(indexes) => setSlidePicture(shownItem, indexes, null)}
                 onDropVideo={(file) => void addVideoFile(file)}
               />
             )}
@@ -788,9 +998,8 @@ const ServiceWorkspace = () => {
             {session.current?.kind === "missing" && (
               <p className="mt-2 rounded bg-amber-500/10 px-2 py-1.5 text-xs text-amber-300">{missingText(session.current.missing_reason)}</p>
             )}
-            <div className="mt-2 grid grid-cols-5 gap-1.5">
+            <div className="mt-2 grid grid-cols-4 gap-1.5">
               <Button size="sm" className={modeButton(false)} onClick={() => dispatch({ type: "prev" })} aria-label="Previous slide"><ChevronLeft className="h-4 w-4" /></Button>
-              <Button size="sm" className={modeButton(state.mode === "logo")} onClick={() => dispatch({ type: "toggleLogo" })}>Logo</Button>
               <Button size="sm" className={modeButton(state.mode === "black")} onClick={() => dispatch({ type: "toggleBlack" })}>Clear</Button>
               <Button size="sm" className={modeButton(false)} disabled={state.mode === "live"} onClick={() => dispatch({ type: "live" })}>Show</Button>
               <Button size="sm" className="bg-primary text-primary-foreground hover:bg-primary/90" onClick={() => dispatch({ type: "next" })} aria-label="Next slide"><ChevronRight className="h-4 w-4" /></Button>
@@ -871,8 +1080,8 @@ const ServiceWorkspace = () => {
         description="Its slides play in the order you built them."
         options={sermons?.map((s) => ({ id: s.id, title: s.title, detail: s.presentationDate ? formatDateOnlyForDisplay(s.presentationDate) : undefined })) ?? null}
         emptyText="You have no sermons yet. Create one from the dashboard first."
-        onPick={(id) => { setPicker(null); add({ type: "sermon", sermonId: id }); }}
-        onClose={() => setPicker(null)}
+        onPick={(id) => { setPicker(null); pickInto("sermon", id); }}
+        onClose={() => { fillRow.current = null; setPicker(null); }}
       />
       <PickerDialog
         open={picker === "song"}
@@ -880,8 +1089,8 @@ const ServiceWorkspace = () => {
         description="Songs from your church's library."
         options={songs?.map((s) => ({ id: s.id, title: s.title, detail: [s.author, s.ccliSongNumber && `CCLI ${s.ccliSongNumber}`].filter(Boolean).join(" · ") || undefined })) ?? null}
         emptyText="Your song library is empty. Add your first song."
-        onPick={(id) => { setPicker(null); add({ type: "song", songId: id }); }}
-        onClose={() => setPicker(null)}
+        onPick={(id) => { setPicker(null); pickInto("song", id); }}
+        onClose={() => { fillRow.current = null; setPicker(null); }}
         footer={
           <Button variant="outline" onClick={() => { setPicker(null); setSongEditor({ songId: null, addToService: true }); }}>
             <ListMusic className="h-4 w-4" /> New song
@@ -917,8 +1126,8 @@ const ServiceWorkspace = () => {
         description="Videos in your church's library. You can also drag a video file onto the slides area."
         options={videoLibrary?.map((v) => ({ id: v.id, title: v.fileName, detail: v.durationSeconds ? formatDuration(v.durationSeconds) : undefined })) ?? null}
         emptyText="No videos yet. Upload your first one."
-        onPick={(id) => { setPicker(null); add({ type: "video", mediaId: id, afterItemId: shownItem?.id ?? null }); }}
-        onClose={() => setPicker(null)}
+        onPick={(id) => { setPicker(null); placeVideo(id); }}
+        onClose={() => { pendingVideo.current = null; setPicker(null); }}
         footer={
           <Button variant="outline" disabled={uploading !== null} onClick={() => videoInput.current?.click()}>
             <Upload className="h-4 w-4" /> Upload video
@@ -949,6 +1158,46 @@ const ServiceWorkspace = () => {
           if (file && pending) void dropImage(pending.item, file, null);
         }}
       />
+      <ServiceArrangementDialog
+        target={arranging ? { songId: arranging.songId, current: Array.isArray(arranging.row.payload.arrangement) ? (arranging.row.payload.arrangement as string[]) : [] } : null}
+        onClose={() => setArranging(null)}
+        onSave={async (arrangement) => {
+          const row = arranging?.row;
+          if (!row) return;
+          const payload = { ...row.payload };
+          if (arrangement.length) payload.arrangement = arrangement;
+          else delete payload.arrangement;
+          if (await run("Could not save the arrangement", () => updateServiceItem(row.id, { payload }))) setArranging(null);
+        }}
+      />
+      <Dialog open={templateName !== null} onOpenChange={(o) => !o && !savingTemplate && setTemplateName(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Save as template</DialogTitle>
+            <DialogDescription>
+              Saves this order of sections, their names, blank slides, and stage settings. Sermons and songs are left empty so you can pick new ones each week.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-1">
+            <Label htmlFor="template-name">Template name</Label>
+            <Input
+              id="template-name"
+              value={templateName ?? ""}
+              maxLength={120}
+              placeholder="Sunday Morning"
+              onChange={(e) => setTemplateName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && void saveTemplate()}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTemplateName(null)} disabled={savingTemplate}>Cancel</Button>
+            <Button onClick={() => void saveTemplate()} disabled={savingTemplate}>
+              {savingTemplate && <Loader2 className="h-4 w-4 animate-spin" />}
+              Save template
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Dialog open={videoSettings !== null} onOpenChange={(o) => !o && setVideoSettings(null)}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
@@ -979,7 +1228,14 @@ const ServiceWorkspace = () => {
                 const v = videoSettings;
                 if (!v) return;
                 setVideoSettings(null);
-                void run("Could not save the video settings", () => updateServiceItem(v.item.id, { payload: { ...v.item.payload, loop: v.loop, end_action: v.endAction } }));
+                if (v.target.kind === "item") {
+                  const row = v.target.row;
+                  void run("Could not save the video settings", () => updateServiceItem(row.id, { payload: { ...row.payload, loop: v.loop, end_action: v.endAction } }));
+                } else {
+                  const index = v.target.index;
+                  void mutateSlides(v.target.item, "Could not save the video settings", (list) =>
+                    list.map((s, i) => (i === index ? { ...(s as CustomSlide), loop: v.loop, end_action: v.endAction } : s)));
+                }
               }}
             >
               Save
@@ -1021,7 +1277,7 @@ const ServiceWorkspace = () => {
           </DialogHeader>
           <div className="space-y-2">
             {(displays?.list ?? []).map((d) => (
-              <Button key={d.id} variant={d === pickDefaultDisplay(displays?.list ?? []) ? "default" : "outline"} className="w-full justify-between" onClick={() => displays && openWindow(displays.kind, d)}>
+              <Button key={d.id} variant={d === pickDefaultDisplay(displays?.list ?? []) ? "default" : "outline"} className="w-full justify-between" onClick={() => displays && openWindow(displays.kind, d, true)}>
                 <span>{d.label}{d.isCurrent ? " (this screen)" : ""}</span>
                 <span className="text-xs opacity-70">{d.width} x {d.height}</span>
               </Button>

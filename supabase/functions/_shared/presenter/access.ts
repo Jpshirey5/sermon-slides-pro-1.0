@@ -9,6 +9,9 @@ export interface AccountPlanFields {
   partner_billing_active?: boolean | null;
   /** Shown in song credit lines. */
   ccli_license_number?: string | null;
+  /** The church's default background for song slides. */
+  song_background?: string | null;
+  song_background_image?: string | null;
 }
 
 /**

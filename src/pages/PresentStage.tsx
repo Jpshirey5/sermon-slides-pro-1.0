@@ -8,6 +8,7 @@ import { Maximize } from "lucide-react";
 import type { StageFrame } from "@/presenter/core/stage";
 import { createBroadcastTransport, type PresenterTransport } from "@/presenter/core/transport";
 import { StageView } from "@/presenter/ui/StageView";
+import { ExitWindowButton } from "@/presenter/ui/ExitWindowButton";
 import { useFillsScreen } from "@/presenter/ui/useFillsScreen";
 
 const EMPTY: StageFrame = {
@@ -81,6 +82,7 @@ const PresentStage = () => {
 
   return (
     <div className="fixed inset-0 flex items-center justify-center bg-black select-none" onDoubleClick={goFullscreen}>
+      <ExitWindowButton label="Close stage display" />
       <div className="w-full max-h-full" style={{ maxWidth: "calc(100vh * 16 / 9)" }}>
         <StageView frame={frame} now={now} />
       </div>

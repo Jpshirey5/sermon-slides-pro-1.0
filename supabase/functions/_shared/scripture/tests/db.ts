@@ -8,6 +8,8 @@ export const MIGRATION_URLS = [
   "20261008120000_add_presenter_services_and_scripture_cache.sql",
   "20261009120000_add_songs_and_stage_settings.sql",
   "20261010120000_add_media_and_custom_slides.sql",
+  "20261013120000_add_service_templates.sql",
+  "20261020120000_add_song_backgrounds_and_usage.sql",
 ].map((name) => new URL(`../../../../migrations/${name}`, import.meta.url));
 
 // Mirrors the Supabase pieces the migration relies on. is_account_member and

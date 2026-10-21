@@ -141,7 +141,7 @@ Deno.test("bundle: song items, notes, sources, and stage settings", async () => 
   assertEquals(sermonItem.slides[0].notes, "Tell the story");
   assertEquals(sermonItem.slides[0].source, { sermon_id: sermonId, slide_indexes: [0] });
 
-  // A deleted song shows as a missing item instead of breaking the service.
+  // A deleted song leaves an empty section to pick a new one.
   await db.query(`delete from public.songs where id = $1`, [songId]);
   const after = await buildServiceBundle(
     { store: createSqlPresenterStore(db), resolver: { store: createSqlScriptureStore(db), api: null }, now: () => new Date(NOW.getTime() + 60_000) },
@@ -149,5 +149,5 @@ Deno.test("bundle: song items, notes, sources, and stage settings", async () => 
   );
   assert(after.ok, "bundle after delete");
   if (!after.ok) return;
-  assertEquals(after.bundle.items[0].slides.map((s) => [s.kind, s.missing_reason]), [["missing", "song_deleted"]]);
+  assertEquals([after.bundle.items[0].label, after.bundle.items[0].slides], ["Song", []]);
 });

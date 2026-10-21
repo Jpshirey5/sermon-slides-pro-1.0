@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
-import { ListMusic, Loader2, Plus, Search, Trash2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
+import { FileBarChart, ListMusic, Loader2, Plus, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -17,7 +18,19 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ServicesHeader } from "@/components/services/ServicesHeader";
 import { SongEditorDialog } from "@/components/services/SongEditorDialog";
-import { deleteSong, getChurchCcliLicense, listSongs, setChurchCcliLicense, type Song, SONG_SOURCE_LABELS } from "@/lib/songs";
+import { SongBackgroundField } from "@/components/services/SongBackgroundField";
+import {
+  deleteSong,
+  getChurchCcliLicense,
+  getChurchSongBackground,
+  listSongs,
+  setChurchCcliLicense,
+  setChurchSongBackground,
+  type Song,
+  type SongBackgroundSetting,
+  SONG_SOURCE_LABELS,
+  uploadSongBackground,
+} from "@/lib/songs";
 
 const Songs = () => {
   const [songs, setSongs] = useState<Song[] | null>(null);
@@ -27,6 +40,25 @@ const Songs = () => {
   const [license, setLicense] = useState("");
   const [savedLicense, setSavedLicense] = useState("");
   const [savingLicense, setSavingLicense] = useState(false);
+  const [songBackground, setSongBackground] = useState<SongBackgroundSetting | null>(null);
+
+  // Saved shortly after the last change, so dragging the color picker doesn't save on every step.
+  const saveTimer = useRef<number | undefined>(undefined);
+  const lastSaved = useRef<SongBackgroundSetting | null>(null);
+  const saveSongBackground = (next: SongBackgroundSetting) => {
+    setSongBackground(next);
+    window.clearTimeout(saveTimer.current);
+    saveTimer.current = window.setTimeout(async () => {
+      try {
+        await setChurchSongBackground(next);
+        lastSaved.current = next;
+        toast.success("Default song background saved");
+      } catch (error) {
+        setSongBackground(lastSaved.current);
+        toast.error("Could not save", { description: (error as Error).message });
+      }
+    }, 600);
+  };
 
   const load = () =>
     listSongs()
@@ -39,6 +71,9 @@ const Songs = () => {
   useEffect(() => {
     void load();
     getChurchCcliLicense().then((v) => { setLicense(v); setSavedLicense(v); }).catch(() => undefined);
+    getChurchSongBackground()
+      .then((v) => { lastSaved.current = v; setSongBackground(v); })
+      .catch(() => setSongBackground({ background: "", backgroundImage: null }));
   }, []);
 
   const saveLicense = async () => {
@@ -68,9 +103,14 @@ const Songs = () => {
               Your church's song library. Add songs you're licensed to use through CCLI, public domain hymns, and your own songs.
             </p>
           </div>
-          <Button variant="hero" onClick={() => setEditing({ songId: null })}>
-            <Plus className="h-4 w-4" /> New song
-          </Button>
+          <div className="flex gap-2">
+            <Link to="/dashboard/songs/report">
+              <Button variant="outline"><FileBarChart className="h-4 w-4" /> CCLI report</Button>
+            </Link>
+            <Button variant="hero" onClick={() => setEditing({ songId: null })}>
+              <Plus className="h-4 w-4" /> New song
+            </Button>
+          </div>
         </div>
 
         <Card className="mb-6">
@@ -83,6 +123,25 @@ const Songs = () => {
             <Button variant="outline" onClick={() => void saveLicense()} disabled={savingLicense || license.trim() === savedLicense}>
               {savingLicense && <Loader2 className="h-4 w-4 animate-spin" />} Save
             </Button>
+          </CardContent>
+        </Card>
+
+        <Card className="mb-6">
+          <CardContent className="space-y-2 py-4">
+            <Label htmlFor="church-song-background">Default song background</Label>
+            {songBackground ? (
+              <SongBackgroundField
+                id="church-song-background"
+                color={songBackground.background}
+                image={songBackground.backgroundImage}
+                onChange={({ color, image }) => saveSongBackground({ background: color, backgroundImage: image })}
+                onUpload={(file) => uploadSongBackground(file, "church-default")}
+                emptyText="Songs show white words on black. Pick a color or picture to use behind every song that doesn't have its own."
+              />
+            ) : (
+              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+            )}
+            <p className="text-xs text-muted-foreground">A song's own background, set in the song, takes the place of this one.</p>
           </CardContent>
         </Card>
 
@@ -133,7 +192,7 @@ const Songs = () => {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete {deleting?.title}?</AlertDialogTitle>
-            <AlertDialogDescription>Services that use this song will show it as missing until you replace it.</AlertDialogDescription>
+            <AlertDialogDescription>Services that use this song will show an empty song section, ready for you to choose another one.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Keep it</AlertDialogCancel>
