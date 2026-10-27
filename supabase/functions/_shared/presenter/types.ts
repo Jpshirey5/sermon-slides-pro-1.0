@@ -12,8 +12,13 @@ export interface SlideStyle {
   fontFamily: string;
   textColor: string;
   lineSpacing?: number | null;
+  /** Main text size in percent of slide width (container width units). Unset means "fit to the text". */
   fontSize?: number | null;
+  /** Where the text sits: the upper third, the center, or the lower third. Unset means center. */
+  textPosition?: TextPosition | null;
 }
+
+export type TextPosition = "top" | "center" | "bottom";
 
 export type PresenterSlideKind = "title" | "point" | "scripture" | "lyrics" | "graphic" | "video" | "blank" | "logo" | "credits" | "missing";
 

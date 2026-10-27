@@ -415,6 +415,14 @@ describe("ServiceWorkspace", () => {
     await waitFor(() => expect(mocks.updateServiceItem).toHaveBeenCalledWith("empty", { payload: { arrangement: ["v1", "c", "c"] } }));
   });
 
+  it("a section's text can go in the upper third, center, or lower third", async () => {
+    renderWorkspace();
+    const order = await screen.findByRole("navigation", { name: "Service order" });
+    fireEvent.keyDown(within(order).getByRole("button", { name: "Anchored options" }), { key: "Enter" });
+    fireEvent.click(await screen.findByRole("menuitemradio", { name: "Lower third" }));
+    await waitFor(() => expect(mocks.updateServiceItem).toHaveBeenCalledWith("sermon", { payload: { text_position: "bottom" } }));
+  });
+
   it("explains a load failure with a retry", async () => {
     mocks.session = makeSession({ load: { kind: "error", error: "plan_required" }, bundle: null });
     renderWorkspace();

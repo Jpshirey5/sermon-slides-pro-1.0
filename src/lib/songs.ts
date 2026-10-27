@@ -5,6 +5,9 @@
 import { supabase } from "@/integrations/supabase/client";
 import { ensureResolvedAccountAccess } from "@/lib/account-access";
 import { uploadPresentationBackground } from "@/lib/background-assets";
+import { readSongTextStyle, type SongTextStyle } from "../../supabase/functions/_shared/presenter/slides.ts";
+
+export type { SongTextStyle };
 
 export type SongSource = "licensed" | "public_domain" | "original";
 
@@ -28,6 +31,8 @@ export interface Song {
   /** This song's own background. Both empty means "use the church default". */
   background: string;
   backgroundImage: string | null;
+  /** Font, size, color, and position. Anything not set uses the church default. */
+  textStyle: SongTextStyle;
   updatedAt?: string;
 }
 
@@ -69,6 +74,7 @@ export function emptySong(): Song {
     arrangement: [],
     background: "",
     backgroundImage: null,
+    textStyle: {},
   };
 }
 
@@ -79,7 +85,7 @@ export function newSectionId(): string {
 function rowToSong(r: {
   id: string; title: string; author: string | null; ccli_song_number: string | null; copyright: string | null;
   source: string; sections: unknown; arrangement: unknown; updated_at?: string;
-  background?: string | null; background_image?: string | null;
+  background?: string | null; background_image?: string | null; text_style?: unknown;
 }): Song {
   const sections = Array.isArray(r.sections)
     ? r.sections.filter((s): s is Record<string, unknown> => Boolean(s) && typeof s === "object").map((s, i) => ({
@@ -100,6 +106,7 @@ function rowToSong(r: {
     arrangement: Array.isArray(r.arrangement) ? r.arrangement.map(str).filter((id) => ids.has(id)) : [],
     background: r.background ?? "",
     backgroundImage: r.background_image ?? null,
+    textStyle: readSongTextStyle(r.text_style),
     updatedAt: r.updated_at,
   };
 }
@@ -123,7 +130,7 @@ export async function listSongs(): Promise<Song[]> {
   const accountId = await requireAccountId();
   const { data, error } = await supabase
     .from("songs")
-    .select("id, title, author, ccli_song_number, copyright, source, sections, arrangement, background, background_image, updated_at")
+    .select("id, title, author, ccli_song_number, copyright, source, sections, arrangement, background, background_image, text_style, updated_at")
     .eq("account_id", accountId)
     .is("archived_at", null)
     .order("title", { ascending: true })
@@ -135,7 +142,7 @@ export async function listSongs(): Promise<Song[]> {
 export async function getSong(id: string): Promise<Song | null> {
   const { data, error } = await supabase
     .from("songs")
-    .select("id, title, author, ccli_song_number, copyright, source, sections, arrangement, background, background_image, updated_at")
+    .select("id, title, author, ccli_song_number, copyright, source, sections, arrangement, background, background_image, text_style, updated_at")
     .eq("id", id)
     .maybeSingle();
   fail("load the song", error);
@@ -158,6 +165,7 @@ export async function saveSong(song: Song): Promise<string> {
     arrangement: song.arrangement.filter((id) => song.sections.some((s) => s.id === id)),
     background: /^#[0-9a-fA-F]{6}$/.test(song.background) ? song.background : null,
     background_image: song.backgroundImage || null,
+    text_style: readSongTextStyle(song.textStyle) as never,
   };
   if (song.id) {
     const { error } = await supabase.from("songs").update(fields).eq("id", song.id);
@@ -337,4 +345,23 @@ export function songReportCsv(rows: readonly SongReportRow[]): string {
   const lines = [["Title", "CCLI Song Number", "Authors", "Copyright", "Times Used", "Last Used"]];
   for (const r of rows) lines.push([r.title, r.ccliSongNumber, r.author, r.copyright, String(r.uses), r.lastUsed]);
   return lines.map((l) => l.map(cell).join(",")).join("\n") + "\n";
+}
+
+export async function getChurchSongTextStyle(): Promise<SongTextStyle> {
+  const accountId = await requireAccountId();
+  const { data, error } = await supabase.from("accounts").select("song_text_style").eq("id", accountId).maybeSingle();
+  fail("load the song text style", error);
+  return readSongTextStyle((data as { song_text_style: unknown } | null)?.song_text_style);
+}
+
+/** Only church owners can change it (account settings are owner-only). */
+export async function setChurchSongTextStyle(style: SongTextStyle): Promise<void> {
+  const accountId = await requireAccountId();
+  const { data, error } = await supabase
+    .from("accounts")
+    .update({ song_text_style: readSongTextStyle(style) as never })
+    .eq("id", accountId)
+    .select("id");
+  fail("save the song text style", error);
+  if (!data || data.length === 0) throw new Error("Only the church owner can change the default song text style.");
 }

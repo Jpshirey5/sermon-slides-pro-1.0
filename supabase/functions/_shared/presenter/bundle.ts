@@ -20,6 +20,7 @@ import {
   planSermon,
   planSong,
   customSlideMediaIds,
+  isTextPosition,
   planCustomSlides,
   planVideo,
   renderSlot,
@@ -28,6 +29,9 @@ import {
 } from "./slides.ts";
 import type { PresenterStore, ServiceItemRow } from "./store.ts";
 import { STAGE_TEMPLATES, type BundleItem, type BundleTranslation, type PresenterSlide, type ServiceBundle, type StageTemplate } from "./types.ts";
+
+/** Slides with words on them, which a section's text position applies to. */
+const TEXT_KINDS = new Set<PresenterSlide["kind"]>(["title", "point", "scripture", "lyrics", "blank"]);
 
 export const LIMITS = {
   maxItems: 200,
@@ -148,7 +152,7 @@ export async function buildServiceBundle(
           };
         }
         return { row, type: "song", label: row.label || song.title, slots: planSong(row.id, song, plan?.ccli_license_number ?? null, {
-          churchBackground: plan ? { background: plan.song_background, background_image: plan.song_background_image } : null,
+          churchBackground: plan ? { background: plan.song_background, background_image: plan.song_background_image, text_style: plan.song_text_style } : null,
           serviceArrangement: (row.payload as Record<string, unknown> | null)?.arrangement,
         }) };
       }
@@ -221,6 +225,13 @@ export async function buildServiceBundle(
       slides.push(...rendered.slides);
       expiries.push(rendered.expires_at);
       for (const s of rendered.slides) if (s.kind === "scripture" && s.translation_id) used.add(s.translation_id);
+    }
+    // The section's text position (upper third, center, lower third) applies to every slide with words.
+    const position = (item.row.payload as Record<string, unknown> | null)?.text_position;
+    if (isTextPosition(position)) {
+      for (let i = 0; i < slides.length; i++) {
+        if (TEXT_KINDS.has(slides[i].kind)) slides[i] = { ...slides[i], style: { ...slides[i].style, textPosition: position } };
+      }
     }
     return {
       id: item.row.id,

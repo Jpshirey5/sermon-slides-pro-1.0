@@ -5,7 +5,7 @@ import { assert, assertEquals, assertRejects } from "../../scripture/tests/asser
 import { createTestDatabase } from "../../scripture/tests/db.ts";
 import { createSqlScriptureStore } from "../../scripture/tests/fakes.ts";
 import { buildServiceBundle } from "../bundle.ts";
-import { songOrder, songStyle } from "../slides.ts";
+import { autoLyricsSize, songOrder, songStyle } from "../slides.ts";
 import { createSqlPresenterStore } from "./sqlStore.ts";
 
 const one = async <T>(db: PGlite, sql: string, params: unknown[] = []) => (await db.query<T>(sql, params)).rows[0];
@@ -107,4 +107,41 @@ Deno.test("usage: only your own church, only real services, only today", async (
   await as(w.db, w.userA, (tx) => tx.query(`select public.record_song_use($1, $2, current_date)`, [w.service, w.song]));
   assertEquals((await as(w.db, w.userB, (tx) => tx.query(`select 1 from public.song_usage`))).rows.length, 0, "other church can't see it");
   assertEquals((await as(w.db, w.userA, (tx) => tx.query(`select 1 from public.song_usage`))).rows.length, 1);
+});
+
+Deno.test("song text: one size for every slide, the song's settings over the church's", () => {
+  const church = { text_style: { fontFamily: "Arial", size: "large", textColor: "#eeeeee", position: "bottom" } };
+  const own = songStyle({ text_style: { size: "small", fontFamily: "evil; } x" } }, church);
+  assertEquals([own.fontFamily, own.fontSize, own.textColor, own.textPosition], ["Arial", 3.6, "#eeeeee", "bottom"]);
+  assertEquals(songStyle({}, null).fontSize, undefined, "unset means fit the song");
+  assertEquals(autoLyricsSize(["short", "a bit longer line here\nsecond\nthird\nfourth\nfifth"]), 3.6, "the fullest slide decides");
+  assertEquals(autoLyricsSize(["one", "two"]), 5.6);
+});
+
+Deno.test("bundle: every slide of a song has the same size, and a section's text position applies to all its slides", async () => {
+  const w = await setup();
+  await w.db.query(`update public.songs set sections = $2 where id = $1`, [w.song, JSON.stringify([
+    { id: "v1", label: "Verse 1", lyrics: "short" },
+    { id: "c", label: "Chorus", lyrics: "a much longer line of words here\nline two\nline three\nline four\nline five" },
+  ])]);
+  await w.db.query(`update public.songs set arrangement = '[]' where id = $1`, [w.song]);
+  await w.db.query(
+    `insert into public.service_items (service_id, account_id, position, item_type, song_id, payload) values ($1, $2, 1000, 'song', $3, '{"text_position":"top"}')`,
+    [w.service, w.a, w.song],
+  );
+  const bundle = await bundleFor(w);
+  const sizes = bundle.items[0].slides.map((s) => s.style.fontSize);
+  assertEquals(sizes, [3.6, 3.6]);
+  assertEquals(bundle.items[0].slides.map((s) => s.style.textPosition), ["top", "top"]);
+});
+
+Deno.test("templates keep each section's text position", async () => {
+  const w = await setup();
+  await w.db.query(
+    `insert into public.service_items (service_id, account_id, position, item_type, song_id, payload) values ($1, $2, 1000, 'song', $3, '{"text_position":"bottom","arrangement":["v1"]}')`,
+    [w.service, w.a, w.song],
+  );
+  const tpl = (await as(w.db, w.userA, (tx) => one<{ id: string }>(tx, `select public.copy_service_structure($1, 'T', null, true) as id`, [w.service]))).id;
+  const item = await one<{ payload: Record<string, unknown> }>(w.db, `select payload from public.service_items where service_id = $1`, [tpl]);
+  assertEquals(item.payload, { text_position: "bottom" });
 });

@@ -19,10 +19,14 @@ import { Label } from "@/components/ui/label";
 import { ServicesHeader } from "@/components/services/ServicesHeader";
 import { SongEditorDialog } from "@/components/services/SongEditorDialog";
 import { SongBackgroundField } from "@/components/services/SongBackgroundField";
+import { SongTextStyleField } from "@/components/services/SongTextStyleField";
 import {
   deleteSong,
   getChurchCcliLicense,
   getChurchSongBackground,
+  getChurchSongTextStyle,
+  setChurchSongTextStyle,
+  type SongTextStyle,
   listSongs,
   setChurchCcliLicense,
   setChurchSongBackground,
@@ -41,6 +45,23 @@ const Songs = () => {
   const [savedLicense, setSavedLicense] = useState("");
   const [savingLicense, setSavingLicense] = useState(false);
   const [songBackground, setSongBackground] = useState<SongBackgroundSetting | null>(null);
+  const [textStyle, setTextStyle] = useState<SongTextStyle | null>(null);
+  const textTimer = useRef<number | undefined>(undefined);
+  const savedTextStyle = useRef<SongTextStyle>({});
+  const saveTextStyle = (next: SongTextStyle) => {
+    setTextStyle(next);
+    window.clearTimeout(textTimer.current);
+    textTimer.current = window.setTimeout(async () => {
+      try {
+        await setChurchSongTextStyle(next);
+        savedTextStyle.current = next;
+        toast.success("Default song text saved");
+      } catch (error) {
+        setTextStyle(savedTextStyle.current);
+        toast.error("Could not save", { description: (error as Error).message });
+      }
+    }, 600);
+  };
 
   // Saved shortly after the last change, so dragging the color picker doesn't save on every step.
   const saveTimer = useRef<number | undefined>(undefined);
@@ -74,6 +95,9 @@ const Songs = () => {
     getChurchSongBackground()
       .then((v) => { lastSaved.current = v; setSongBackground(v); })
       .catch(() => setSongBackground({ background: "", backgroundImage: null }));
+    getChurchSongTextStyle()
+      .then((v) => { savedTextStyle.current = v; setTextStyle(v); })
+      .catch(() => setTextStyle({}));
   }, []);
 
   const saveLicense = async () => {
@@ -142,6 +166,16 @@ const Songs = () => {
               <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
             )}
             <p className="text-xs text-muted-foreground">A song's own background, set in the song, takes the place of this one.</p>
+
+            <div className="space-y-2 border-t border-border pt-4">
+              <Label>Default song text</Label>
+              {textStyle ? (
+                <SongTextStyleField idPrefix="church-song-text" value={textStyle} onChange={saveTextStyle} inheritLabel="Default" />
+              ) : (
+                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+              )}
+              <p className="text-xs text-muted-foreground">Used by every song that doesn't set its own. Default is Georgia, white, centered, sized to fit each song.</p>
+            </div>
           </CardContent>
         </Card>
 

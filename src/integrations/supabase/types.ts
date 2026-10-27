@@ -515,6 +515,7 @@ export type Database = {
           subscription_period_end: string | null
           song_background: string | null
           song_background_image: string | null
+          song_text_style: Json
           subscription_status: Database["public"]["Enums"]["subscription_status"]
           updated_at: string
         }
@@ -541,6 +542,7 @@ export type Database = {
           subscription_period_end?: string | null
           song_background?: string | null
           song_background_image?: string | null
+          song_text_style?: Json
           subscription_status?: Database["public"]["Enums"]["subscription_status"]
           updated_at?: string
         }
@@ -567,6 +569,7 @@ export type Database = {
           subscription_period_end?: string | null
           song_background?: string | null
           song_background_image?: string | null
+          song_text_style?: Json
           subscription_status?: Database["public"]["Enums"]["subscription_status"]
           updated_at?: string
         }
@@ -1105,6 +1108,7 @@ export type Database = {
           copyright: string | null
           background: string | null
           background_image: string | null
+          text_style: Json
           created_at: string
           created_by_user_id: string | null
           id: string
@@ -1122,6 +1126,7 @@ export type Database = {
           copyright?: string | null
           background?: string | null
           background_image?: string | null
+          text_style?: Json
           created_at?: string
           created_by_user_id?: string | null
           id?: string
@@ -1139,6 +1144,7 @@ export type Database = {
           copyright?: string | null
           background?: string | null
           background_image?: string | null
+          text_style?: Json
           created_at?: string
           created_by_user_id?: string | null
           id?: string

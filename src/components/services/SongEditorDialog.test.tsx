@@ -50,6 +50,16 @@ describe("SongEditorDialog import", () => {
     expect(saved.arrangement.map(label)).toEqual(["Verse 1", "Chorus", "Verse 2", "Chorus"]);
   });
 
+  it("saves the song's text style", async () => {
+    render(<SongEditorDialog open songId={null} onSaved={() => undefined} onClose={() => undefined} />);
+    fireEvent.change(await screen.findByLabelText("Title"), { target: { value: "Morning Light" } });
+    fireEvent.change(screen.getByLabelText("Verse 1 lyrics"), { target: { value: "words" } });
+    fireEvent.change(screen.getByLabelText("Text color"), { target: { value: "#ffee00" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save song" }));
+    await waitFor(() => expect(mocks.saveSong).toHaveBeenCalled());
+    expect(mocks.saveSong.mock.calls[0][0].textStyle).toEqual({ textColor: "#ffee00" });
+  });
+
   it("pasting a whole song replaces the sections", async () => {
     render(<SongEditorDialog open songId={null} onSaved={() => undefined} onClose={() => undefined} />);
     fireEvent.click(await screen.findByRole("button", { name: /Paste whole song/ }));

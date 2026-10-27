@@ -61,6 +61,7 @@ import { ReadingDialog, type ReadingDraft } from "@/components/services/ReadingD
 import { SlideEditDialog } from "@/components/services/SlideEditDialog";
 import { SongEditorDialog } from "@/components/services/SongEditorDialog";
 import { ServiceArrangementDialog } from "@/components/services/ServiceArrangementDialog";
+import { POSITION_LABELS } from "@/components/services/SongTextStyleField";
 import { type AddKind as GridAddKind, SlideGrid } from "@/components/services/SlideGrid";
 import { VideoControls } from "@/components/services/VideoControls";
 import { classifyFile, fileProblem, formatDuration, listVideos, type MediaItem, uploadSlideImage, uploadVideo, videoUrl } from "@/lib/media";
@@ -129,6 +130,9 @@ const LOAD_ERRORS: Record<BundleFetchError, string> = {
   network: "We couldn't reach Sermon Slide Pro. Check the internet connection and try again.",
   server: "Something went wrong loading this service. Try again in a moment.",
 };
+
+/** Sections whose slides have words, so they can sit in the upper third, center, or lower third. */
+const TEXT_SECTION_TYPES = new Set<string>(["sermon", "song", "slides", "scripture"]);
 
 const ITEM_ICON: Record<BundleItem["type"], typeof Square> = {
   sermon: Presentation,
@@ -876,6 +880,26 @@ const ServiceWorkspace = () => {
                         {item.type === "song" && item.song_id && <DropdownMenuItem onSelect={() => setSongEditor({ songId: item.song_id!, addToService: false })}>Edit song</DropdownMenuItem>}
                         {item.type === "scripture" && <DropdownMenuItem onSelect={() => editSlide(item, item.slides[0] ?? { id: "x", kind: "blank", style: { background: "#000", fontFamily: "Georgia", textColor: "#fff" } })}>Edit reading</DropdownMenuItem>}
                         {item.type === "sermon" && item.sermon_id && <DropdownMenuItem onSelect={() => navigate(`/editor/${item.sermon_id}`)}>Open in sermon editor</DropdownMenuItem>}
+                        {TEXT_SECTION_TYPES.has(item.type) && (
+                          <>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Text position</DropdownMenuLabel>
+                            <DropdownMenuRadioGroup
+                              value={typeof row.payload.text_position === "string" ? row.payload.text_position : "default"}
+                              onValueChange={(v) => {
+                                const payload = { ...row.payload };
+                                if (v === "default") delete payload.text_position;
+                                else payload.text_position = v;
+                                void run("Could not save the text position", () => updateServiceItem(row.id, { payload }));
+                              }}
+                            >
+                              <DropdownMenuRadioItem value="default">{item.type === "song" ? "The song's setting" : "Center (default)"}</DropdownMenuRadioItem>
+                              {(Object.keys(POSITION_LABELS) as Array<keyof typeof POSITION_LABELS>).map((p) => (
+                                <DropdownMenuRadioItem key={p} value={p}>{POSITION_LABELS[p]}</DropdownMenuRadioItem>
+                              ))}
+                            </DropdownMenuRadioGroup>
+                          </>
+                        )}
                         <DropdownMenuSeparator />
                         <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Stage display</DropdownMenuLabel>
                         <DropdownMenuRadioGroup
@@ -922,6 +946,9 @@ const ServiceWorkspace = () => {
           <div className="flex items-center gap-2 border-b border-neutral-800 px-4 py-2">
             <p className="truncate font-medium">{shownItem?.label ?? "No items yet"}</p>
             {shownItem && <span className="rounded bg-neutral-800 px-2 py-0.5 text-xs text-neutral-400">Stage: {STAGE_TEMPLATE_LABELS[shownItem.stage.template]}</span>}
+            {shownRow && typeof shownRow.payload.text_position === "string" && shownRow.payload.text_position in POSITION_LABELS && (
+              <span className="rounded bg-neutral-800 px-2 py-0.5 text-xs text-neutral-400">Text: {POSITION_LABELS[shownRow.payload.text_position as keyof typeof POSITION_LABELS]}</span>
+            )}
             <span className="ml-auto text-xs text-neutral-500">Click a slide to show it. Double-click to edit.</span>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto p-4">

@@ -29,7 +29,7 @@ export function createSqlPresenterStore(db: PGlite): PresenterStore {
     },
     async getAccountPlan(accountId) {
       const { rows } = await db.query<AccountPlanFields & { beta_trial_ends_at: unknown }>(
-        `select subscription_status, is_beta_user, beta_trial_ends_at, partner_billing_active, ccli_license_number, song_background, song_background_image from public.accounts where id = $1`,
+        `select subscription_status, is_beta_user, beta_trial_ends_at, partner_billing_active, ccli_license_number, song_background, song_background_image, song_text_style from public.accounts where id = $1`,
         [accountId],
       );
       const r = rows[0];
@@ -51,7 +51,7 @@ export function createSqlPresenterStore(db: PGlite): PresenterStore {
     },
     async getSongs(ids, accountId) {
       const { rows } = await db.query<SongRow>(
-        `select id, title, author, ccli_song_number, copyright, source, sections, arrangement, background, background_image
+        `select id, title, author, ccli_song_number, copyright, source, sections, arrangement, background, background_image, text_style
          from public.songs where account_id = $1 and id = any($2)`,
         [accountId, ids],
       );

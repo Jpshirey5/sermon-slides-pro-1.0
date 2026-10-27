@@ -65,6 +65,11 @@ function lyricsSize(text: string): string {
   return "3.6cqw";
 }
 
+/** The song's one size when the server set it; older bundles fit each slide. */
+export function lyricsFontSize(slide: Pick<PresenterSlide, "text" | "style">): string {
+  return slide.style.fontSize ? `${slide.style.fontSize}cqw` : lyricsSize(slide.text ?? "");
+}
+
 function backgroundStyle(slide: PresenterSlide, images: ResolvedImages): { style: CSSProperties; hasImage: boolean } {
   const ref = slide.style.backgroundImage;
   const url = ref ? images[ref] ?? (/^(data:|https:|blob:|ssp:)/.test(ref) ? ref : undefined) : undefined;
@@ -84,12 +89,19 @@ function backgroundStyle(slide: PresenterSlide, images: ResolvedImages): { style
   return { hasImage: false, style: { background: slide.style.background || "#000" } };
 }
 
+/** Upper third, center, or lower third. */
+const POSITION_JUSTIFY = { top: "justify-start", center: "justify-center", bottom: "justify-end" } as const;
+const POSITION_ITEMS = { top: "items-start", center: "items-center", bottom: "items-end" } as const;
+
 function SlideBody({ slide }: { slide: PresenterSlide }) {
   const text: CSSProperties = {
     fontFamily: slide.style.fontFamily,
     color: slide.style.textColor,
     lineHeight: slide.style.lineSpacing ?? 1.4,
   };
+  const position = slide.style.textPosition ?? "center";
+  // Leave room for the credit or copyright line when the words sit low.
+  const roomForCredit = position === "bottom" && (slide.credit || slide.attribution) ? "pb-[3cqw]" : "";
 
   switch (slide.kind) {
     case "title":
@@ -108,7 +120,7 @@ function SlideBody({ slide }: { slide: PresenterSlide }) {
       );
     case "scripture":
       return (
-        <div className="flex h-full w-full flex-col items-center justify-center text-center" style={text}>
+        <div className={`flex h-full w-full flex-col items-center text-center ${POSITION_JUSTIFY[position]} ${roomForCredit}`} style={text}>
           <p style={{ fontSize: scriptureSize(slide.text ?? "") }}>{slide.text}</p>
           {slide.reference && <p className="mt-[2.4cqw] font-semibold opacity-90" style={{ fontSize: "2.2cqw" }}>{slide.reference}</p>}
           {/* Attribution is part of the slide. There is no way to hide it. */}
@@ -119,8 +131,8 @@ function SlideBody({ slide }: { slide: PresenterSlide }) {
       );
     case "lyrics":
       return (
-        <div className="flex h-full w-full flex-col items-center justify-center text-center" style={text}>
-          <p className="whitespace-pre-line font-medium" style={{ fontSize: lyricsSize(slide.text ?? ""), lineHeight: 1.3 }}>{slide.text}</p>
+        <div className={`flex h-full w-full flex-col items-center text-center ${POSITION_JUSTIFY[position]} ${roomForCredit}`} style={text}>
+          <p className="whitespace-pre-line font-medium" style={{ fontSize: lyricsFontSize(slide), lineHeight: 1.3 }}>{slide.text}</p>
           {/* CCLI credit line, on the first slide of a song. */}
           {slide.credit && (
             <p className="absolute bottom-[2cqw] left-[4cqw] right-[4cqw] opacity-70" style={{ fontSize: "1.15cqw", lineHeight: 1.3 }}>
@@ -213,7 +225,7 @@ export function SlideView({ frame, images = {}, videos = {}, renderVideo, logoUr
   return (
     <div className={`${base} flex items-center justify-center`} style={{ ...container, ...bg.style }} {...guards}>
       {bg.hasImage && slide.kind !== "graphic" && <div className="absolute inset-0 bg-black/40" />}
-      <div className="relative flex h-full w-full items-center justify-center px-[7cqw] py-[5cqw]">
+      <div className={`relative flex h-full w-full justify-center px-[7cqw] py-[5cqw] ${POSITION_ITEMS[slide.style.textPosition ?? "center"]}`}>
         <SlideBody slide={slide} />
       </div>
     </div>

@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import { SLIDE_FONTS } from "@/lib/fonts";
 import { Link, useParams, useLocation, useNavigate } from "react-router-dom";
 import { motion, Reorder, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -29,8 +30,7 @@ import { generateSlidesFromPresentation } from "@/lib/slide-generation";
 import { calculateValueMetrics, formatTimeSaved } from "@/lib/value-metrics";
 import { approvePartnerDeck, clearPartnerHandoff, readPartnerHandoff } from "@/lib/partner-handoff";
 
-// Microsoft Word standard fonts - alphabetically ordered
-const fonts = ["Arial", "Arial Black", "Book Antiqua", "Calibri", "Cambria", "Candara", "Century Gothic", "Comic Sans MS", "Consolas", "Constantia", "Corbel", "Courier New", "Franklin Gothic Medium", "Garamond", "Georgia", "Gill Sans MT", "Impact", "Lucida Console", "Lucida Sans Unicode", "Palatino Linotype", "Segoe UI", "Tahoma", "Times New Roman", "Trebuchet MS", "Verdana"];
+const fonts = SLIDE_FONTS;
 
 // Primary colors palette
 const colors = [

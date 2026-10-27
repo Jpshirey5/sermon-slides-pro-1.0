@@ -14,7 +14,7 @@ import {
   passageId,
   validatePassage,
 } from "../scripture/references.ts";
-import type { PresenterSlide, SlideStyle } from "./types.ts";
+import type { PresenterSlide, SlideStyle, TextPosition } from "./types.ts";
 
 export const DEFAULT_STYLE: SlideStyle = {
   background: "#000000",
@@ -358,12 +358,56 @@ export interface SongRow {
   arrangement: unknown;
   background?: string | null;
   background_image?: string | null;
+  text_style?: unknown;
+}
+
+// ── song text style ─────────────────────────────────────────────────────────
+
+export type SongTextSize = "auto" | "small" | "medium" | "large" | "xlarge";
+
+export interface SongTextStyle {
+  fontFamily?: string;
+  size?: SongTextSize;
+  textColor?: string;
+  position?: TextPosition;
+}
+
+/** Text sizes in percent of slide width. */
+export const SONG_TEXT_SIZES: Record<Exclude<SongTextSize, "auto">, number> = { small: 3.6, medium: 4.6, large: 5.6, xlarge: 6.6 };
+const TEXT_POSITIONS: readonly TextPosition[] = ["top", "center", "bottom"];
+
+export const isTextPosition = (v: unknown): v is TextPosition => TEXT_POSITIONS.includes(v as TextPosition);
+
+/** Read a stored text style, keeping only valid values. */
+export function readSongTextStyle(raw: unknown): SongTextStyle {
+  const r = isObject(raw) ? raw : {};
+  const out: SongTextStyle = {};
+  const font = str(r.fontFamily).trim();
+  if (font && font.length <= 80 && /^[A-Za-z0-9 '-]+$/.test(font)) out.fontFamily = font;
+  if (r.size === "auto" || (typeof r.size === "string" && r.size in SONG_TEXT_SIZES)) out.size = r.size as SongTextSize;
+  if (HEX_COLOR.test(str(r.textColor))) out.textColor = str(r.textColor);
+  if (isTextPosition(r.position)) out.position = r.position;
+  return out;
+}
+
+/** One size for a whole song, picked to fit its fullest slide, so the words don't change size between slides. */
+export function autoLyricsSize(stanzas: readonly string[]): number {
+  const sizeFor = (text: string) => {
+    const lines = text.split("\n");
+    const longest = Math.max(...lines.map((l) => l.length), 0);
+    if (lines.length <= 2 && longest < 32) return 5.6;
+    if (lines.length <= 4 && longest < 40) return 4.6;
+    return 3.6;
+  };
+  return stanzas.length ? Math.min(...stanzas.map(sizeFor)) : 4.6;
 }
 
 /** A background for song slides: the church's default, or one song's own. */
 export interface SongBackground {
   background?: string | null;
   background_image?: string | null;
+  /** Font, size, color, and position (see readSongTextStyle). */
+  text_style?: unknown;
 }
 
 const HEX_BG = /^#[0-9a-fA-F]{6}$/;
@@ -372,10 +416,16 @@ const HEX_BG = /^#[0-9a-fA-F]{6}$/;
 export function songStyle(song: SongBackground, churchDefault: SongBackground | null): SlideStyle {
   const own = Boolean(song.background || song.background_image);
   const pick = own ? song : churchDefault ?? {};
+  // Text style: each setting the song has wins, then the church's, then the default.
+  const text = { ...readSongTextStyle(churchDefault?.text_style), ...readSongTextStyle(song.text_style) };
   return {
     ...DEFAULT_STYLE,
     background: pick.background && HEX_BG.test(pick.background) ? pick.background : DEFAULT_STYLE.background,
     backgroundImage: pick.background_image || null,
+    fontFamily: text.fontFamily ?? DEFAULT_STYLE.fontFamily,
+    textColor: text.textColor ?? DEFAULT_STYLE.textColor,
+    ...(text.size && text.size !== "auto" ? { fontSize: SONG_TEXT_SIZES[text.size] } : {}),
+    ...(text.position ? { textPosition: text.position } : {}),
   };
 }
 
@@ -433,10 +483,14 @@ export function planSong(
   options: { churchBackground?: SongBackground | null; serviceArrangement?: unknown } = {},
 ): SlideSlot[] {
   const credit = songCredit(song, ccliLicense);
-  const style = songStyle(song, options.churchBackground ?? null);
+  const order = songOrder(song, options.serviceArrangement);
+  const stanzasOf = (lyrics: string) => lyrics.replace(/\r\n/g, "\n").split(/\n\s*\n/).map((t) => t.trim()).filter(Boolean);
+  const base = songStyle(song, options.churchBackground ?? null);
+  // Same size on every slide of the song.
+  const style: SlideStyle = { ...base, fontSize: base.fontSize ?? autoLyricsSize(order.flatMap((s) => stanzasOf(s.lyrics))) };
   const slots: SlideSlot[] = [];
-  songOrder(song, options.serviceArrangement).forEach((section, sectionIndex) => {
-    const stanzas = section.lyrics.replace(/\r\n/g, "\n").split(/\n\s*\n/).map((t) => t.trim()).filter(Boolean);
+  order.forEach((section, sectionIndex) => {
+    const stanzas = stanzasOf(section.lyrics);
     stanzas.forEach((text, stanzaIndex) => {
       slots.push({
         kind: "static",

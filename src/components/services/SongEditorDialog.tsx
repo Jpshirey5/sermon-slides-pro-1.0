@@ -22,6 +22,7 @@ import {
   uploadSongBackground,
 } from "@/lib/songs";
 import { SongBackgroundField } from "./SongBackgroundField";
+import { SongTextStyleField } from "./SongTextStyleField";
 import { MAX_SONG_TEXT, parseSongText } from "@/lib/song-import";
 import { songCredit } from "../../../supabase/functions/_shared/presenter/slides.ts";
 
@@ -335,6 +336,12 @@ export function SongEditorDialog({ open, songId, onSaved, onClose }: SongEditorD
                   </Button>
                 ))}
               </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Text</Label>
+              <p className="text-xs text-muted-foreground">Every slide of this song uses the same text, so the words don't change size from slide to slide.</p>
+              <SongTextStyleField idPrefix="song-text" value={song.textStyle} onChange={(textStyle) => update({ textStyle })} inheritLabel="Church default" />
             </div>
 
             <div className="space-y-2">
