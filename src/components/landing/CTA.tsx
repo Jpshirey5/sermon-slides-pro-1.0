@@ -1,12 +1,12 @@
-import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Sparkles } from "lucide-react";
-import GetStartedModal from "@/components/GetStartedModal";
+import { useAuth } from "@/contexts/AuthContext";
 
 const CTA = () => {
-  const [modalOpen, setModalOpen] = useState(false);
+  const navigate = useNavigate();
+  const { user } = useAuth();
 
   return (
     <section className="py-24 relative overflow-hidden">
@@ -44,7 +44,7 @@ const CTA = () => {
           <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-card/85 border border-border/70 mb-8">
             <Sparkles className="w-4 h-4 text-primary" />
             <span className="text-sm font-medium text-foreground">
-              Built for Free, Core, and Team workflows
+              Built for Core and Team workflows
             </span>
           </div>
 
@@ -57,7 +57,7 @@ const CTA = () => {
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <Button variant="gold" size="xl" onClick={() => setModalOpen(true)}>
+            <Button variant="gold" size="xl" onClick={() => navigate(user ? "/dashboard" : "/signup")}>
               Get Started
               <ArrowRight className="w-5 h-5" />
             </Button>
@@ -70,7 +70,6 @@ const CTA = () => {
         </motion.div>
       </div>
 
-      <GetStartedModal open={modalOpen} onOpenChange={setModalOpen} />
     </section>
   );
 };

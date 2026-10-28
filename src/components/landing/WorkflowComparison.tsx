@@ -209,17 +209,6 @@ const WorkflowComparison = () => {
                 size="lg"
                 className="w-full sm:w-auto"
                 onClick={() => {
-                  trackEvent("landing_comparison_try_free_clicked");
-                  navigate("/create");
-                }}
-              >
-                Try Free Now
-              </Button>
-              <Button
-                variant="outline"
-                size="lg"
-                className="w-full sm:w-auto"
-                onClick={() => {
                   trackEvent("landing_comparison_unlock_clicked");
                   navigate("/signup");
                 }}

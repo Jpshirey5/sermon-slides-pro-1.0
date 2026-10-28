@@ -1,15 +1,16 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Menu, X, BookOpen } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import GetStartedModal from "@/components/GetStartedModal";
 
 const Header = () => {
   const [isOpen, setIsOpen] = useState(false);
-  const [modalOpen, setModalOpen] = useState(false);
   const { user } = useAuth();
+  const navigate = useNavigate();
+  // Get Started goes straight to choosing a plan.
+  const getStarted = () => navigate(user ? "/dashboard" : "/signup");
 
   return (
     <motion.header
@@ -44,7 +45,7 @@ const Header = () => {
               </>
             ) : (
               <>
-                <Button variant="hero" onClick={() => setModalOpen(true)}>Get Started</Button>
+                <Button variant="hero" onClick={getStarted}>Get Started</Button>
                 <Link to="/login"><Button variant="outline">Log In</Button></Link>
               </>
             )}
@@ -77,7 +78,7 @@ const Header = () => {
                       className="w-full"
                       onClick={() => {
                         setIsOpen(false);
-                        setModalOpen(true);
+                        getStarted();
                       }}
                     >
                       Get Started
@@ -90,7 +91,6 @@ const Header = () => {
           </motion.div>
         )}
       </div>
-      <GetStartedModal open={modalOpen} onOpenChange={setModalOpen} />
     </motion.header>
   );
 };
