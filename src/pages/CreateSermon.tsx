@@ -41,11 +41,15 @@ import { consumeCreateTourPrompt } from "@/lib/product-tour";
 import { listAccountCampuses, type Campus } from "@/lib/campuses";
 import { blockDragFromNode } from "@/lib/block-drag";
 import ScripturePicker from "@/components/ScripturePicker";
+import { Textarea } from "@/components/ui/textarea";
+import { isPublicDomain } from "@/lib/scripture-rights";
 
 interface Scripture {
   reference: string;
   text?: string;
   verses?: { text: string; verse: number }[];
+  /** "church" when the pastor pasted it; "lookup" when the app filled in a public domain verse. */
+  source?: "church" | "lookup";
   isLoading?: boolean;
   error?: boolean;
   errorMessage?: string;
@@ -99,6 +103,7 @@ const CreateSermon = () => {
                 reference: s.reference,
                 text: s.text,
                 verses: s.verses,
+                source: s.source,
               }))
             : [],
         }))
@@ -262,6 +267,8 @@ const CreateSermon = () => {
   const autoLookupScripture = useCallback(async (pointId: string, index: number, reference: string, translationOverride?: string) => {
     if (!reference.trim()) return;
     const translationToUse = translationOverride || globalTranslation;
+    // Only public domain verses are filled in. Copyrighted translations are pasted by the church.
+    if (!isPublicDomain(translationToUse)) return;
 
     // Clear any existing timeout for this scripture
     const key = `${pointId}-${index}`;
@@ -322,6 +329,7 @@ const CreateSermon = () => {
                           ...s, 
                           text: result.text,
                           verses: result.verses,
+                          source: "lookup" as const,
                           isLoading: false,
                           error: false,
                           errorMessage: undefined
@@ -394,7 +402,11 @@ const CreateSermon = () => {
           ? {
               ...p,
               scriptures: p.scriptures.map((s, i) =>
-                i === index ? { ...s, reference, text: undefined, verses: undefined, error: false, errorMessage: undefined } : s
+                i === index
+                  ? isPublicDomain(globalTranslation)
+                    ? { ...s, reference, text: undefined, verses: undefined, source: undefined, error: false, errorMessage: undefined }
+                    : { ...s, reference, error: false, errorMessage: undefined }
+                  : s
               ),
             }
           : p
@@ -429,6 +441,14 @@ const CreateSermon = () => {
     // Cancel stale pending lookups before re-querying in the new translation.
     Object.keys(lookupTimeouts.current).forEach((key) => clearLookupTimeout(key));
 
+    // Switching to a copyrighted translation drops verses the app filled in (they were in a
+    // different translation) and keeps anything the pastor pasted.
+    if (!isPublicDomain(newTranslation)) {
+      setPoints((prev) => prev.map((p) => ({
+        ...p,
+        scriptures: p.scriptures.map((s) => (s.source === "church" ? s : { ...s, text: undefined, verses: undefined, source: undefined })),
+      })));
+    }
     points.forEach((point) => {
       point.scriptures.forEach((scripture, index) => {
         if (scripture.reference.trim()) {
@@ -479,6 +499,7 @@ const CreateSermon = () => {
               reference: formatScriptureReferenceForDisplay(s.reference),
               text: s.text,
               verses: s.verses,
+              ...(s.source ? { source: s.source } : {}),
             }))
           : [],
       })),
@@ -943,7 +964,9 @@ const CreateSermon = () => {
 
                           <div className="pl-4 border-l-2 border-border space-y-4">
                             <p className="text-sm text-muted-foreground">
-                              Scripture — verses auto-populate using {globalTranslation}
+                              {isPublicDomain(globalTranslation)
+                                ? `Scripture: verses fill in automatically using ${globalTranslation}`
+                                : `Scripture: paste each verse from your ${globalTranslation} Bible`}
                             </p>
 
                             {point.scriptures.map((scripture, scriptureIndex) => (
@@ -992,13 +1015,29 @@ const CreateSermon = () => {
                                     </p>
                                   </div>
                                 )}
-                                {scripture.text && !scripture.error && (
+                                {!isPublicDomain(globalTranslation) && scripture.reference.trim() && (
+                                  <Textarea
+                                    aria-label={`Verse text for ${scripture.reference}`}
+                                    rows={3}
+                                    placeholder={`Paste ${scripture.reference} (${globalTranslation}) here`}
+                                    value={scripture.text ?? ""}
+                                    onChange={(e) => {
+                                      const text = e.target.value;
+                                      setPoints((prev) => prev.map((p) =>
+                                        p.id === point.id
+                                          ? { ...p, scriptures: p.scriptures.map((s, i) => (i === scriptureIndex ? { ...s, text, verses: undefined, source: "church" as const } : s)) }
+                                          : p
+                                      ));
+                                    }}
+                                  />
+                                )}
+                                {scripture.text && !scripture.error && isPublicDomain(globalTranslation) && (
                                   <div className="p-3 rounded-lg bg-muted/50 border border-border">
                                     <p className="text-sm text-muted-foreground italic">
                                       "{scripture.text}"
                                     </p>
                                     <p className="text-xs text-muted-foreground mt-1">
-                                      — {scripture.reference} ({globalTranslation})
+                                      {scripture.reference} ({globalTranslation})
                                     </p>
                                   </div>
                                 )}

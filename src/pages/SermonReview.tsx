@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Textarea } from "@/components/ui/textarea";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { motion, Reorder } from "framer-motion";
 import {
@@ -131,6 +132,21 @@ const SermonReview = () => {
   const [presentation, setPresentation] = useState<SermonPresentation | null>(null);
   const [titleSlide, setTitleSlide] = useState<SlideData | null>(null);
   const [contentBlocks, setContentBlocks] = useState<ReviewBlock[]>([]);
+
+  /** The church's own words for a verse that came in without text. */
+  const pasteVerse = (blockId: string, text: string) => {
+    const words = text.trim();
+    if (!words) return;
+    setContentBlocks((blocks) =>
+      blocks.map((block) => {
+        if (block.id !== blockId) return block;
+        const slides = block.slides.map((slide, i) =>
+          i === 0 ? { ...slide, content: { ...slide.content, scripture: words, scriptureSource: "church" as const } } : slide,
+        );
+        return { ...block, slides, preview: words };
+      }),
+    );
+  };
   const [selectedBlockIds, setSelectedBlockIds] = useState<Set<string>>(new Set());
   const [activeBlockId, setActiveBlockId] = useState<string | null>(null);
   const draggedBlockIdRef = useRef<string | null>(null);
@@ -545,6 +561,17 @@ const SermonReview = () => {
                       <p className="mt-2 line-clamp-3 text-sm text-muted-foreground">
                         {block.preview}
                       </p>
+                    )}
+                    {block.type === "scripture" && block.slides.length === 1 && !block.slides[0].content.scripture?.trim() && (
+                      <div className="mt-2 space-y-1" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
+                        <p className="text-xs font-medium text-amber-700">Needs scripture: paste this verse from your Bible.</p>
+                        <Textarea
+                          aria-label={`Verse text for ${block.title}`}
+                          rows={3}
+                          placeholder={`Paste ${block.slides[0].content.reference || "the verse"} here`}
+                          onBlur={(e) => pasteVerse(block.id, e.target.value)}
+                        />
+                      </div>
                     )}
                   </div>
                 </div>

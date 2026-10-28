@@ -262,8 +262,13 @@ serve(async (req) => {
       supabaseUrl,
       anonKey,
       authHeader,
+      publicDomainOnly: true,
     });
-    const allWarnings = [...extractionWarnings, ...validation.warnings];
+    const needPasting = validation.validated.filter((v) => v.needs_scripture).length;
+    const pasteWarning = needPasting > 0
+      ? [`${needPasting} verse${needPasting === 1 ? "" : "s"} in ${translation} need${needPasting === 1 ? "s" : ""} the text pasted in. Open each one in Sermon Review and paste it from your Bible.`]
+      : [];
+    const allWarnings = [...extractionWarnings, ...validation.warnings, ...pasteWarning];
 
     const built = buildSermon({
       parsed: parsedResult.data,
@@ -352,6 +357,7 @@ serve(async (req) => {
       form_data: built.formData,
       points_count: built.pointsCount,
       verses_count: built.versesCount,
+      verses_need_pasting: needPasting,
       parsing_duration_ms: parsingDurationMs,
       warnings: allWarnings,
     });

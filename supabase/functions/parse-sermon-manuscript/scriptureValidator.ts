@@ -12,7 +12,13 @@ export interface ValidatedVerseBlock {
   subpoint_index: number | null;
   /** Only meaningful when point_index is null: where an unplaced ref renders. */
   placement?: "intro" | "conclusion";
+  /** No verse text yet: the church pastes it in Sermon Review. */
+  needs_scripture?: boolean;
 }
+
+/** Translations with no copyright. Only these are looked up; the church supplies all others. */
+export const PUBLIC_DOMAIN_TRANSLATIONS = new Set(["KJV", "WEB", "ASV"]);
+export const isPublicDomain = (translation: string) => PUBLIC_DOMAIN_TRANSLATIONS.has(translation.trim().toUpperCase());
 
 export interface ValidationOutcome {
   validated: ValidatedVerseBlock[];
@@ -83,11 +89,30 @@ export async function validateReferences(options: {
   authHeader: string;
   /** Extra request headers (the partner API uses this to look up on behalf of a user). */
   extraHeaders?: Record<string, string>;
+  /**
+   * Quick Build: look up public domain translations only. References in a
+   * copyrighted translation come back with no text, marked needs_scripture,
+   * for the church to paste. The partner API leaves this off.
+   */
+  publicDomainOnly?: boolean;
 }): Promise<ValidationOutcome> {
-  const { refs, translation, supabaseUrl, anonKey, authHeader, extraHeaders } = options;
+  const { refs, translation, supabaseUrl, anonKey, authHeader, extraHeaders, publicDomainOnly } = options;
   const validated: ValidatedVerseBlock[] = [];
   const warnings: string[] = [];
   const failed: ParsedScriptureRef[] = [];
+  if (publicDomainOnly && !isPublicDomain(translation)) {
+    for (const ref of refs) {
+      validated.push({
+        reference: buildReferenceString(ref),
+        text: "",
+        point_index: ref.point_index,
+        subpoint_index: ref.subpoint_index,
+        ...(ref.placement ? { placement: ref.placement } : {}),
+        needs_scripture: true,
+      });
+    }
+    return { validated, warnings, failed };
+  }
   const lookupUrl = `${supabaseUrl.replace(/\/$/, "")}/functions/v1/scripture-lookup`;
   // The user's JWT is required: scripture-lookup checks the caller's account for
   // ESV entitlement, which the anon key can never pass.

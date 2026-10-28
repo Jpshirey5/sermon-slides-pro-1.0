@@ -286,3 +286,19 @@ Deno.test("extractRefsFromText: no comma continuation over prose", () => {
   assertEquals(refs.length, 1);
   assertEquals(refs[0].end_verse, null);
 });
+
+Deno.test("Quick Build: copyrighted references come back to paste, with no lookup", async () => {
+  const { validateReferences } = await import("./scriptureValidator.ts");
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = (() => { calls++; return Promise.reject(new Error("no network")); }) as typeof fetch;
+  try {
+    const refs = [{ raw_text: "John 3:16", book: "John", chapter: 3, start_verse: 16, end_verse: null, point_index: 0, subpoint_index: null }];
+    const out = await validateReferences({ refs, translation: "NIV", supabaseUrl: "https://x", anonKey: "k", authHeader: "Bearer t", publicDomainOnly: true });
+    if (calls !== 0) throw new Error("looked up a copyrighted translation");
+    if (out.validated.length !== 1 || out.validated[0].text !== "" || !out.validated[0].needs_scripture) throw new Error("expected a needs-scripture verse");
+    if (out.validated[0].point_index !== 0 || out.warnings.length !== 0) throw new Error("kept placement, no failure warning");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

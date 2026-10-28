@@ -12,6 +12,8 @@ interface ExportOptionsModalProps {
   description?: string;
   exportingLabel?: string;
   valueMetrics?: PresentationValueMetrics;
+  /** Scripture slides that will export as the reference only, until the church pastes the verse. */
+  needPasting?: number;
 }
 
 export function ExportOptionsModal({
@@ -23,6 +25,7 @@ export function ExportOptionsModal({
   description = "Choose your preferred format to download.",
   exportingLabel = "Exporting...",
   valueMetrics,
+  needPasting = 0,
 }: ExportOptionsModalProps) {
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && !isExporting && onClose()}>
@@ -37,6 +40,11 @@ export function ExportOptionsModal({
           </DialogDescription>
         </DialogHeader>
         
+        {needPasting > 0 && (
+          <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            {needPasting} scripture slide{needPasting === 1 ? "" : "s"} will show the reference only, with "Paste the verse here." Paste the verse text in the editor to include it.
+          </p>
+        )}
         <div className="space-y-3 py-4">
           {valueMetrics && (
             <div className="rounded-xl border border-primary/15 bg-primary/5 p-4 text-sm">

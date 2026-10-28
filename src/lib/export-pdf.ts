@@ -2,6 +2,7 @@ import { jsPDF } from "jspdf";
 import { saveAs } from "file-saver";
 import { resolveBackgroundImageSource } from "@/lib/background-assets";
 import type { SlideData } from "@/lib/export-pptx";
+import { slidesForExport } from "@/lib/scripture-rights";
 
 const PAGE_WIDTH_IN = 13.33;
 const PAGE_HEIGHT_IN = 7.5;
@@ -88,9 +89,11 @@ function drawCenteredText(
 }
 
 export async function buildPdfFile(
-  slides: SlideData[],
+  inputSlides: SlideData[],
   title: string,
 ): Promise<{ blob: Blob; filename: string }> {
+  // Copyrighted verses the church hasn't supplied export as the reference with a placeholder.
+  const { slides } = slidesForExport(inputSlides);
   const doc = new jsPDF({
     orientation: "landscape",
     unit: "in",

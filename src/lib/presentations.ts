@@ -40,6 +40,10 @@ export interface SermonPresentation {
         reference: string;
         text?: string;
         verses?: { text: string; verse: number }[];
+        /** Where the words came from: the church (pasted or from the manuscript), or an app lookup. */
+        source?: "church" | "lookup";
+        /** The reference was found but the church still needs to paste the verse. */
+        needsScripture?: boolean;
       }>;
     }>;
   };

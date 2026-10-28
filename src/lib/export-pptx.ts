@@ -1,6 +1,7 @@
 import pptxgen from 'pptxgenjs';
 import { saveAs } from 'file-saver';
 import { resolveBackgroundImageSource } from '@/lib/background-assets';
+import { type ScriptureSource, slidesForExport } from '@/lib/scripture-rights';
 
 export interface SlideData {
   id: string;
@@ -10,6 +11,8 @@ export interface SlideData {
     subtitle?: string;
     scripture?: string;
     reference?: string;
+    /** Where the verse words came from. Copyrighted text only exports when it's the church's own. */
+    scriptureSource?: ScriptureSource;
   };
   background: string;
   backgroundImage?: string;
@@ -74,9 +77,11 @@ function mapFontFamily(fontFamily: string): string {
 }
 
 export async function buildPowerPointFile(
-  slides: SlideData[],
+  inputSlides: SlideData[],
   title: string
 ): Promise<{ blob: Blob; filename: string }> {
+  // Copyrighted verses the church hasn't supplied export as the reference with a placeholder.
+  const { slides } = slidesForExport(inputSlides);
   const pptx = new pptxgen();
 
   // Set presentation properties

@@ -85,8 +85,24 @@ export function generateSlidesFromPresentation(presentation: SermonPresentation)
 
       if (isVerseType || point.title) {
         point.scriptures.forEach((scripture, scriptureIndex) => {
-          if (!scripture.reference || !scripture.text) return;
+          if (!scripture.reference) return;
           const displayReference = formatScriptureReferenceForDisplay(scripture.reference);
+          const translation = presentation.data?.translation || "KJV";
+          const scriptureSource = scripture.source;
+
+          // No verse text yet: a slide with the reference, ready for the church to paste the verse.
+          if (!scripture.text?.trim()) {
+            slides.push({
+              id: `scripture-${point.id}-${scriptureIndex}`,
+              type: "scripture",
+              content: { scripture: "", reference: `${displayReference} (${translation})` },
+              background: defaultBackground,
+              fontFamily: defaultFont,
+              textColor: defaultColor,
+              lineSpacing: defaultLineSpacing,
+            });
+            return;
+          }
 
           const isVerseByVerse = presentation.data?.verseBreakdown === "verse-by-verse";
 
@@ -106,7 +122,8 @@ export function generateSlidesFromPresentation(presentation: SermonPresentation)
                 type: "scripture",
                 content: {
                   scripture: wrapScriptureText(verse.text, proPresenterMode),
-                  reference: `${verse.reference} (${presentation.data?.translation || "KJV"})`,
+                  reference: `${verse.reference} (${translation})`,
+                  ...(scriptureSource ? { scriptureSource } : {}),
                 },
                 background: defaultBackground,
                 fontFamily: defaultFont,
@@ -127,7 +144,8 @@ export function generateSlidesFromPresentation(presentation: SermonPresentation)
               type: "scripture",
               content: {
                 scripture: wrapScriptureText(chunk, proPresenterMode),
-                reference: `${displayReference} (${presentation.data?.translation || "KJV"})`,
+                reference: `${displayReference} (${translation})`,
+                ...(scriptureSource ? { scriptureSource } : {}),
               },
               background: defaultBackground,
               fontFamily: defaultFont,

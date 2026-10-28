@@ -50,6 +50,8 @@ export function buildSermon(options: {
           reference: formatScriptureReferenceForDisplay(verse.reference),
           text: verse.text,
           ...(verse.verses ? { verses: verse.verses } : {}),
+          // Looked-up text is public domain; a copyrighted verse waits for the church to paste it.
+          ...(verse.needs_scripture ? { needsScripture: true } : { source: "lookup" }),
         },
       ],
     };

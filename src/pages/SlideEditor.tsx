@@ -10,6 +10,7 @@ import { exportToPowerPoint, SlideData } from "@/lib/export-pptx";
 import { exportToPdf } from "@/lib/export-pdf";
 import { exportAsProBundle, validateSlidesForExport } from "@/services/proPresenterExport";
 import { ExportOptionsModal } from "@/components/ExportOptionsModal";
+import { needsChurchScripture } from "@/lib/scripture-rights";
 import { SubscriptionUpsellModal } from "@/components/SubscriptionUpsellModal";
 import { toast } from "sonner";
 import { getEditorPresentationState, SermonPresentation, saveEditorSlides as saveEditorSlidesToDb } from "@/lib/presentations";
@@ -802,7 +803,9 @@ const SlideEditor = () => {
       ...slide,
       content: {
         ...slide.content,
-        [field]: value
+        [field]: value,
+        // Words typed or pasted here are the church's own, so they can be exported.
+        ...(field === 'scripture' ? { scriptureSource: 'church' as const } : {})
       }
     } : slide));
   };
@@ -1324,10 +1327,13 @@ const SlideEditor = () => {
                   color: currentSlide.textColor,
                   lineHeight: currentSlide.lineSpacing || 1.5,
                   marginBottom: `${(currentSlide.lineSpacing || 1.5) * 0.5}rem`
-                }} placeholder="Enter scripture text..." />
+                }} placeholder="Paste the verse from your Bible..." />
                     <input type="text" value={currentSlide.content.reference || ""} onChange={e => handleContentChange('reference', e.target.value)} className="text-xs md:text-sm opacity-70 bg-transparent border-none outline-none text-right w-full focus:ring-2 focus:ring-white/30 rounded-lg px-2 py-1" style={{
                   color: currentSlide.textColor
                 }} placeholder="Reference" />
+                    {needsChurchScripture(currentSlide) && <p className="mt-2 rounded-md bg-amber-100/90 px-3 py-1.5 text-xs not-italic text-amber-900">
+                        Paste this verse from your Bible to include it in your PowerPoint or ProPresenter export. Until then, the export shows the reference only.
+                      </p>}
                   </>}
                 {currentSlide.type === "blank" && <p className="text-muted-foreground text-sm">Blank Slide</p>}
               </div>
@@ -1437,6 +1443,7 @@ const SlideEditor = () => {
         onExport={handleExport}
         isExporting={isExporting}
         valueMetrics={valueMetrics}
+        needPasting={slides.filter(needsChurchScripture).length}
       />
       <SubscriptionUpsellModal
         isOpen={showUpsellModal}

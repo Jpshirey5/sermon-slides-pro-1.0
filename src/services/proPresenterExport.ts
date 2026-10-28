@@ -2,6 +2,7 @@ import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import { Presentation } from './pro7-schema';
 import { resolveBackgroundImageSource } from '@/lib/background-assets';
+import { slidesForExport } from '@/lib/scripture-rights';
 
 export interface SlideData {
   id: string;
@@ -332,9 +333,11 @@ function buildPresentationMessage(
 // ── Public export functions ───────────────────────────
 
 export async function buildProBundleFile(
-  slides: SlideData[],
+  inputSlides: SlideData[],
   presentationTitle: string
 ): Promise<{ blob: Blob; filename: string }> {
+  // Copyrighted verses the church hasn't supplied export as the reference with a placeholder.
+  const { slides } = slidesForExport(inputSlides);
   const validation = validateSlidesForExport(slides);
   if (!validation.isValid) {
     throw new Error(validation.errors.join(' '));
@@ -393,9 +396,10 @@ export async function exportAsProBundle(
 }
 
 export function exportAsPlainText(
-  slides: SlideData[],
+  inputSlides: SlideData[],
   presentationTitle: string
 ): void {
+  const { slides } = slidesForExport(inputSlides);
   const lines: string[] = [
     `# ${presentationTitle}`,
     `Exported: ${new Date().toLocaleDateString()}`,
