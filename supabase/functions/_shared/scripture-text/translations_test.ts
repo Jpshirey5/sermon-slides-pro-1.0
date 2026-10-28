@@ -45,3 +45,12 @@ Deno.test("normalizes codes", () => {
   assertEquals(normalizeTranslationCode("x"), null);
   assertEquals(normalizeTranslationCode(42), null);
 });
+
+Deno.test("test sermon: a reference with no verse text gets the translation beside it, and a written-out name counts", async () => {
+  const { findCitation } = await import("./verbatim.ts");
+  const doc = "Write this one down and read it on the screen together:\nHebrews 6:19 (NIV)\nWe'll talk about what it means for hope to be an anchor for the soul.\n\n3. God Gives Strength\nIsaiah 40:31 (WEB)\nBut those who wait";
+  const at = findCitation(doc, "Hebrews 6:19");
+  assertEquals(detectTranslationNear(doc, at, at + "Hebrews 6:19".length), "NIV");
+  const romans = "Romans 8:28, English Standard Version\nAnd we know that for those who love God all things work together for good.";
+  assertEquals(near(romans, "And we know that for those who love God all things work together for good."), "ESV");
+});

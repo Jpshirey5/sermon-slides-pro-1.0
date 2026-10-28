@@ -22,9 +22,9 @@ export const TRANSLATION_OPTIONS: TranslationOption[] = [
 
 export const DEFAULT_TRANSLATION = "KJV";
 
-// Translations that are license-restricted and only available to entitled
-// organizations (see accounts.can_use_esv). Codes are compared upper-cased.
-export const RESTRICTED_TRANSLATIONS = new Set(["ESV"]);
+// Translations limited to certain churches. Empty now: churches supply the words
+// for copyrighted translations themselves, so every translation is open to all.
+export const RESTRICTED_TRANSLATIONS = new Set<string>();
 
 export const isTranslationAllowed = (code: string | null | undefined, canUseEsv: boolean): boolean => {
   if (!code) return true;

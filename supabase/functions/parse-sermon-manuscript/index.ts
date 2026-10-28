@@ -13,7 +13,8 @@ import {
 } from "./claudeParser.ts";
 import { buildReferenceString, validateReferences, type ValidatedVerseBlock } from "./scriptureValidator.ts";
 import { pullVersesFromManuscript } from "./manuscriptVerses.ts";
-import { htmlToText } from "../_shared/scripture-text/verbatim.ts";
+import { findCitation, htmlToText } from "../_shared/scripture-text/verbatim.ts";
+import { detectTranslationNear } from "../_shared/scripture-text/translations.ts";
 import { base64ToBytes, readPdfText } from "./pdfText.ts";
 import { buildSermon } from "./sermonBuilder.ts";
 import { extractRefsFromText, mergeRefs, stripHtml } from "./refExtractor.ts";
@@ -275,16 +276,35 @@ serve(async (req) => {
       verseTexts: parsedResult.data.verse_texts ?? [],
       fallbackTranslation: translation,
     });
+    // References with no verse text in the manuscript: use the translation written beside
+    // the reference (e.g. "Hebrews 6:19 (NIV)"), else the upload translation. Public domain
+    // ones are looked up in that translation; the rest are marked for the church to paste.
     const remainingIndexes = refs.map((_, i) => i).filter((i) => !pulled.has(i));
-    const lookedUp = await validateReferences({
-      refs: remainingIndexes.map((i) => refs[i]),
-      translation,
-      supabaseUrl,
-      anonKey,
-      authHeader,
-      publicDomainOnly: true,
-    });
-    const byIndex = new Map<number, ValidatedVerseBlock | null>(remainingIndexes.map((refIndex, k) => [refIndex, lookedUp.aligned[k] ?? null]));
+    const translationFor = new Map<number, string>();
+    for (const i of remainingIndexes) {
+      const at = findCitation(manuscriptPlain, refs[i].raw_text);
+      const tagged = at >= 0 ? detectTranslationNear(manuscriptPlain, at, at + refs[i].raw_text.length) : null;
+      translationFor.set(i, tagged ?? translation);
+    }
+    const byIndex = new Map<number, ValidatedVerseBlock | null>();
+    const lookupWarnings: string[] = [];
+    for (const t of new Set(translationFor.values())) {
+      const group = remainingIndexes.filter((i) => translationFor.get(i) === t);
+      const result = await validateReferences({
+        refs: group.map((i) => refs[i]),
+        translation: t,
+        supabaseUrl,
+        anonKey,
+        authHeader,
+        publicDomainOnly: true,
+      });
+      lookupWarnings.push(...result.warnings);
+      group.forEach((refIndex, k) => {
+        const block = result.aligned[k] ?? null;
+        byIndex.set(refIndex, block ? { ...block, translation: t } : null);
+      });
+    }
+    const lookedUp = { warnings: lookupWarnings };
     const validatedInOrder: ValidatedVerseBlock[] = [];
     refs.forEach((ref, i) => {
       const fromManuscript = pulled.get(i);
@@ -307,7 +327,7 @@ serve(async (req) => {
     const versesFromManuscript = pulled.size;
     const needPasting = validation.validated.filter((v) => v.needs_scripture).length;
     const pasteWarning = needPasting > 0
-      ? [`${needPasting} verse${needPasting === 1 ? "" : "s"} in ${translation} need${needPasting === 1 ? "s" : ""} the text pasted in. Open each one in Sermon Review and paste it from your Bible.`]
+      ? [`${needPasting} verse${needPasting === 1 ? "" : "s"} need${needPasting === 1 ? "s" : ""} the text pasted in. Open each one in Sermon Review and paste it from your Bible.`]
       : [];
     const allWarnings = [...extractionWarnings, ...validation.warnings, ...pasteWarning];
 

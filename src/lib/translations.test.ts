@@ -5,12 +5,12 @@ import {
   isTranslationAllowed,
 } from "./translations";
 
-describe("translation entitlement gating", () => {
-  it("hides ESV when the org is not entitled", () => {
+describe("translation choices", () => {
+  it("offers every translation, including ESV, to every church", () => {
     const codes = getAvailableTranslations(false).map((t) => t.code);
-    expect(codes).not.toContain("ESV");
+    expect(codes).toContain("ESV");
     expect(codes).toContain("KJV");
-    expect(codes.length).toBe(TRANSLATION_OPTIONS.length - 1);
+    expect(codes.length).toBe(TRANSLATION_OPTIONS.length);
   });
 
   it("includes ESV when the org is entitled", () => {
@@ -19,9 +19,9 @@ describe("translation entitlement gating", () => {
     expect(codes.length).toBe(TRANSLATION_OPTIONS.length);
   });
 
-  it("treats ESV as disallowed for non-entitled orgs, case-insensitively", () => {
-    expect(isTranslationAllowed("ESV", false)).toBe(false);
-    expect(isTranslationAllowed("esv", false)).toBe(false);
+  it("allows ESV whether or not the church had the old ESV access", () => {
+    expect(isTranslationAllowed("ESV", false)).toBe(true);
+    expect(isTranslationAllowed("esv", false)).toBe(true);
     expect(isTranslationAllowed("ESV", true)).toBe(true);
   });
 
