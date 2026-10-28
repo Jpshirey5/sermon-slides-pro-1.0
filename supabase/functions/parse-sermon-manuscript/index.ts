@@ -14,6 +14,7 @@ import {
 import { buildReferenceString, validateReferences, type ValidatedVerseBlock } from "./scriptureValidator.ts";
 import { pullVersesFromManuscript } from "./manuscriptVerses.ts";
 import { htmlToText } from "../_shared/scripture-text/verbatim.ts";
+import { base64ToBytes, readPdfText } from "./pdfText.ts";
 import { buildSermon } from "./sermonBuilder.ts";
 import { extractRefsFromText, mergeRefs, stripHtml } from "./refExtractor.ts";
 
@@ -134,7 +135,7 @@ serve(async (req) => {
     const manuscriptHtml: string = typeof body?.manuscript_html === "string" ? body.manuscript_html : "";
     const manuscriptText: string = typeof body?.manuscript_text === "string" ? body.manuscript_text : "";
     // PDFs: the browser reads the PDF's text and sends it along, so verses can be copied from it.
-    const pdfText: string = typeof body?.pdf_text === "string" ? body.pdf_text.slice(0, MAX_MANUSCRIPT_CHARS) : "";
+    let pdfText: string = typeof body?.pdf_text === "string" ? body.pdf_text.slice(0, MAX_MANUSCRIPT_CHARS) : "";
 
     let parserInput: ParserInput;
     let backstopText: string | null = null;
@@ -151,7 +152,9 @@ serve(async (req) => {
         );
       }
       parserInput = { kind: "pdf", base64: fileBase64 };
-      // The PDF's own text (when the browser sent it) also backs up the reference check.
+      // No text from the browser: read it here, so verses can still be copied from the PDF.
+      if (!pdfText.trim()) pdfText = await readPdfText(base64ToBytes(fileBase64), MAX_MANUSCRIPT_CHARS);
+      // The PDF's own text also backs up the reference check.
       if (pdfText.trim()) backstopText = pdfText;
     } else if (manuscriptHtml.trim()) {
       if (manuscriptHtml.length > MAX_HTML_CHARS) {
