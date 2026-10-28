@@ -63,9 +63,10 @@ const App = () => (
             <SessionTimeoutManager />
             <Routes>
               <Route path="/" element={<Index />} />
-              <Route path="/create" element={<CreateSermon />} />
-              <Route path="/create/review/:id" element={<SermonReview />} />
-              <Route path="/editor/:id" element={<SlideEditor />} />
+              {/* Building and editing need an account with an active plan. There is no free guest builder. */}
+              <Route path="/create" element={<ProtectedRoute><CreateSermon /></ProtectedRoute>} />
+              <Route path="/create/review/:id" element={<ProtectedRoute><SermonReview /></ProtectedRoute>} />
+              <Route path="/editor/:id" element={<ProtectedRoute><SlideEditor /></ProtectedRoute>} />
               <Route path="/login" element={<Login />} />
               <Route path="/signup" element={<SignUp />} />
               <Route path="/signup/complete" element={<SignupComplete />} />
