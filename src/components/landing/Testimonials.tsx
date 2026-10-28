@@ -11,7 +11,7 @@ const testimonials = [
   },
   {
     quote:
-      "The scripture integration is incredible. I just drop in my manuscript, and it automatically formats everything beautifully. A game-changer for sermon prep.",
+      "The ease of use this platform provides is incredible. I just drop in my manuscript, and it automatically formats everything beautifully. A game-changer for sermon prep.",
     author: "Rev. Manuel Diaz",
     role: "Discipleship Pastor, Shiloh Baptist Association",
     avatar: "MD",
