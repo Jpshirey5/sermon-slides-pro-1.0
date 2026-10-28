@@ -27,7 +27,7 @@ const FEATURES_BY_TIER: Record<"core" | "team", TierFeatures> = {
       "Unlimited PowerPoint and ProPresenter exports",
       "No watermark — clean, unbranded slides on every export",
       "Saved presentations and editing history",
-      "Scripture lookup and weekly sermon workflow",
+      "Verses pulled from your manuscript, every week",
       "Best for small church teams",
     ],
   },

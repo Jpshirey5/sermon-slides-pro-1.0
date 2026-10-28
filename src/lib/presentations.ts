@@ -44,6 +44,8 @@ export interface SermonPresentation {
         source?: "church" | "lookup";
         /** The reference was found but the church still needs to paste the verse. */
         needsScripture?: boolean;
+        /** This verse's translation, when the manuscript names one different from the sermon's. */
+        translation?: string;
       }>;
     }>;
   };

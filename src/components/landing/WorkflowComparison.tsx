@@ -45,12 +45,12 @@ const proWorkflows = [
   {
     key: "structured",
     title: "Structured Builder",
-    tagline: "Build point by point with auto-generated scripture.",
+    tagline: "Build point by point, with your verses on every slide.",
     icon: ListChecks,
     steps: [
       "Fill out the sermon form",
       "Enter your points and verse references",
-      "We auto-pull the scripture text",
+      "Paste your verses, or let KJV, WEB, and ASV fill in automatically",
       "Generate the full slide deck",
       "Export to PowerPoint or ProPresenter",
     ],
@@ -58,11 +58,11 @@ const proWorkflows = [
   {
     key: "quick",
     title: "Quick Build",
-    tagline: "Drop in an outline or manuscript — done in under 2 minutes.",
+    tagline: "Drop in an outline or manuscript. Done in under 2 minutes.",
     icon: UploadCloud,
     steps: [
       "Drag in your outline or manuscript",
-      "We pull out every point and scripture reference",
+      "We pull out every point and the full text of every verse",
       "Full deck built in under 2 minutes",
       "Edit anything you'd like to tweak",
       "Export to PowerPoint or ProPresenter",

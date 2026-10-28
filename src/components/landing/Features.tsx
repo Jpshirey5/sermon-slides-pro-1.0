@@ -14,7 +14,7 @@ const features = [
     icon: Wand2,
     title: "Auto-Generate Slides",
     description:
-      "Enter your sermon points and scriptures. We'll create beautiful, structured slides automatically.",
+      "Upload your manuscript and we'll pull your points and full-text verses into beautiful, structured slides automatically.",
   },
   {
     icon: FileDown,
@@ -24,9 +24,9 @@ const features = [
   },
   {
     icon: BookOpen,
-    title: "Scripture Integration",
+    title: "Your Verses, Word for Word",
     description:
-      "Search any Bible translation worldwide. Verses are formatted and styled automatically.",
+      "We copy each verse exactly as it's written in your manuscript, in any translation, and show the translation on every slide.",
   },
   {
     icon: Palette,

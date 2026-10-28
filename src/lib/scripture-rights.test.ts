@@ -69,4 +69,17 @@ describe("scripture in exports", () => {
     expect(content.scripture).toContain("Church words");
     expect(content.reference).toBe("John 3:16 (NIV)");
   });
+
+  it("a verse copied from the manuscript keeps its own translation on the slide and in the export", () => {
+    const slides = generateSlidesFromPresentation({
+      id: "s", title: "Hope", date: "2026-11-01", slides: 0, lastModified: "",
+      data: {
+        title: "Hope", date: "2026-11-01", translation: "NIV", verseBreakdown: "full",
+        points: [{ id: "v", type: "verse", title: "", scriptures: [{ reference: "Psalm 23:1", text: "Manuscript words", source: "church", translation: "NLT" }] }],
+      },
+    } as never);
+    const content = slidesForExport(slides).slides.find((s) => s.type === "scripture")!.content;
+    expect(content.reference).toBe("Psalm 23:1 (NLT)");
+    expect(content.scripture).toContain("Manuscript words");
+  });
 });

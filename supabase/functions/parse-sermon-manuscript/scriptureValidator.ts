@@ -14,6 +14,10 @@ export interface ValidatedVerseBlock {
   placement?: "intro" | "conclusion";
   /** No verse text yet: the church pastes it in Sermon Review. */
   needs_scripture?: boolean;
+  /** The verse's own translation, when it differs from the sermon's (from the manuscript). */
+  translation?: string;
+  /** "church" when copied from the pastor's manuscript; "lookup" for a public domain lookup. */
+  source?: "church" | "lookup";
 }
 
 /** Translations with no copyright. Only these are looked up; the church supplies all others. */
@@ -22,6 +26,8 @@ export const isPublicDomain = (translation: string) => PUBLIC_DOMAIN_TRANSLATION
 
 export interface ValidationOutcome {
   validated: ValidatedVerseBlock[];
+  /** One entry per input reference, in input order: its block, or null if it couldn't be looked up. */
+  aligned: (ValidatedVerseBlock | null)[];
   warnings: string[];
   /** The refs that could not be looked up, in input order. */
   failed: ParsedScriptureRef[];
@@ -29,7 +35,7 @@ export interface ValidationOutcome {
 
 const LOOKUP_CHUNK_SIZE = 5;
 
-function buildReferenceString(ref: ParsedScriptureRef): string {
+export function buildReferenceString(ref: ParsedScriptureRef): string {
   const range =
     ref.end_verse && ref.end_verse !== ref.start_verse
       ? `${ref.start_verse}-${ref.end_verse}`
@@ -100,9 +106,10 @@ export async function validateReferences(options: {
   const validated: ValidatedVerseBlock[] = [];
   const warnings: string[] = [];
   const failed: ParsedScriptureRef[] = [];
+  const aligned: (ValidatedVerseBlock | null)[] = [];
   if (publicDomainOnly && !isPublicDomain(translation)) {
     for (const ref of refs) {
-      validated.push({
+      aligned.push({
         reference: buildReferenceString(ref),
         text: "",
         point_index: ref.point_index,
@@ -111,7 +118,7 @@ export async function validateReferences(options: {
         needs_scripture: true,
       });
     }
-    return { validated, warnings, failed };
+    return { validated: aligned.filter((v): v is ValidatedVerseBlock => v !== null), aligned, warnings, failed };
   }
   const lookupUrl = `${supabaseUrl.replace(/\/$/, "")}/functions/v1/scripture-lookup`;
   // The user's JWT is required: scripture-lookup checks the caller's account for
@@ -129,6 +136,7 @@ export async function validateReferences(options: {
       chunk.map((ref) => lookupWithRetry(lookupUrl, headers, ref, translation)),
     );
     results.forEach((result, index) => {
+      aligned.push(result ? { ...result, source: "lookup" } : null);
       if (result) {
         validated.push(result);
       } else {
@@ -140,5 +148,5 @@ export async function validateReferences(options: {
     });
   }
 
-  return { validated, warnings, failed };
+  return { validated, aligned, warnings, failed };
 }

@@ -23,6 +23,10 @@ export interface QuickBuildSuccessResponse {
   form_data: any;
   points_count: number;
   verses_count: number;
+  /** Verses copied word for word from the manuscript. */
+  verses_from_manuscript?: number;
+  /** Verses with only a reference, waiting for the church to paste the text. */
+  verses_need_pasting?: number;
   parsing_duration_ms: number;
   warnings: string[];
 }

@@ -144,8 +144,11 @@ const QuickBuildUploadCard = ({ mode, children }: QuickBuildUploadCardProps) => 
             Upload your sermon outline
           </h2>
           <p className="text-muted-foreground text-sm mb-5 max-w-xl">
-            We&apos;ll pull out the title, series, points, and scripture references to build out your sermon for you. Then drop you
+            We&apos;ll pull out the title, series, points, and the full text of your verses to build out your sermon for you. Then drop you
             straight into Sermon Review for revisions.
+          </p>
+          <p className="mb-5 max-w-xl rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-sm text-foreground">
+            Include the full text of each verse you want on screen, with the translation (for example, NIV). If you only list a reference, we&apos;ll create the slide and flag it for you to paste the verse.
           </p>
 
           <button

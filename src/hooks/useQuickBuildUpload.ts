@@ -123,7 +123,7 @@ export function useQuickBuildUpload() {
 
       const documentBody =
         document.kind === "pdf"
-          ? { file_base64: document.base64, media_type: "application/pdf" }
+          ? { file_base64: document.base64, media_type: "application/pdf", pdf_text: document.text }
           : { manuscript_html: document.html };
 
       const { data, error } = await supabase.functions.invoke<QuickBuildResponse>(
@@ -167,6 +167,19 @@ export function useQuickBuildUpload() {
       }
 
       const successPayload = payload as QuickBuildSuccessResponse;
+      const pulledCount = successPayload.verses_from_manuscript ?? 0;
+      const pasteCount = successPayload.verses_need_pasting ?? 0;
+      if (pulledCount || pasteCount) {
+        toast.success(
+          `${pulledCount} verse${pulledCount === 1 ? "" : "s"} pulled from your manuscript. ${pasteCount} need${pasteCount === 1 ? "s" : ""} pasting.`,
+          {
+            description: pasteCount ? "Paste the flagged verses in Sermon Review." : "Every verse came straight from your manuscript.",
+            duration: 10000,
+          },
+        );
+      }
+      // The paste count is already in the summary; don't repeat it in the double-check list.
+      successPayload.warnings = (successPayload.warnings ?? []).filter((w) => !/need(s)? the text pasted in/.test(w));
       if (successPayload.warnings?.length) {
         toast.warning(
           `${successPayload.warnings.length} thing${successPayload.warnings.length === 1 ? "" : "s"} to double-check in Sermon Review: ${successPayload.warnings.join(" · ")}`,

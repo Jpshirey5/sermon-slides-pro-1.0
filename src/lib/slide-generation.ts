@@ -87,7 +87,7 @@ export function generateSlidesFromPresentation(presentation: SermonPresentation)
         point.scriptures.forEach((scripture, scriptureIndex) => {
           if (!scripture.reference) return;
           const displayReference = formatScriptureReferenceForDisplay(scripture.reference);
-          const translation = presentation.data?.translation || "KJV";
+          const translation = scripture.translation || presentation.data?.translation || "KJV";
           const scriptureSource = scripture.source;
 
           // No verse text yet: a slide with the reference, ready for the church to paste the verse.

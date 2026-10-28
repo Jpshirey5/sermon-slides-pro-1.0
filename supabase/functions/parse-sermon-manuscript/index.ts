@@ -11,7 +11,9 @@ import {
   parseManuscriptWithClaude,
   type ParserInput,
 } from "./claudeParser.ts";
-import { validateReferences } from "./scriptureValidator.ts";
+import { buildReferenceString, validateReferences, type ValidatedVerseBlock } from "./scriptureValidator.ts";
+import { pullVersesFromManuscript } from "./manuscriptVerses.ts";
+import { htmlToText } from "../_shared/scripture-text/verbatim.ts";
 import { buildSermon } from "./sermonBuilder.ts";
 import { extractRefsFromText, mergeRefs, stripHtml } from "./refExtractor.ts";
 
@@ -131,6 +133,8 @@ serve(async (req) => {
     const fileBase64: string = typeof body?.file_base64 === "string" ? body.file_base64 : "";
     const manuscriptHtml: string = typeof body?.manuscript_html === "string" ? body.manuscript_html : "";
     const manuscriptText: string = typeof body?.manuscript_text === "string" ? body.manuscript_text : "";
+    // PDFs: the browser reads the PDF's text and sends it along, so verses can be copied from it.
+    const pdfText: string = typeof body?.pdf_text === "string" ? body.pdf_text.slice(0, MAX_MANUSCRIPT_CHARS) : "";
 
     let parserInput: ParserInput;
     let backstopText: string | null = null;
@@ -147,6 +151,8 @@ serve(async (req) => {
         );
       }
       parserInput = { kind: "pdf", base64: fileBase64 };
+      // The PDF's own text (when the browser sent it) also backs up the reference check.
+      if (pdfText.trim()) backstopText = pdfText;
     } else if (manuscriptHtml.trim()) {
       if (manuscriptHtml.length > MAX_HTML_CHARS) {
         return json(
@@ -256,14 +262,46 @@ serve(async (req) => {
       );
     }
 
-    const validation = await validateReferences({
+    // Verses written out in the manuscript are copied from it, word for word, in any
+    // translation. Only references with no text in the manuscript are looked up, and
+    // only in public domain translations; the rest are marked for the church to paste.
+    const manuscriptPlain = fileBase64 ? pdfText : manuscriptHtml.trim() ? htmlToText(manuscriptHtml) : manuscriptText;
+    const pulled = pullVersesFromManuscript({
+      manuscript: manuscriptPlain,
       refs,
+      verseTexts: parsedResult.data.verse_texts ?? [],
+      fallbackTranslation: translation,
+    });
+    const remainingIndexes = refs.map((_, i) => i).filter((i) => !pulled.has(i));
+    const lookedUp = await validateReferences({
+      refs: remainingIndexes.map((i) => refs[i]),
       translation,
       supabaseUrl,
       anonKey,
       authHeader,
       publicDomainOnly: true,
     });
+    const byIndex = new Map<number, ValidatedVerseBlock | null>(remainingIndexes.map((refIndex, k) => [refIndex, lookedUp.aligned[k] ?? null]));
+    const validatedInOrder: ValidatedVerseBlock[] = [];
+    refs.forEach((ref, i) => {
+      const fromManuscript = pulled.get(i);
+      if (fromManuscript) {
+        validatedInOrder.push({
+          reference: buildReferenceString(ref),
+          text: fromManuscript.text,
+          point_index: ref.point_index,
+          subpoint_index: ref.subpoint_index,
+          ...(ref.placement ? { placement: ref.placement } : {}),
+          translation: fromManuscript.translation,
+          source: "church",
+        });
+        return;
+      }
+      const block = byIndex.get(i);
+      if (block) validatedInOrder.push(block);
+    });
+    const validation = { ...lookedUp, validated: validatedInOrder };
+    const versesFromManuscript = pulled.size;
     const needPasting = validation.validated.filter((v) => v.needs_scripture).length;
     const pasteWarning = needPasting > 0
       ? [`${needPasting} verse${needPasting === 1 ? "" : "s"} in ${translation} need${needPasting === 1 ? "s" : ""} the text pasted in. Open each one in Sermon Review and paste it from your Bible.`]
@@ -358,6 +396,7 @@ serve(async (req) => {
       points_count: built.pointsCount,
       verses_count: built.versesCount,
       verses_need_pasting: needPasting,
+      verses_from_manuscript: versesFromManuscript,
       parsing_duration_ms: parsingDurationMs,
       warnings: allWarnings,
     });

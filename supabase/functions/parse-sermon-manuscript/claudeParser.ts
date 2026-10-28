@@ -17,7 +17,7 @@ export const BEDROCK_MODEL_ID = Deno.env.get("QUICK_BUILD_MODEL_ID") ?? "us.anth
 const MAX_TOKENS = 12288;
 
 // Bump on every prompt/schema iteration so accuracy is comparable across versions.
-export const PROMPT_VERSION = "v3-2026-07";
+export const PROMPT_VERSION = "v4-2026-10-verse-text";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -43,11 +43,21 @@ export interface ParsedPoint {
   subpoints: ParsedSubpoint[];
 }
 
+/** Where a passage's words are written out in the document. The app copies the words itself. */
+export interface VerseTextLocation {
+  reference: string;
+  first_words: string;
+  last_words: string;
+  translation: string | null;
+}
+
 export interface ParsedManuscript {
   title: string;
   series: string | null;
   points: ParsedPoint[];
   scripture_references: ParsedScriptureRef[];
+  /** Where verse text is written out in the document. Optional so older callers still work. */
+  verse_texts?: VerseTextLocation[];
 }
 
 export type ParserInput =
@@ -133,6 +143,14 @@ SCRIPTURE REFERENCES — raw citation strings, attached where they appear:
 - NEVER report a book-and-chapter mention that has no verse number ("Numbers 21", "the promise in Ezekiel 36", "Paul's letter to the Romans") — skip these entirely; never invent a verse number for them.
 - If the same passage is cited or quoted more than once under the same point, report it once, at its first occurrence.
 
+VERSE TEXT — where each passage's words are written out in the document:
+- Many pastors write out the full text of the verses they will read. For every scripture reference whose verse text appears in the document, add one entry to verse_texts.
+- reference: the citation as you reported it (e.g., "John 3:16-17").
+- first_words: the first 8 to 12 words of the verse text, copied character for character exactly as they appear in the document, including verse numbers, punctuation, and quotation marks. Start at the first word of the scripture itself, not at the reference or the translation label.
+- last_words: the last 8 to 12 words of the verse text, copied exactly the same way, ending at the last word of the scripture (include its final punctuation).
+- translation: the translation label written next to this passage (e.g., "NIV", "(ESV)", "New Living Translation"), or null if none is written.
+- NEVER write verse text from memory. NEVER correct, complete, modernize, or paraphrase. Only copy words that are actually in the document. If a reference has no verse text written out in the document, leave it out of verse_texts.
+
 SELF-CHECK — before calling the tool, verify all of the following, and fix the extraction if any check fails:
 1. The number of kind "point" items equals expected_point_count (the main-point headings you counted in STEP 1)
 2. extracted_item_count equals the total length of the items array
@@ -193,6 +211,19 @@ const SERMON_TOOL = {
       },
       intro_references_raw: { type: "array", items: { type: "string" } },
       conclusion_references_raw: { type: "array", items: { type: "string" } },
+      verse_texts: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            reference: { type: "string" },
+            first_words: { type: "string" },
+            last_words: { type: "string" },
+            translation: { type: ["string", "null"] },
+          },
+          required: ["reference", "first_words", "last_words", "translation"],
+        },
+      },
     },
     required: [
       "document_analysis",
@@ -201,6 +232,7 @@ const SERMON_TOOL = {
       "items",
       "intro_references_raw",
       "conclusion_references_raw",
+      "verse_texts",
     ],
   },
 };
@@ -322,6 +354,14 @@ export function convertToolPayload(value: unknown): ConvertedPayload {
       series: v.series ? String(v.series).trim() || null : null,
       points,
       scripture_references: dedupeContainedRefs(refs),
+      verse_texts: (Array.isArray(v.verse_texts) ? v.verse_texts : [])
+        .filter((t: any) => t && typeof t.reference === "string" && typeof t.first_words === "string" && typeof t.last_words === "string")
+        .map((t: any) => ({
+          reference: t.reference.trim(),
+          first_words: t.first_words,
+          last_words: t.last_words,
+          translation: typeof t.translation === "string" && t.translation.trim() ? t.translation.trim() : null,
+        })),
     },
     warnings,
   };
