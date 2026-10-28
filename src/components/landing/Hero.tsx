@@ -56,9 +56,8 @@ const Hero = () => {
             transition={{ duration: 0.5, delay: 0.2 }}
             className="text-lg sm:text-xl text-muted-foreground max-w-3xl mx-auto mb-10"
           >
-            Upload your manuscript. We pull your sermon points and the full
-            text of your verses, word for word, and build the deck in minutes.
-            Then export it into your PowerPoint or ProPresenter workflow.
+            Create the deck in minutes, then export it into your existing
+            PowerPoint or ProPresenter workflow.
           </motion.p>
 
           <motion.div
