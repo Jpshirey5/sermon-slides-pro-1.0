@@ -36,7 +36,6 @@ import { useAuth } from "@/contexts/AuthContext";
 import { getAvailableTranslations, isTranslationAllowed, DEFAULT_TRANSLATION } from "@/lib/translations";
 import { logError, trackEvent } from "@/lib/monitoring";
 import ProductTour, { type ProductTourStep } from "@/components/ProductTour";
-import StructuredBuilderInfoModal from "@/components/StructuredBuilderInfoModal";
 import { consumeCreateTourPrompt } from "@/lib/product-tour";
 import { listAccountCampuses, type Campus } from "@/lib/campuses";
 import { blockDragFromNode } from "@/lib/block-drag";
@@ -89,7 +88,6 @@ const CreateSermon = () => {
   const [slideStyle, setSlideStyle] = useState<SlideStyle>(editData?.slideStyle || "balanced");
   const [themeStyle, setThemeStyle] = useState<ThemeStyle>(editData?.themeStyle || "clean");
   const [showTourBuilderPrompt, setShowTourBuilderPrompt] = useState(false);
-  const [showStructuredBuilderInfo, setShowStructuredBuilderInfo] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [openInsertMenuId, setOpenInsertMenuId] = useState<string | null>(null);
   const [points, setPoints] = useState<SermonPoint[]>(
@@ -140,13 +138,6 @@ const CreateSermon = () => {
       editingExisting: Boolean(editId),
     });
   }, [editId, isFromDashboard]);
-
-  // Pay-per-export guests land here from the landing page. Explain that this is
-  // the manual Structured Builder, and that AI Quick Build requires an account.
-  useEffect(() => {
-    if (isFromDashboard || user || editId) return;
-    setShowStructuredBuilderInfo(true);
-  }, [editId, isFromDashboard, user]);
 
   useEffect(() => {
     if (editData?.translation) return;
@@ -1127,10 +1118,6 @@ const CreateSermon = () => {
           steps={createTourSteps}
         />
       )}
-      <StructuredBuilderInfoModal
-        open={showStructuredBuilderInfo}
-        onOpenChange={setShowStructuredBuilderInfo}
-      />
     </div>
   );
 };

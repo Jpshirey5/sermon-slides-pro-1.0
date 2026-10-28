@@ -11,11 +11,9 @@ import { exportToPdf } from "@/lib/export-pdf";
 import { exportAsProBundle, validateSlidesForExport } from "@/services/proPresenterExport";
 import { ExportOptionsModal } from "@/components/ExportOptionsModal";
 import { needsChurchScripture } from "@/lib/scripture-rights";
-import { SubscriptionUpsellModal } from "@/components/SubscriptionUpsellModal";
 import { toast } from "sonner";
 import { getEditorPresentationState, SermonPresentation, saveEditorSlides as saveEditorSlidesToDb } from "@/lib/presentations";
 import { useAuth } from "@/contexts/AuthContext";
-import { getPlanById, type SubscriptionPlanId } from "@/lib/subscriptionPlans";
 import {
   deleteStoredBackground,
   fileToDataUrl,
@@ -136,7 +134,6 @@ const SlideEditor = () => {
   const lastSavedSlidesRef = useRef(JSON.stringify(defaultSlides));
 
   const [showExportModal, setShowExportModal] = useState(false);
-  const [showUpsellModal, setShowUpsellModal] = useState(false);
   const [isSendingBack, setIsSendingBack] = useState(false);
   // Shown only when this tab arrived through a partner handoff that carried a
   // return URL, and only on the deck it was opened for.
@@ -150,35 +147,13 @@ const SlideEditor = () => {
   const [historyIndex, setHistoryIndex] = useState(0);
   const isUndoRedoRef = useRef(false);
   const isInitialLoadRef = useRef(true);
-  const upsellSessionKey = id && id !== "new" ? `export_upsell_seen:${id}` : null;
   const valueMetrics = useMemo(
     () => calculateValueMetrics({ slideCount: slides.length, slides, formData: presentationFormData }),
     [presentationFormData, slides],
   );
-  const editorBackPath = subscription.subscribed ? "/dashboard" : "/";
-  const editorBackLabel = subscription.subscribed ? "Dashboard" : "Home";
-
-  // Shown after a guest (no account) successfully exports for free, prompting
-  // them to create an account for Core/Team access. Export has already
-  // completed by the time this modal is shown, so dismissing it just closes
-  // the dialog -- there's nothing left to "continue" to.
-  const handleDismissUpsell = () => {
-    if (upsellSessionKey) {
-      sessionStorage.setItem(upsellSessionKey, "true");
-    }
-    setShowUpsellModal(false);
-  };
-
-  const handleUpsellSelectPlan = (planId: SubscriptionPlanId) => {
-    const plan = getPlanById(planId);
-    if (!plan) return;
-    if (upsellSessionKey) {
-      sessionStorage.setItem(upsellSessionKey, "true");
-    }
-
-    // This modal only shows for guests (no account), so always route to signup.
-    editorNavigate(`/signup?${new URLSearchParams({ priceId: plan.priceId }).toString()}`);
-  };
+  // Only signed-in churches with a plan reach the editor, so back always goes to the dashboard.
+  const editorBackPath = "/dashboard";
+  const editorBackLabel = "Dashboard";
 
   useEffect(() => {
     if (!user || subscription.signup_status !== "pending_checkout") return;
@@ -518,8 +493,7 @@ const SlideEditor = () => {
     setIsDragging(false);
     setDragOverIndex(null);
   }, []);
-  // Handle export button click - export is free and immediate for every
-  // user, guest or subscribed. There is no payment gate.
+  // Handle export button click: export is immediate for every subscribed church.
   const handleExportButtonClick = () => {
     if (!id || id === "new") {
       trackEvent("export_blocked_unsaved");
@@ -529,11 +503,11 @@ const SlideEditor = () => {
 
     trackEvent("export_modal_opened", {
       sermonId: id,
-      source: subscription.subscribed ? "subscription" : "guest",
+      source: "subscription",
     });
     trackEvent("pre_export_modal_viewed", {
       sermonId: id,
-      source: subscription.subscribed ? "subscription" : "guest",
+      source: "subscription",
       slideCount: valueMetrics.slideCount,
       scripturePassageCount: valueMetrics.scripturePassageCount,
     });
@@ -586,17 +560,6 @@ const SlideEditor = () => {
         slideCount: slides.length,
       });
       setShowExportModal(false);
-
-      // Guest (no account) just exported for free -- offer to create a
-      // Core/Team account, once per sermon per session.
-      const shouldShowUpsell =
-        !user &&
-        upsellSessionKey &&
-        sessionStorage.getItem(upsellSessionKey) !== "true";
-      if (shouldShowUpsell) {
-        sessionStorage.setItem(upsellSessionKey, "true");
-        setShowUpsellModal(true);
-      }
     } catch (error) {
       logError(error, {
         scope: "editor_export",
@@ -1444,11 +1407,6 @@ const SlideEditor = () => {
         isExporting={isExporting}
         valueMetrics={valueMetrics}
         needPasting={slides.filter(needsChurchScripture).length}
-      />
-      <SubscriptionUpsellModal
-        isOpen={showUpsellModal}
-        onDismiss={handleDismissUpsell}
-        onSelectPlan={handleUpsellSelectPlan}
       />
       {user && (
         <ProductTour

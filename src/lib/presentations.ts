@@ -106,7 +106,7 @@ export interface EditorPresentationState {
   scriptureReference?: string;
 }
 
-interface GuestSermonRow {
+interface SermonRowFields {
   id: string;
   title: string;
   scripture_reference?: string | null;
@@ -115,7 +115,6 @@ interface GuestSermonRow {
   updated_at: string;
 }
 
-const GUEST_SERMONS_STORAGE_KEY = "guest_sermons";
 const serializeEditorSlides = (slides: any[] | null | undefined) => JSON.stringify(slides || []);
 const DEFAULT_PRESENTATION_SORT: NonNullable<DashboardPresentationFilters["sort"]> = "newest";
 
@@ -179,38 +178,8 @@ function countSlides(slides: any): number {
   return 0;
 }
 
-function readGuestSermons(): Record<string, GuestSermonRow> {
-  if (typeof window === "undefined") return {};
-  try {
-    const raw = localStorage.getItem(GUEST_SERMONS_STORAGE_KEY);
-    if (!raw) return {};
-    return JSON.parse(raw) as Record<string, GuestSermonRow>;
-  } catch {
-    return {};
-  }
-}
-
-function writeGuestSermons(store: Record<string, GuestSermonRow>) {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(GUEST_SERMONS_STORAGE_KEY, JSON.stringify(store));
-}
-
-function mapRowToPresentation(row: GuestSermonRow): SermonPresentation {
-  return {
-    id: row.id,
-    title: row.title,
-    series: extractSeries(row.slides),
-    presentationDate: resolvePresentationDate(row.slides, row.created_at),
-    date: resolvePresentationDate(row.slides, row.created_at),
-    slides: countSlides(row.slides),
-    lastModified: new Date(row.updated_at).toLocaleDateString(),
-    scripture_reference: row.scripture_reference || undefined,
-    data: extractFormData(row.slides),
-  };
-}
-
 function mapRowToDashboardPresentation(
-  row: Pick<GuestSermonRow, "id" | "title" | "slides" | "created_at" | "updated_at"> & {
+  row: Pick<SermonRowFields, "id" | "title" | "slides" | "created_at" | "updated_at"> & {
     series?: string | null;
     presentation_date?: string | null;
     campus_id?: string | null;
@@ -292,61 +261,6 @@ function escapeSupabaseLikeQuery(value: string): string {
   return value.replace(/[%_]/g, (match) => `\\${match}`).replace(/,/g, "\\,");
 }
 
-function applyGuestDashboardFilters(
-  rows: GuestSermonRow[],
-  filters: DashboardPresentationFilters
-): DashboardPresentation[] {
-  const normalizedSearch = filters.search?.trim().toLowerCase() || "";
-  const presentationMonth = filters.presentationMonth || null;
-  const sort = filters.sort || DEFAULT_PRESENTATION_SORT;
-
-  const filtered = rows
-    .map((row) => ({ row, presentation: mapRowToDashboardPresentation(row) }))
-    .filter(({ presentation }) => {
-      const matchesSearch =
-        !normalizedSearch ||
-        presentation.title.toLowerCase().includes(normalizedSearch) ||
-        (presentation.series || "").toLowerCase().includes(normalizedSearch);
-      const matchesMonth =
-        !presentationMonth || presentation.presentationDate.startsWith(presentationMonth);
-      return matchesSearch && matchesMonth;
-    });
-
-  filtered.sort((a, b) => {
-    const presentationDateDiff =
-      new Date(a.presentation.presentationDate).getTime() - new Date(b.presentation.presentationDate).getTime();
-    if (presentationDateDiff !== 0) {
-      return sort === "oldest" ? presentationDateDiff : -presentationDateDiff;
-    }
-    const lastModifiedDiff = new Date(a.row.updated_at).getTime() - new Date(b.row.updated_at).getTime();
-    return sort === "oldest" ? lastModifiedDiff : -lastModifiedDiff;
-  });
-
-  return filtered.map(({ presentation }) => presentation);
-}
-
-function saveGuestPresentation(presentation: SermonPresentation): string {
-  const store = readGuestSermons();
-  const existing = store[presentation.id];
-  const existingEditorSlides = existing ? extractEditorSlides(existing.slides) : null;
-  const wrapper: SlidesWrapper = {
-    formData: presentation.data,
-    ...(existingEditorSlides ? { editorSlides: existingEditorSlides } : {}),
-  };
-  const now = new Date().toISOString();
-
-  store[presentation.id] = {
-    id: presentation.id,
-    title: presentation.title,
-    scripture_reference: presentation.scripture_reference || null,
-    slides: wrapper as any,
-    created_at: existing?.created_at || now,
-    updated_at: now,
-  };
-  writeGuestSermons(store);
-  return presentation.id;
-}
-
 interface PresentationAccessContext {
   userId: string | null;
   accountId: string | null;
@@ -382,17 +296,7 @@ export async function getDashboardPresentationsPage(
     campusFilter = null,
   } = options;
   const access = await getPresentationAccessContext();
-  if (!access.isAuthenticated || !access.accountId) {
-    const guestPresentations = applyGuestDashboardFilters(Object.values(readGuestSermons()), {
-      search,
-      presentationMonth,
-      sort,
-    });
-    return {
-      items: guestPresentations.slice(offset, offset + limit),
-      hasMore: offset + limit < guestPresentations.length,
-    };
-  }
+  if (!access.isAuthenticated || !access.accountId) return { items: [], hasMore: false };
 
   let query = supabase
     .from('sermons')
@@ -499,8 +403,7 @@ export async function getDashboardTimeSavedSummary(monthKey: string): Promise<Da
 }
 
 export async function savePresentation(presentation: SermonPresentation): Promise<string | null> {
-  const access = await getPresentationAccessContext();
-  if (!access.isAuthenticated || !access.userId || !access.accountId) return saveGuestPresentation(presentation);
+  const access = await requireAccountScopedAccess();
   const resolvedCampusId = await resolvePresentationCampusId(access.accountId, presentation.campusId);
 
   // Check if presentation already exists
@@ -574,24 +477,7 @@ export async function savePresentationWithSlides(
     editorSlides,
   };
 
-  const access = await getPresentationAccessContext();
-
-  if (!access.isAuthenticated) {
-    const store = readGuestSermons();
-    const existing = store[presentation.id];
-    const now = new Date().toISOString();
-
-    store[presentation.id] = {
-      id: presentation.id,
-      title: presentation.title,
-      scripture_reference: presentation.scripture_reference || null,
-      slides: wrapper as any,
-      created_at: existing?.created_at || now,
-      updated_at: now,
-    };
-    writeGuestSermons(store);
-    return presentation.id;
-  }
+  const access = await requireAccountScopedAccess();
 
   const { data: existing } = await supabase
     .from("sermons")
@@ -699,13 +585,7 @@ export async function duplicateMostRecentPresentationAsStartingPoint(): Promise<
 }
 
 export async function deletePresentation(id: string): Promise<void> {
-  const access = await getPresentationAccessContext();
-  if (!access.isAuthenticated) {
-    const store = readGuestSermons();
-    delete store[id];
-    writeGuestSermons(store);
-    return;
-  }
+  await requireAccountScopedAccess();
 
   const { data: existing } = await supabase
     .from('sermons')
@@ -730,10 +610,7 @@ export async function deletePresentation(id: string): Promise<void> {
 
 export async function getPresentation(id: string): Promise<SermonPresentation | undefined> {
   const access = await getPresentationAccessContext();
-  if (!access.isAuthenticated) {
-    const guestRow = readGuestSermons()[id];
-    return guestRow ? mapRowToPresentation(guestRow) : undefined;
-  }
+  if (!access.isAuthenticated) return undefined;
 
   const { data, error } = await supabase
     .from('sermons')
@@ -741,10 +618,7 @@ export async function getPresentation(id: string): Promise<SermonPresentation | 
     .eq('id', id)
     .maybeSingle();
 
-  if (error || !data) {
-    const guestRow = readGuestSermons()[id];
-    return guestRow ? mapRowToPresentation(guestRow) : undefined;
-  }
+  if (error || !data) return undefined;
 
   return {
     id: data.id,
@@ -763,25 +637,7 @@ export async function getPresentation(id: string): Promise<SermonPresentation | 
 
 export async function getEditorPresentationState(id: string): Promise<EditorPresentationState | undefined> {
   const access = await getPresentationAccessContext();
-  if (!access.isAuthenticated) {
-    const guestRow = readGuestSermons()[id];
-    if (!guestRow) return undefined;
-
-    return {
-      id: guestRow.id,
-      title: guestRow.title,
-      series: extractSeries(guestRow.slides),
-      campusId: null,
-      campusName: null,
-      formerCampusName: null,
-      formData: extractFormData(guestRow.slides),
-      editorSlides: extractEditorSlides(guestRow.slides),
-      createdAt: guestRow.created_at,
-      updatedAt: guestRow.updated_at,
-      presentationDate: resolvePresentationDate(guestRow.slides, guestRow.created_at),
-      scriptureReference: guestRow.scripture_reference || undefined,
-    };
-  }
+  if (!access.isAuthenticated) return undefined;
 
   const { data, error } = await supabase
     .from("sermons")
@@ -789,25 +645,7 @@ export async function getEditorPresentationState(id: string): Promise<EditorPres
     .eq("id", id)
     .maybeSingle();
 
-  if (error || !data) {
-    const guestRow = readGuestSermons()[id];
-    if (!guestRow) return undefined;
-
-    return {
-      id: guestRow.id,
-      title: guestRow.title,
-      series: extractSeries(guestRow.slides),
-      campusId: null,
-      campusName: null,
-      formerCampusName: null,
-      formData: extractFormData(guestRow.slides),
-      editorSlides: extractEditorSlides(guestRow.slides),
-      createdAt: guestRow.created_at,
-      updatedAt: guestRow.updated_at,
-      presentationDate: resolvePresentationDate(guestRow.slides, guestRow.created_at),
-      scriptureReference: guestRow.scripture_reference || undefined,
-    };
-  }
+  if (error || !data) return undefined;
 
   const campusNamesById = await loadCampusNamesById(
     data.account_id || "",
@@ -833,28 +671,6 @@ export async function getEditorPresentationState(id: string): Promise<EditorPres
 // Save editor slides (the visual slide array) to the sermons table, preserving form data
 export async function saveEditorSlides(sermonId: string, slides: any[]): Promise<void> {
   const nextSerializedSlides = serializeEditorSlides(slides);
-  const access = await getPresentationAccessContext();
-  if (!access.isAuthenticated) {
-    const store = readGuestSermons();
-    const existing = store[sermonId];
-    if (!existing) return;
-    const existingEditorSlides = extractEditorSlides(existing.slides);
-    if (serializeEditorSlides(existingEditorSlides) === nextSerializedSlides) {
-      return;
-    }
-    const existingFormData = extractFormData(existing.slides);
-    store[sermonId] = {
-      ...existing,
-      slides: {
-        ...(existingFormData ? { formData: existingFormData } : {}),
-        editorSlides: slides,
-      } as any,
-      updated_at: new Date().toISOString(),
-    };
-    writeGuestSermons(store);
-    return;
-  }
-
   await requireAccountScopedAccess();
 
   // First read existing to preserve formData
@@ -887,11 +703,7 @@ export async function saveEditorSlides(sermonId: string, slides: any[]): Promise
 // Get editor slides from the sermons table
 export async function getEditorSlides(sermonId: string): Promise<any[] | null> {
   const access = await getPresentationAccessContext();
-  if (!access.isAuthenticated) {
-    const existing = readGuestSermons()[sermonId];
-    if (!existing) return null;
-    return extractEditorSlides(existing.slides);
-  }
+  if (!access.isAuthenticated) return null;
 
   const { data, error } = await supabase
     .from('sermons')
@@ -899,10 +711,6 @@ export async function getEditorSlides(sermonId: string): Promise<any[] | null> {
     .eq('id', sermonId)
     .maybeSingle();
 
-  if (error || !data) {
-    const existing = readGuestSermons()[sermonId];
-    if (!existing) return null;
-    return extractEditorSlides(existing.slides);
-  }
+  if (error || !data) return null;
   return extractEditorSlides(data.slides);
 }
