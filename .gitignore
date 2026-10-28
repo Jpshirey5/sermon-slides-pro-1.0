@@ -28,3 +28,6 @@ supabase/.temp/
 *.sln
 *.sw?
 scripts/quick-build-eval/results/
+
+# Sample sermons for testing uploads (kept on this computer, not in Git)
+test-manuscripts/
